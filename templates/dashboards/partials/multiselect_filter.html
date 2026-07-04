@@ -1,0 +1,32 @@
+<div class="dashboard-filter" data-filter-dropdown>
+    <button class="filter-trigger" type="button" aria-expanded="false">
+        <i class="bi {{ icone }}"></i>
+        <span data-filter-summary data-empty-label="{{ vazio }}">
+            {% if selecionados|length == 1 %}1 selecionado{% elif selecionados %}{{ selecionados|length }} selecionados{% else %}{{ vazio }}{% endif %}
+        </span>
+        <i class="bi bi-chevron-down filter-chevron"></i>
+    </button>
+    <div class="filter-popover">
+        <strong class="filter-title">{{ titulo }}</strong>
+        <p class="filter-hint">Você pode marcar mais de uma opção.</p>
+        <div class="filter-options">
+            {% for opcao in opcoes %}
+                <label class="filter-option">
+                    <input type="checkbox" name="{{ nome }}" value="{{ opcao.valor }}" {% if opcao.valor in selecionados %}checked{% endif %}>
+                    <span>
+                        {{ opcao.nome }}
+                        {% if empresas_filtro|length > 1 %}<small>{{ opcao.empresa }}</small>{% endif %}
+                    </span>
+                </label>
+            {% empty %}
+                <span class="filter-empty">Nenhuma opção ativa.</span>
+            {% endfor %}
+        </div>
+        {% if opcoes %}
+            <div class="filter-actions">
+                <button type="button" data-select-all>Marcar todas</button>
+                <button type="button" data-clear-all>Limpar</button>
+            </div>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Parâmetros | MD21 BI{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">CONFIGURAÇÕES DA EMPRESA</span>
+        <h1>Parâmetros</h1>
+        <p>Configure os dashboards e integrações da {{ empresa.nome_fantasia }}.</p>
+    </div>
+    <a href="{% url 'dashboards:home' empresa.slug %}" class="btn btn-white">
+        <i class="bi bi-arrow-left me-2"></i>Voltar ao início
+    </a>
+</div>
+
+<div class="pb-5">
+    <div class="parameter-section-heading">
+        <div>
+            <span class="eyebrow">DASHBOARDS</span>
+            <h2>Configurações da empresa</h2>
+            <p>Parâmetros exclusivos dos painéis da {{ empresa.nome_fantasia }}.</p>
+        </div>
+    </div>
+
+    <div class="parameters-grid">
+        {% for topico in topicos %}
+            <article class="parameter-card">
+                <div class="parameter-icon"><i class="bi {{ topico.icone }}"></i></div>
+                <div>
+                    <div class="parameter-title-row">
+                        <h2>{{ topico.titulo }}</h2>
+                        <span>{{ topico.status }}</span>
+                    </div>
+                    <p>{{ topico.descricao }}</p>
+                </div>
+                {% if topico.url %}
+                    <a class="btn btn-sm btn-outline-primary" href="{{ topico.url }}">
+                        Configurar
+                    </a>
+                {% else %}
+                    <button class="btn btn-sm btn-outline-secondary" type="button" disabled>
+                        Configurar
+                    </button>
+                {% endif %}
+            </article>
+        {% endfor %}
+    </div>
+
+    <div class="parameter-section-heading mt-5">
+        <div>
+            <span class="eyebrow">INTEGRAÇÕES</span>
+            <h2>Integrações</h2>
+            <p>Credenciais e conexões externas desta empresa.</p>
+        </div>
+    </div>
+
+    <article class="omie-settings-card" id="integracao-omie">
+            <div class="omie-settings-header">
+                <div class="parameter-icon"><i class="bi bi-cloud-arrow-down"></i></div>
+                <div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <h2>Integração OMIE</h2>
+                        {% if form_omie.integracao %}
+                            <span class="integration-status {% if form_omie.integracao.ativa %}is-active{% endif %}">
+                                {% if form_omie.integracao.ativa %}Ativa{% else %}Inativa{% endif %}
+                            </span>
+                        {% else %}
+                            <span class="integration-status">Não configurada</span>
+                        {% endif %}
+                    </div>
+                    <p class="mb-0">
+                        Credenciais exclusivas de <strong>{{ empresa.nome_fantasia }}</strong>.
+                    </p>
+                </div>
+            </div>
+
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ form_omie.app_key.id_for_label }}">{{ form_omie.app_key.label }}</label>
+                        {{ form_omie.app_key }}
+                        {% for error in form_omie.app_key.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ form_omie.app_secret.id_for_label }}">{{ form_omie.app_secret.label }}</label>
+                        <div class="input-group">
+                            {{ form_omie.app_secret }}
+                            <button class="btn btn-outline-secondary" type="button" data-toggle-secret aria-label="Mostrar ou ocultar App Secret">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                        {% if form_omie.integracao %}
+                            <div class="form-text">O segredo cadastrado não é exibido. Preencha somente para substituí-lo.</div>
+                        {% endif %}
+                        {% for error in form_omie.app_secret.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            {{ form_omie.ativa }}
+                            <label class="form-check-label" for="{{ form_omie.ativa.id_for_label }}">{{ form_omie.ativa.label }}</label>
+                        </div>
+                    </div>
+                </div>
+
+                {% for error in form_omie.non_field_errors %}
+                    <div class="alert alert-danger mt-4 mb-0">{{ error }}</div>
+                {% endfor %}
+
+                <div class="form-actions">
+                    <button class="btn btn-outline-secondary" type="button" disabled title="Disponível após implementarmos a consulta à API">
+                        <i class="bi bi-plug me-2"></i>Testar conexão
+                    </button>
+                    <button class="btn btn-primary" type="submit">
+                        <i class="bi bi-shield-check me-2"></i>Salvar credenciais
+                    </button>
+                </div>
+            </form>
+
+            <section
+                class="omie-sync-panel"
+                data-omie-sync
+                data-start-url="{% url 'dashboards:sincronizar_clientes_omie' empresa.slug %}"
+                data-status-url-template="{% url 'dashboards:status_sincronizacao_omie' empresa.slug 999999999 %}"
+                {% if ultima_sincronizacao %}data-last-sync-id="{{ ultima_sincronizacao.id }}"{% endif %}
+                data-last-sync-status="{{ ultima_sincronizacao.status|default:'' }}"
+            >
+                <div class="omie-sync-heading">
+                    <div>
+                        <span class="eyebrow">BASE LOCAL</span>
+                        <h3>Dados da OMIE</h3>
+                        <p>Atualiza clientes, fornecedores, projetos e departamentos na base local.</p>
+                    </div>
+                    <button
+                        class="btn btn-primary"
+                        type="button"
+                        data-sync-start
+                        {% if not form_omie.integracao or not form_omie.integracao.ativa %}disabled{% endif %}
+                    >
+                        <i class="bi bi-arrow-repeat me-2"></i>
+                        <span>Atualizar dados da OMIE</span>
+                    </button>
+                </div>
+
+                <div class="omie-sync-totals">
+                    <div><span>Cadastros</span><strong data-total-cadastros>{{ total_cadastros_omie }}</strong></div>
+                    <div><span>Clientes</span><strong data-total-clientes>{{ total_clientes_omie }}</strong></div>
+                    <div><span>Fornecedores</span><strong data-total-fornecedores>{{ total_fornecedores_omie }}</strong></div>
+                    <div><span>Projetos</span><strong data-total-projetos>{{ total_projetos_omie }}</strong></div>
+                    <div><span>Departamentos</span><strong data-total-departamentos>{{ total_departamentos_omie }}</strong></div>
+                    <div><span>Categorias</span><strong data-total-categorias>{{ total_categorias_omie }}</strong></div>
+                </div>
+
+                <div class="omie-sync-progress {% if not ultima_sincronizacao %}d-none{% endif %}" data-sync-progress>
+                    <div class="d-flex justify-content-between gap-3 mb-2">
+                        <span data-sync-message>
+                            {% if ultima_sincronizacao %}{{ ultima_sincronizacao.mensagem }}{% endif %}
+                        </span>
+                        <strong data-sync-percent>
+                            {% if ultima_sincronizacao %}{{ ultima_sincronizacao.percentual }}%{% else %}0%{% endif %}
+                        </strong>
+                    </div>
+                    <div
+                        class="progress"
+                        role="progressbar"
+                        aria-label="Progresso da sincronização OMIE"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                    >
+                        <div
+                            class="progress-bar"
+                            data-sync-bar
+                            style="width: {% if ultima_sincronizacao %}{{ ultima_sincronizacao.percentual }}{% else %}0{% endif %}%"
+                        ></div>
+                    </div>
+                    <small data-sync-detail>
+                        {% if ultima_sincronizacao %}
+                            {{ ultima_sincronizacao.registros_processados }} de {{ ultima_sincronizacao.total_registros }} registros
+                        {% endif %}
+                    </small>
+                    <div class="alert alert-danger mt-3 mb-0 d-none" data-sync-error></div>
+                </div>
+            </section>
+    </article>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.querySelector("[data-toggle-secret]")?.addEventListener("click", function () {
+        const input = document.getElementById("{{ form_omie.app_secret.id_for_label }}");
+        const showing = input.type === "text";
+        input.type = showing ? "password" : "text";
+        this.querySelector("i").className = showing ? "bi bi-eye" : "bi bi-eye-slash";
+    });
+
+    (() => {
+        const panel = document.querySelector("[data-omie-sync]");
+        if (!panel) return;
+
+        const button = panel.querySelector("[data-sync-start]");
+        const progress = panel.querySelector("[data-sync-progress]");
+        const bar = panel.querySelector("[data-sync-bar]");
+        const percent = panel.querySelector("[data-sync-percent]");
+        const message = panel.querySelector("[data-sync-message]");
+        const detail = panel.querySelector("[data-sync-detail]");
+        const errorBox = panel.querySelector("[data-sync-error]");
+        const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
+        let timer = null;
+
+        const statusUrl = (id) =>
+            panel.dataset.statusUrlTemplate.replace("999999999", id);
+
+        function render(data) {
+            const value = Math.max(0, Math.min(100, data.percentual || 0));
+            progress.classList.remove("d-none");
+            bar.style.width = `${value}%`;
+            bar.classList.toggle("bg-danger", data.status === "erro");
+            percent.textContent = `${value}%`;
+            message.textContent = data.mensagem || data.status_label || "Sincronizando...";
+            detail.textContent = data.total_registros
+                ? `${data.registros_processados} de ${data.total_registros} registros`
+                : `${data.registros_processados || 0} registros processados`;
+
+            const finished = data.status === "concluida" || data.status === "erro";
+            button.disabled = !finished;
+            button.querySelector("span").textContent = finished
+                ? "Atualizar dados da OMIE"
+                : "Atualizando...";
+
+            errorBox.classList.toggle("d-none", data.status !== "erro");
+            errorBox.textContent = data.erro || "";
+
+            if (data.totais) {
+                panel.querySelector("[data-total-cadastros]").textContent = data.totais.cadastros;
+                panel.querySelector("[data-total-clientes]").textContent = data.totais.clientes;
+                panel.querySelector("[data-total-fornecedores]").textContent = data.totais.fornecedores;
+                panel.querySelector("[data-total-projetos]").textContent = data.totais.projetos;
+                panel.querySelector("[data-total-departamentos]").textContent = data.totais.departamentos;
+                panel.querySelector("[data-total-categorias]").textContent = data.totais.categorias;
+            }
+            return finished;
+        }
+
+        async function poll(id) {
+            try {
+                const response = await fetch(statusUrl(id), {
+                    headers: {"X-Requested-With": "XMLHttpRequest"},
+                });
+                if (!response.ok) throw new Error("Não foi possível consultar o progresso.");
+                const data = await response.json();
+                if (!render(data)) timer = window.setTimeout(() => poll(id), 1000);
+            } catch (error) {
+                button.disabled = false;
+                errorBox.textContent = error.message;
+                errorBox.classList.remove("d-none");
+            }
+        }
+
+        button?.addEventListener("click", async () => {
+            window.clearTimeout(timer);
+            button.disabled = true;
+            errorBox.classList.add("d-none");
+            progress.classList.remove("d-none");
+            message.textContent = "Iniciando sincronização...";
+            try {
+                const response = await fetch(panel.dataset.startUrl, {
+                    method: "POST",
+                    headers: {
+                        "X-CSRFToken": csrfToken,
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.erro || "Não foi possível iniciar.");
+                render(data);
+                poll(data.id);
+            } catch (error) {
+                button.disabled = false;
+                errorBox.textContent = error.message;
+                errorBox.classList.remove("d-none");
+            }
+        });
+
+        if (
+            panel.dataset.lastSyncId &&
+            ["pendente", "em_andamento"].includes(panel.dataset.lastSyncStatus)
+        ) {
+            button.disabled = true;
+            poll(panel.dataset.lastSyncId);
+        }
+    })();
+</script>
+{% endblock %}

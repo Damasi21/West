@@ -1,0 +1,32 @@
+<aside class="app-sidebar">
+    <div class="sidebar-company">
+        {% if empresa.logo %}
+            <img src="{{ empresa.logo.url }}" alt="{{ empresa.nome_fantasia }}">
+        {% else %}
+            <span class="company-monogram">{{ empresa.nome_fantasia|first|upper }}</span>
+        {% endif %}
+        <div class="overflow-hidden">
+            <small>Empresa selecionada</small>
+            <strong class="text-truncate d-block">{{ empresa.nome_fantasia }}</strong>
+        </div>
+    </div>
+
+    <nav class="sidebar-nav">
+        <span class="sidebar-label">Visão geral</span>
+        <a href="{% url 'dashboards:home' empresa.slug %}" class="{% if not area_slug %}active{% endif %}">
+            <i class="bi bi-grid-1x2"></i><span>Início</span>
+        </a>
+
+        <span class="sidebar-label mt-4">Dashboards</span>
+        {% for slug, area in areas.items %}
+            <a href="{% url 'dashboards:area' empresa.slug slug %}" class="{% if area_slug == slug %}active{% endif %}">
+                <img class="sidebar-menu-icon" src="/media/{{ area.imagem }}" alt="" aria-hidden="true">
+                <span>{{ area.titulo }}</span>
+            </a>
+        {% endfor %}
+    </nav>
+
+    <div class="sidebar-bottom">
+        <a href="{% url 'empresas:lista' %}"><i class="bi bi-arrow-left-right"></i><span>Trocar empresa</span></a>
+    </div>
+</aside>

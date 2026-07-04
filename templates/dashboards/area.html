@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboards {{ area_atual.titulo }} - {{ empresa.nome_fantasia }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">DASHBOARDS</span>
+        <h1>Área {{ area_atual.titulo }}</h1>
+        <p>Selecione um dashboard para abrir a análise desejada.</p>
+    </div>
+    <a href="{% url 'dashboards:home' empresa.slug %}" class="btn btn-white">
+        <i class="bi bi-arrow-left me-2"></i>Voltar
+    </a>
+</div>
+
+<div class="dashboard-list-grid">
+    {% for dashboard in area_atual.dashboards %}
+        <a
+            class="dashboard-list-card"
+            href="{% url 'dashboards:dashboard' empresa.slug area_slug dashboard.slug %}"
+        >
+            <span class="dashboard-list-icon text-bg-{{ area_atual.cor }}">
+                <i class="bi {{ dashboard.icone }}"></i>
+            </span>
+            <span class="dashboard-list-content">
+                <small>{{ area_atual.titulo }}</small>
+                <strong>{{ dashboard.titulo }}</strong>
+                <p>{{ dashboard.descricao }}</p>
+            </span>
+            <span class="dashboard-list-action">
+                Abrir dashboard <i class="bi bi-arrow-up-right"></i>
+            </span>
+        </a>
+    {% empty %}
+        <div class="empty-state">
+            <i class="bi bi-grid"></i>
+            <h2>Nenhum dashboard cadastrado</h2>
+            <p>Os dashboards desta área aparecerão aqui.</p>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

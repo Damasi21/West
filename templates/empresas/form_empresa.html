@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }} | MD21 BI{% endblock %}
+
+{% block public_content %}
+<section class="settings-heading">
+    <div class="container py-4 py-lg-5">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb small mb-3">
+                <li class="breadcrumb-item"><a href="{% url 'empresas:lista' %}">Painel inicial</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'empresas:configuracoes' %}">Configurações</a></li>
+                <li class="breadcrumb-item active">{{ titulo }}</li>
+            </ol>
+        </nav>
+        <span class="eyebrow">CONFIGURAÇÕES</span>
+        <h1 class="mb-2">{{ titulo }}</h1>
+        <p class="text-secondary mb-0">Estas informações identificam a empresa dentro dos dashboards.</p>
+    </div>
+</section>
+
+<section class="container pb-5">
+    <form method="post" enctype="multipart/form-data" class="company-form-card" novalidate>
+        {% csrf_token %}
+
+        <div class="row g-4">
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.nome_fantasia.id_for_label }}">{{ form.nome_fantasia.label }}</label>
+                {{ form.nome_fantasia }}
+                {% for error in form.nome_fantasia.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.nome.id_for_label }}">{{ form.nome.label }}</label>
+                {{ form.nome }}
+                {% for error in form.nome.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.cnpj.id_for_label }}">{{ form.cnpj.label }}</label>
+                {{ form.cnpj }}
+                {% for error in form.cnpj.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.logo.id_for_label }}">{{ form.logo.label }}</label>
+                {{ form.logo }}
+                {% for error in form.logo.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-12">
+                <div class="form-check form-switch">
+                    {{ form.ativa }}
+                    <label class="form-check-label" for="{{ form.ativa.id_for_label }}">Empresa ativa</label>
+                </div>
+            </div>
+        </div>
+
+        {% for error in form.non_field_errors %}
+            <div class="alert alert-danger mt-4 mb-0">{{ error }}</div>
+        {% endfor %}
+
+        <div class="form-actions">
+            <a href="{% url 'empresas:configuracoes' %}" class="btn btn-light">Cancelar</a>
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check-lg me-2"></i>Salvar empresa
+            </button>
+        </div>
+    </form>
+</section>
+{% endblock %}

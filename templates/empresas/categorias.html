@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Categorias | {{ empresa.nome_fantasia }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">PARÂMETROS FINANCEIROS</span>
+        <h1>Categorias</h1>
+        <p>Associe as categorias ativas da OMIE às contas do DRE da {{ empresa.nome_fantasia }}.</p>
+    </div>
+    <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">
+        <i class="bi bi-arrow-left me-2"></i>Voltar
+    </a>
+</div>
+
+<form
+    method="post"
+    action="{% url 'dashboards:importar_planilha_categorias' empresa.slug %}"
+    enctype="multipart/form-data"
+    data-spreadsheet-import
+>
+    {% csrf_token %}
+    <input
+        class="visually-hidden"
+        type="file"
+        name="planilha"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        data-spreadsheet-file
+    >
+</form>
+
+<form method="post" class="category-mapping-form">
+    {% csrf_token %}
+
+    <section class="category-mapping-card">
+        <div class="category-mapping-header">
+            <div>
+                <span class="eyebrow">BASE LOCAL OMIE</span>
+                <h2>Associação com o DRE</h2>
+                <p>
+                    {{ total_categorias }} categorias ativas;
+                    {{ total_vinculaveis }} disponíveis para associação.
+                </p>
+            </div>
+            <div class="category-header-actions">
+                <div class="category-legend">
+                    <span class="is-revenue"><i></i>Receita</span>
+                    <span class="is-expense"><i></i>Demais categorias</span>
+                </div>
+                <div class="spreadsheet-actions">
+                    <a
+                        href="{% url 'dashboards:exportar_planilha_categorias' empresa.slug %}"
+                        class="btn btn-white"
+                    >
+                        <i class="bi bi-file-earmark-arrow-down me-2"></i>Exportar planilha
+                    </a>
+                    <button class="btn btn-primary" type="button" data-spreadsheet-button>
+                        <i class="bi bi-file-earmark-arrow-up me-2"></i>Importar planilha
+                    </button>
+                </div>
+                {% if categorias %}
+                    <button class="btn btn-primary" type="submit">
+                        <i class="bi bi-check2-circle me-2"></i>Salvar associações
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="category-mapping-columns" aria-hidden="true">
+            <span>Categoria OMIE</span>
+            <span>Conta DRE</span>
+        </div>
+
+        <div class="category-mapping-list">
+            {% for categoria in categorias %}
+                <article
+                    class="category-mapping-row {% if categoria.conta_receita %}is-revenue{% else %}is-expense{% endif %} {% if categoria.eh_conta_pai %}is-parent{% endif %}"
+                >
+                    <div class="category-identity">
+                        <span class="category-code">{{ categoria.codigo }}</span>
+                        <span class="category-description">{{ categoria.descricao }}</span>
+                    </div>
+
+                    <div class="category-dre-field">
+                        {% if categoria.permite_vinculo_dre %}
+                            <label class="visually-hidden" for="conta_dre_{{ categoria.pk }}">
+                                Conta DRE de {{ categoria.codigo }} - {{ categoria.descricao }}
+                            </label>
+                            <select
+                                class="form-select"
+                                id="conta_dre_{{ categoria.pk }}"
+                                name="conta_dre_{{ categoria.pk }}"
+                            >
+                                <option value="">Sem associação</option>
+                                {% for conta in contas_pai %}
+                                    <option value="{{ conta.pk }}" {% if categoria.conta_dre_id == conta.pk %}selected{% endif %}>
+                                        {{ conta.nome }}
+                                    </option>
+                                    {% for filha in conta.contas_filhas.all %}
+                                        <option value="{{ filha.pk }}" {% if categoria.conta_dre_id == filha.pk %}selected{% endif %}>
+                                            — {{ filha.nome }}
+                                        </option>
+                                    {% endfor %}
+                                {% endfor %}
+                            </select>
+                        {% elif categoria.eh_conta_pai %}
+                            <span class="category-parent-label">Conta pai</span>
+                        {% else %}
+                            <span class="category-no-link">—</span>
+                        {% endif %}
+                    </div>
+                </article>
+            {% empty %}
+                <div class="category-empty-state">
+                    <i class="bi bi-tags"></i>
+                    <strong>Nenhuma categoria ativa encontrada</strong>
+                    <p>Atualize os dados da OMIE na tela de Parâmetros.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    {% if categorias %}
+        <div class="category-mapping-actions">
+            <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">Cancelar</a>
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-check2-circle me-2"></i>Salvar associações
+            </button>
+        </div>
+    {% endif %}
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (() => {
+        const importForm = document.querySelector("[data-spreadsheet-import]");
+        if (!importForm) return;
+        const fileInput = importForm.querySelector("[data-spreadsheet-file]");
+        document.querySelector("[data-spreadsheet-button]").addEventListener("click", () => {
+            fileInput.click();
+        });
+        fileInput.addEventListener("change", () => {
+            if (fileInput.files.length) importForm.submit();
+        });
+    })();
+</script>
+{% endblock %}

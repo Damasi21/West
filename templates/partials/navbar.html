@@ -1,0 +1,59 @@
+{% load static %}
+<nav class="navbar navbar-expand-lg navbar-dark app-navbar sticky-top">
+    <div class="container-fluid px-3 px-lg-4">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'empresas:lista' %}">
+            <img class="brand-logo" src="{% get_media_prefix %}md21_bi.png" alt="MD21 BI">
+            <span><strong>MD21</strong> BI</span>
+        </a>
+
+        {% if user.is_authenticated %}
+            <div class="d-flex align-items-center gap-3 ms-auto">
+                {% if empresa %}
+                    <span class="company-pill d-none d-md-inline-flex">
+                        <i class="bi bi-building"></i> {{ empresa.nome_fantasia }}
+                    </span>
+                {% endif %}
+                {% if user.is_staff %}
+                    <div class="dropdown">
+                        <button class="btn settings-menu dropdown-toggle" data-bs-toggle="dropdown">
+                            <i class="bi bi-gear"></i>
+                            <span class="d-none d-sm-inline">Configurações</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                            <li class="dropdown-header">Gestão do sistema</li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'empresas:configuracoes' %}">
+                                    <i class="bi bi-buildings me-2"></i>Empresas
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'empresas:cadastrar' %}">
+                                    <i class="bi bi-building-add me-2"></i>Cadastrar empresa
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                {% endif %}
+                <div class="dropdown">
+                    <button class="btn user-menu dropdown-toggle" data-bs-toggle="dropdown">
+                        <span class="user-avatar">{{ user.username|first|upper }}</span>
+                        <span class="d-none d-sm-inline">{{ user.get_full_name|default:user.username }}</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                        {% if user.is_staff %}
+                            <li><a class="dropdown-item" href="{% url 'admin:index' %}"><i class="bi bi-sliders me-2"></i>Administração avançada</a></li>
+                        {% endif %}
+                        <li><a class="dropdown-item" href="{% url 'empresas:lista' %}"><i class="bi bi-buildings me-2"></i>Empresas</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <form method="post" action="{% url 'accounts:logout' %}">
+                                {% csrf_token %}
+                                <button class="dropdown-item text-danger" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Sair</button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</nav>

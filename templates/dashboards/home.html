@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}{{ empresa.nome_fantasia }} | MD21 BI{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">VISÃO GERAL</span>
+        <h1>Olá, {{ user.first_name|default:user.username }}.</h1>
+        <p>Acompanhe as principais áreas da {{ empresa.nome_fantasia }}.</p>
+    </div>
+    <div class="page-heading-actions">
+        {% if user.is_staff %}
+            <a class="btn btn-primary" href="{% url 'dashboards:parametros' empresa.slug %}">
+                <i class="bi bi-sliders2 me-2"></i>Parâmetros
+            </a>
+        {% endif %}
+        <div class="data-status"><span></span> Estrutura pronta para integração OMIE</div>
+    </div>
+</div>
+
+<div class="row g-4">
+    {% for slug, area in areas.items %}
+        <div class="col-md-6 col-xl-4">
+            <a class="area-card" href="{% url 'dashboards:area' empresa.slug slug %}">
+                <span class="area-icon">
+                    <img src="/media/{{ area.imagem }}" alt="" aria-hidden="true">
+                </span>
+                <span>
+                    <small>Dashboard</small>
+                    <strong>{{ area.titulo }}</strong>
+                    <p>{{ area.subtitulo }}</p>
+                </span>
+                <i class="bi bi-arrow-right area-arrow"></i>
+            </a>
+        </div>
+    {% endfor %}
+</div>
+
+<div class="overview-placeholder mt-4">
+    <div>
+        <span class="eyebrow">PRÓXIMA ETAPA</span>
+        <h2>Visão executiva consolidada</h2>
+        <p>Este espaço reunirá os indicadores mais importantes de todas as áreas assim que os dados do OMIE forem conectados.</p>
+    </div>
+    <div class="placeholder-bars">
+        <span style="height: 48%"></span><span style="height: 72%"></span><span style="height: 56%"></span>
+        <span style="height: 88%"></span><span style="height: 66%"></span><span style="height: 95%"></span>
+    </div>
+</div>
+{% endblock %}

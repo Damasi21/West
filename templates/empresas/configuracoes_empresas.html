@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Configurações de empresas | MD21 BI{% endblock %}
+
+{% block public_content %}
+<section class="settings-heading">
+    <div class="container py-4 py-lg-5">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb small mb-3">
+                <li class="breadcrumb-item"><a href="{% url 'empresas:lista' %}">Painel inicial</a></li>
+                <li class="breadcrumb-item active">Configurações</li>
+            </ol>
+        </nav>
+        <div class="d-flex justify-content-between align-items-end gap-3 flex-wrap">
+            <div>
+                <span class="eyebrow">CONFIGURAÇÕES</span>
+                <h1 class="mb-2">Empresas</h1>
+                <p class="text-secondary mb-0">Cadastre e mantenha as empresas disponíveis na plataforma.</p>
+            </div>
+            <a href="{% url 'empresas:cadastrar' %}" class="btn btn-primary">
+                <i class="bi bi-building-add me-2"></i>Cadastrar empresa
+            </a>
+        </div>
+    </div>
+</section>
+
+<section class="container pb-5">
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-lg-3">
+            <div class="settings-stat"><span>Total</span><strong>{{ total_empresas }}</strong></div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="settings-stat"><span>Ativas</span><strong>{{ total_ativas }}</strong></div>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Empresa</th>
+                        <th>CNPJ</th>
+                        <th>Status</th>
+                        <th class="text-end">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for empresa in empresas %}
+                        <tr>
+                            <td>
+                                <div class="d-flex align-items-center gap-3">
+                                    <span class="company-table-logo">
+                                        {% if empresa.logo %}
+                                            <img src="{{ empresa.logo.url }}" alt="">
+                                        {% else %}
+                                            {{ empresa.nome_fantasia|first|upper }}
+                                        {% endif %}
+                                    </span>
+                                    <div>
+                                        <strong class="d-block">{{ empresa.nome_fantasia }}</strong>
+                                        <small class="text-secondary">{{ empresa.nome }}</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>{{ empresa.cnpj }}</td>
+                            <td>
+                                {% if empresa.ativa %}
+                                    <span class="badge text-bg-success-subtle text-success-emphasis">Ativa</span>
+                                {% else %}
+                                    <span class="badge text-bg-secondary-subtle text-secondary-emphasis">Inativa</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{% url 'empresas:editar' empresa.id %}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-pencil me-1"></i>Editar
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center text-secondary py-5">Nenhuma empresa cadastrada.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}

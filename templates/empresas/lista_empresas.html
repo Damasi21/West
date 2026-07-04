@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Empresas | MD21 BI{% endblock %}
+
+{% block public_content %}
+<section class="companies-hero">
+    <div class="container py-5">
+        <div class="row align-items-end g-4">
+            <div class="col-lg-8">
+                <span class="eyebrow">PAINEL INICIAL</span>
+                <h1 class="display-5 fw-bold mb-3">Qual empresa você quer analisar?</h1>
+                <p class="lead mb-0">Selecione uma empresa para acessar seus indicadores e dashboards.</p>
+            </div>
+            <div class="col-lg-4">
+                <div class="hero-stat ms-lg-auto">
+                    <strong>{{ total_empresas }}</strong>
+                    <span>empresa{{ total_empresas|pluralize }} disponível{{ total_empresas|pluralize:"is" }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="container companies-section">
+    {% if empresas %}
+        <div class="row g-4">
+            {% for empresa in empresas %}
+                <div class="col-md-6 col-xl-4">
+                    <a href="{{ empresa.get_absolute_url }}" class="company-card">
+                        <div class="company-logo">
+                            {% if empresa.logo %}
+                                <img src="{{ empresa.logo.url }}" alt="{{ empresa.nome_fantasia }}">
+                            {% else %}
+                                <span>{{ empresa.nome_fantasia|first|upper }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="company-info">
+                            <span class="status-dot">Ativa</span>
+                            <h2>{{ empresa.nome_fantasia }}</h2>
+                            <p>{{ empresa.nome }}</p>
+                            <span class="open-dashboard">Abrir dashboards <i class="bi bi-arrow-up-right"></i></span>
+                        </div>
+                    </a>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <i class="bi bi-buildings"></i>
+            <h2>Nenhuma empresa disponível</h2>
+            <p>Seu usuário ainda não possui acesso a uma empresa ativa.</p>
+            {% if user.is_staff %}
+                <a href="{% url 'empresas:cadastrar' %}" class="btn btn-primary">Cadastrar primeira empresa</a>
+            {% endif %}
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

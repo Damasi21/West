@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+
+{% block title %}DRE | {{ empresa.nome_fantasia }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">PARÂMETROS FINANCEIROS</span>
+        <h1>DRE</h1>
+        <p>Estruture as contas gerenciais da {{ empresa.nome_fantasia }}.</p>
+    </div>
+    <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">
+        <i class="bi bi-arrow-left me-2"></i>Voltar
+    </a>
+</div>
+
+<div
+    class="dre-workspace"
+    data-dre-workspace
+    data-reorder-url="{% url 'dashboards:reordenar_contas_dre' empresa.slug %}"
+>
+    <section class="dre-builder-panel">
+        <div class="dre-panel-heading">
+            <div>
+                <span class="eyebrow">ESTRUTURA DO DRE</span>
+                <h2>Plano de contas gerencial</h2>
+                <p>Crie grupos e contas com até dois níveis. Arraste os itens para ordenar.</p>
+            </div>
+            <div class="dre-heading-actions">
+                <div class="spreadsheet-actions">
+                    <a
+                        href="{% url 'dashboards:exportar_planilha_dre' empresa.slug %}"
+                        class="btn btn-white"
+                    >
+                        <i class="bi bi-file-earmark-arrow-down me-2"></i>Exportar planilha
+                    </a>
+                    <form
+                        method="post"
+                        action="{% url 'dashboards:importar_planilha_dre' empresa.slug %}"
+                        enctype="multipart/form-data"
+                        data-spreadsheet-import
+                        data-has-structure="{% if total_contas %}true{% else %}false{% endif %}"
+                    >
+                        {% csrf_token %}
+                        <input type="hidden" name="sobrepor" value="">
+                        <input
+                            class="visually-hidden"
+                            type="file"
+                            name="planilha"
+                            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            data-spreadsheet-file
+                        >
+                        <button class="btn btn-primary" type="button" data-spreadsheet-button>
+                            <i class="bi bi-file-earmark-arrow-up me-2"></i>Importar planilha
+                        </button>
+                    </form>
+                </div>
+                <span class="dre-counter">{{ total_contas }} conta{{ total_contas|pluralize }}</span>
+            </div>
+        </div>
+
+        <form method="post" class="dre-account-form" data-dre-form novalidate>
+            {% csrf_token %}
+            <div class="dre-form-title">
+                <span class="dre-form-icon"><i class="bi bi-plus-lg"></i></span>
+                <div>
+                    <strong>{% if conta_edicao %}Editar conta{% else %}Nova conta{% endif %}</strong>
+                    <small>Defina o nome, nível e comportamento da linha.</small>
+                </div>
+            </div>
+
+            <div class="dre-form-grid">
+                <div class="dre-field dre-field-name">
+                    <label for="{{ form.nome.id_for_label }}">{{ form.nome.label }}</label>
+                    {{ form.nome }}
+                    {% for error in form.nome.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="dre-field">
+                    <label for="{{ form.tipo.id_for_label }}">{{ form.tipo.label }}</label>
+                    {{ form.tipo }}
+                    {% for error in form.tipo.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="dre-field" data-parent-field>
+                    <label for="{{ form.conta_pai.id_for_label }}">{{ form.conta_pai.label }}</label>
+                    {{ form.conta_pai }}
+                    {% for error in form.conta_pai.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="dre-field">
+                    <label for="{{ form.sinal.id_for_label }}">{{ form.sinal.label }}</label>
+                    {{ form.sinal }}
+                    {% for error in form.sinal.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+
+            {% for error in form.non_field_errors %}
+                <div class="alert alert-danger mb-3">{{ error }}</div>
+            {% endfor %}
+
+            <div class="dre-form-actions">
+                {% if conta_edicao %}
+                    <a class="btn btn-white" href="{% url 'dashboards:dre_categorias' empresa.slug %}">Cancelar</a>
+                {% endif %}
+                <button class="btn btn-primary" type="submit">
+                    <i class="bi bi-check2 me-2"></i>
+                    {% if conta_edicao %}Salvar alterações{% else %}Adicionar à estrutura{% endif %}
+                </button>
+            </div>
+        </form>
+
+        <div class="dre-tree-heading">
+            <div>
+                <h3>Estrutura em árvore</h3>
+                <p>Os grupos e contas serão apresentados nesta mesma ordem no DRE.</p>
+            </div>
+            <span class="dre-save-status" data-reorder-status></span>
+        </div>
+
+        <div class="dre-tree-list" data-sortable-list data-parent-id="">
+            {% for conta in contas_pai %}
+                <article class="dre-tree-group" draggable="true" data-dre-item data-id="{{ conta.id }}">
+                    <div class="dre-tree-row">
+                        <span class="dre-drag-handle" title="Arrastar para ordenar">
+                            <i class="bi bi-grip-vertical"></i>
+                        </span>
+                        <span class="dre-sign dre-sign-{{ conta.sinal }}">
+                            {{ conta.sinal }}
+                        </span>
+                        <div class="dre-account-name">
+                            <strong>{{ conta.nome }}</strong>
+                            <small>Grupo principal</small>
+                        </div>
+                        <span class="dre-level">Nível 1</span>
+                        <div class="dre-row-actions">
+                            <a
+                                class="btn btn-sm btn-light"
+                                href="{% url 'dashboards:dre_categorias' empresa.slug %}?editar={{ conta.id }}"
+                                title="Editar {{ conta.nome }}"
+                            ><i class="bi bi-pencil"></i></a>
+                            <form
+                                method="post"
+                                action="{% url 'dashboards:excluir_conta_dre' empresa.slug conta.id %}"
+                                data-confirm-delete="{{ conta.nome }}"
+                            >
+                                {% csrf_token %}
+                                <button class="btn btn-sm btn-outline-danger" type="submit" title="Excluir">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="dre-children" data-sortable-list data-parent-id="{{ conta.id }}">
+                        {% for filha in conta.contas_filhas.all %}
+                            <div class="dre-tree-child" draggable="true" data-dre-item data-id="{{ filha.id }}">
+                                <span class="dre-drag-handle" title="Arrastar para ordenar">
+                                    <i class="bi bi-grip-vertical"></i>
+                                </span>
+                                <span class="dre-sign dre-sign-{{ filha.sinal }}">{{ filha.sinal }}</span>
+                                <div class="dre-account-name">
+                                    <strong>{{ filha.nome }}</strong>
+                                    <small>Conta vinculada a {{ conta.nome }}</small>
+                                </div>
+                                <span class="dre-level">Nível 2</span>
+                                <div class="dre-row-actions">
+                                    <a
+                                        class="btn btn-sm btn-light"
+                                        href="{% url 'dashboards:dre_categorias' empresa.slug %}?editar={{ filha.id }}"
+                                        title="Editar {{ filha.nome }}"
+                                    ><i class="bi bi-pencil"></i></a>
+                                    <form
+                                        method="post"
+                                        action="{% url 'dashboards:excluir_conta_dre' empresa.slug filha.id %}"
+                                        data-confirm-delete="{{ filha.nome }}"
+                                    >
+                                        {% csrf_token %}
+                                        <button class="btn btn-sm btn-outline-danger" type="submit" title="Excluir">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        {% empty %}
+                            <div class="dre-child-empty" data-empty-child>
+                                Nenhuma conta filha neste grupo.
+                            </div>
+                        {% endfor %}
+                    </div>
+                </article>
+            {% empty %}
+                <div class="dre-empty-state">
+                    <span><i class="bi bi-diagram-3"></i></span>
+                    <strong>Sua estrutura começa aqui</strong>
+                    <p>Crie a primeira conta pai usando o formulário acima.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (() => {
+        const workspace = document.querySelector("[data-dre-workspace]");
+        if (!workspace) return;
+
+        const typeSelect = document.querySelector("[data-dre-tipo]");
+        const parentField = document.querySelector("[data-parent-field]");
+        const csrfToken = document.querySelector("[data-dre-form] [name=csrfmiddlewaretoken]").value;
+        const status = document.querySelector("[data-reorder-status]");
+        const importForm = document.querySelector("[data-spreadsheet-import]");
+        let draggedItem = null;
+        let sourceList = null;
+
+        if (importForm) {
+            const fileInput = importForm.querySelector("[data-spreadsheet-file]");
+            importForm.querySelector("[data-spreadsheet-button]").addEventListener("click", () => {
+                fileInput.click();
+            });
+            fileInput.addEventListener("change", () => {
+                if (!fileInput.files.length) return;
+                if (importForm.dataset.hasStructure === "true") {
+                    const confirmed = window.confirm("Deseja sobrepor a estrutura atual?");
+                    if (!confirmed) {
+                        fileInput.value = "";
+                        return;
+                    }
+                    importForm.querySelector("[name=sobrepor]").value = "sim";
+                }
+                importForm.submit();
+            });
+        }
+
+        function toggleParentField() {
+            const isChild = typeSelect.value === "filho";
+            parentField.classList.toggle("d-none", !isChild);
+            parentField.querySelector("select").disabled = !isChild;
+        }
+        typeSelect.addEventListener("change", toggleParentField);
+        toggleParentField();
+
+        document.querySelectorAll("[data-confirm-delete]").forEach((form) => {
+            form.addEventListener("submit", (event) => {
+                if (!window.confirm(`Excluir a conta “${form.dataset.confirmDelete}”?`)) {
+                    event.preventDefault();
+                }
+            });
+        });
+
+        function directItems(list) {
+            return Array.from(list.children).filter((item) =>
+                item.matches("[data-dre-item]")
+            );
+        }
+
+        async function saveOrder(list) {
+            const ids = directItems(list).map((item) => Number(item.dataset.id));
+            status.textContent = "Salvando ordem...";
+            try {
+                const response = await fetch(workspace.dataset.reorderUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken,
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    body: JSON.stringify({
+                        parent_id: list.dataset.parentId || null,
+                        ids,
+                    }),
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.erro || "Não foi possível salvar.");
+                status.textContent = "Ordem salva";
+                window.setTimeout(() => status.textContent = "", 1800);
+            } catch (error) {
+                status.textContent = error.message;
+                status.classList.add("is-error");
+            }
+        }
+
+        document.querySelectorAll("[data-dre-item]").forEach((item) => {
+            item.addEventListener("dragstart", (event) => {
+                event.stopPropagation();
+                draggedItem = item;
+                sourceList = item.parentElement;
+                item.classList.add("is-dragging");
+                event.dataTransfer.effectAllowed = "move";
+            });
+            item.addEventListener("dragend", (event) => {
+                event.stopPropagation();
+                item.classList.remove("is-dragging");
+                draggedItem = null;
+                sourceList = null;
+            });
+        });
+
+        document.querySelectorAll("[data-sortable-list]").forEach((list) => {
+            list.addEventListener("dragover", (event) => {
+                if (!draggedItem || sourceList !== list) return;
+                event.preventDefault();
+                const target = event.target.closest("[data-dre-item]");
+                if (!target || target === draggedItem || target.parentElement !== list) return;
+                const bounds = target.getBoundingClientRect();
+                const after = event.clientY > bounds.top + bounds.height / 2;
+                list.insertBefore(draggedItem, after ? target.nextSibling : target);
+            });
+            list.addEventListener("drop", (event) => {
+                if (!draggedItem || sourceList !== list) return;
+                event.preventDefault();
+                saveOrder(list);
+            });
+        });
+    })();
+</script>
+{% endblock %}

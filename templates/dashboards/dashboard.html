@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ dashboard_atual.titulo }} - {{ empresa.nome_fantasia }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">{{ area_atual.titulo|upper }}</span>
+        <h1>{{ dashboard_atual.titulo }}</h1>
+        <p>{{ dashboard_atual.descricao }}</p>
+    </div>
+    <form class="filters dashboard-filters" method="get" data-dashboard-filters>
+        <input type="hidden" name="_filtrar" value="1">
+        <a href="{% url 'dashboards:area' empresa.slug area_slug %}" class="btn btn-white">
+            <i class="bi bi-arrow-left me-2"></i>Voltar
+        </a>
+        <div class="dashboard-filter" data-filter-dropdown>
+            <button class="filter-trigger" type="button" aria-expanded="false">
+                <i class="bi bi-calendar3"></i>
+                <span data-filter-summary>{{ periodo_rotulo }}</span>
+                <i class="bi bi-chevron-down filter-chevron"></i>
+            </button>
+            <div class="filter-popover date-filter-popover">
+                <strong class="filter-title">Período</strong>
+                <p class="filter-hint">Abra o ano e depois o trimestre.</p>
+                <div class="date-tree">
+                    <details class="specific-period" {% if periodo_selecionado == "personalizado" %}open{% endif %}>
+                        <summary>Período específico</summary>
+                        <label class="filter-option">
+                            <input type="radio" name="periodo" value="personalizado" {% if periodo_selecionado == "personalizado" %}checked{% endif %}>
+                            <span>Escolher intervalo</span>
+                        </label>
+                        <div class="specific-period-fields" data-specific-period>
+                            <label>
+                                <span>Data inicial</span>
+                                <input type="date" name="data_inicio" value="{{ data_inicio }}">
+                            </label>
+                            <label>
+                                <span>Data final</span>
+                                <input type="date" name="data_fim" value="{{ data_fim }}">
+                            </label>
+                        </div>
+                    </details>
+                    {% for periodo in periodos %}
+                        <details {% if periodo.aberto %}open{% endif %}>
+                            <summary>{{ periodo.ano }}</summary>
+                            <label class="filter-option">
+                                <input type="radio" name="periodo" value="{{ periodo.valor }}" {% if periodo.selecionado %}checked{% endif %}>
+                                <span>Ano completo</span>
+                            </label>
+                            {% for trimestre in periodo.trimestres %}
+                                <details class="quarter" {% if trimestre.aberto %}open{% endif %}>
+                                    <summary>{{ trimestre.numero }}º trimestre</summary>
+                                    <label class="filter-option">
+                                        <input type="radio" name="periodo" value="{{ trimestre.valor }}" {% if trimestre.selecionado %}checked{% endif %}>
+                                        <span>Trimestre completo</span>
+                                    </label>
+                                    {% for mes in trimestre.meses %}
+                                        <label class="filter-option month-option">
+                                            <input type="radio" name="periodo" value="{{ mes.valor }}" {% if mes.selecionado %}checked{% endif %}>
+                                            <span>{{ mes.nome }}</span>
+                                        </label>
+                                    {% endfor %}
+                                </details>
+                            {% endfor %}
+                        </details>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <button
+            class="btn btn-white share-filter-button{% if periodo_compartilhado %} is-active{% endif %}"
+            type="submit"
+            name="compartilhar_periodo"
+            value="1"
+            title="Usar este período em todos os dashboards de {{ area_atual.titulo }}"
+        >
+            <i class="bi bi-link-45deg"></i>
+            <span>Usar no módulo</span>
+        </button>
+
+        {% include "dashboards/partials/multiselect_filter.html" with nome="projeto" titulo="Projetos" icone="bi-kanban" opcoes=projetos selecionados=projetos_selecionados vazio="Todos os projetos" %}
+        {% include "dashboards/partials/multiselect_filter.html" with nome="departamento" titulo="Departamentos" icone="bi-diagram-3" opcoes=departamentos selecionados=departamentos_selecionados vazio="Todos os departamentos" %}
+
+        <div class="dashboard-filter" data-filter-dropdown>
+            <button class="filter-trigger" type="button" aria-expanded="false">
+                <i class="bi bi-building"></i>
+                <span data-filter-summary data-empty-label="Todas as empresas">
+                    {% if empresas_selecionadas|length == 1 %}1 empresa{% elif empresas_selecionadas %}{{ empresas_selecionadas|length }} empresas{% else %}Todas as empresas{% endif %}
+                </span>
+                <i class="bi bi-chevron-down filter-chevron"></i>
+            </button>
+            <div class="filter-popover">
+                <strong class="filter-title">Empresas</strong>
+                <p class="filter-hint">Você pode marcar mais de uma.</p>
+                <div class="filter-options">
+                    {% for empresa_filtro in empresas_filtro %}
+                        <label class="filter-option">
+                            <input type="checkbox" name="empresa" value="{{ empresa_filtro.pk }}" {% if empresa_filtro.pk|stringformat:"s" in empresas_selecionadas %}checked{% endif %}>
+                            <span>{{ empresa_filtro.nome_fantasia }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+                <div class="filter-actions">
+                    <button type="button" data-select-all>Marcar todas</button>
+                    <button type="button" data-clear-all>Limpar</button>
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-primary" type="submit">
+            <i class="bi bi-arrow-repeat me-2"></i>Atualizar
+        </button>
+    </form>
+</div>
+
+{% if periodo_foi_compartilhado %}
+    <div class="filter-feedback" role="status">
+        <i class="bi bi-check-circle-fill"></i>
+        Período aplicado aos dashboards do módulo {{ area_atual.titulo }}.
+    </div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+    {% for item in "1234" %}
+        <div class="col-sm-6 col-xl-3">
+            <article class="metric-card">
+                <div class="skeleton skeleton-label"></div>
+                <div class="skeleton skeleton-value"></div>
+                <div class="skeleton skeleton-small"></div>
+            </article>
+        </div>
+    {% endfor %}
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-8">
+        <article class="chart-card">
+            <div class="chart-header">
+                <div><small>EVOLUÇÃO</small><h2>Indicador principal</h2></div>
+                <span class="integration-badge">Aguardando OMIE</span>
+            </div>
+            <div class="empty-chart">
+                <i class="bi bi-bar-chart-line"></i>
+                <strong>Os dados aparecerão aqui</strong>
+                <span>A estrutura visual está pronta para receber os indicadores.</span>
+            </div>
+        </article>
+    </div>
+    <div class="col-xl-4">
+        <article class="chart-card">
+            <div class="chart-header">
+                <div><small>DISTRIBUIÇÃO</small><h2>Composição</h2></div>
+            </div>
+            <div class="empty-chart compact">
+                <span class="donut-placeholder"></span>
+                <strong>Sem dados no período</strong>
+            </div>
+        </article>
+    </div>
+</div>
+{% endblock %}
