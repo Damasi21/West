@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
@@ -7,6 +8,7 @@ from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 
@@ -28,6 +30,9 @@ from .planilhas import (
     importar_dre,
 )
 from .services import empresas_permitidas, obter_empresa_permitida
+
+
+SINCRONIZACAO_OMIE_EXPIRA_APOS = timedelta(minutes=30)
 
 
 @login_required
@@ -143,6 +148,15 @@ def parametros(request, empresa_slug):
             "total_projetos_omie": empresa.projetos_omie.count(),
             "total_departamentos_omie": empresa.departamentos_omie.count(),
             "total_categorias_omie": empresa.categorias_omie.count(),
+            "total_tipos_conta_corrente_omie": (
+                empresa.tipos_conta_corrente_omie.count()
+            ),
+            "total_contas_correntes_omie": empresa.contas_correntes_omie.count(),
+            "total_contas_pagar_omie": empresa.contas_pagar_omie.count(),
+            "total_contas_receber_omie": empresa.contas_receber_omie.count(),
+            "total_lancamentos_conta_corrente_omie": (
+                empresa.lancamentos_conta_corrente_omie.count()
+            ),
         },
     )
 
@@ -447,6 +461,22 @@ def _dados_sincronizacao(sincronizacao):
     }
 
 
+def _encerrar_sincronizacoes_omie_obsoletas(empresa):
+    agora = timezone.now()
+    return empresa.sincronizacoes_omie.filter(
+        status__in=[
+            SincronizacaoOmie.Status.PENDENTE,
+            SincronizacaoOmie.Status.EM_ANDAMENTO,
+        ],
+        atualizada_em__lt=agora - SINCRONIZACAO_OMIE_EXPIRA_APOS,
+    ).update(
+        status=SincronizacaoOmie.Status.ERRO,
+        finalizada_em=agora,
+        mensagem="Sincronização interrompida. Inicie uma nova atualização.",
+        erro="A sincronização ficou sem atividade por mais de 30 minutos.",
+    )
+
+
 @login_required
 @require_POST
 def sincronizar_clientes_omie(request, empresa_slug):
@@ -459,6 +489,7 @@ def sincronizar_clientes_omie(request, empresa_slug):
             status=400,
         )
 
+    _encerrar_sincronizacoes_omie_obsoletas(empresa)
     em_execucao = empresa.sincronizacoes_omie.filter(
         status__in=[
             SincronizacaoOmie.Status.PENDENTE,
@@ -487,6 +518,15 @@ def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
         pk=sincronizacao_id,
         empresa=empresa,
     )
+    if sincronizacao.status in [
+        SincronizacaoOmie.Status.PENDENTE,
+        SincronizacaoOmie.Status.EM_ANDAMENTO,
+    ] and (
+        sincronizacao.atualizada_em
+        < timezone.now() - SINCRONIZACAO_OMIE_EXPIRA_APOS
+    ):
+        _encerrar_sincronizacoes_omie_obsoletas(empresa)
+        sincronizacao.refresh_from_db()
     dados = _dados_sincronizacao(sincronizacao)
     if sincronizacao.status == SincronizacaoOmie.Status.CONCLUIDA:
         dados["totais"] = {
@@ -500,6 +540,13 @@ def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
             "projetos": empresa.projetos_omie.count(),
             "departamentos": empresa.departamentos_omie.count(),
             "categorias": empresa.categorias_omie.count(),
+            "tipos_conta_corrente": empresa.tipos_conta_corrente_omie.count(),
+            "contas_correntes": empresa.contas_correntes_omie.count(),
+            "contas_pagar": empresa.contas_pagar_omie.count(),
+            "contas_receber": empresa.contas_receber_omie.count(),
+            "lancamentos_conta_corrente": (
+                empresa.lancamentos_conta_corrente_omie.count()
+            ),
         }
     return JsonResponse(dados)
 

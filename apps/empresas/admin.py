@@ -3,13 +3,18 @@ from django.contrib import admin
 from .models import (
     CadastroOmie,
     CategoriaOmie,
+    ContaCorrenteOmie,
+    ContaPagarOmie,
+    ContaReceberOmie,
     ContaDRE,
     DepartamentoOmie,
     Empresa,
     EmpresaUsuario,
     IntegracaoOmie,
+    LancamentoContaCorrenteOmie,
     ProjetoOmie,
     SincronizacaoOmie,
+    TipoContaCorrenteOmie,
 )
 
 
@@ -119,6 +124,131 @@ class CategoriaOmieAdmin(admin.ModelAdmin):
     )
     readonly_fields = (
         "dados_dre",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+@admin.register(TipoContaCorrenteOmie)
+class TipoContaCorrenteOmieAdmin(admin.ModelAdmin):
+    list_display = ("codigo", "descricao", "grupo", "empresa", "sincronizado_em")
+    list_filter = ("empresa", "grupo")
+    search_fields = ("codigo", "descricao", "grupo")
+    readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
+
+
+@admin.register(ContaCorrenteOmie)
+class ContaCorrenteOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "descricao",
+        "codigo_omie",
+        "tipo_codigo",
+        "codigo_banco",
+        "empresa",
+        "inativo",
+    )
+    list_filter = ("empresa", "tipo_codigo", "inativo", "bloqueado")
+    search_fields = (
+        "descricao",
+        "codigo_omie",
+        "codigo_integracao",
+        "codigo_agencia",
+        "numero_conta_corrente",
+    )
+    readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
+
+
+@admin.register(ContaPagarOmie)
+class ContaPagarOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "numero_documento",
+        "codigo_lancamento_omie",
+        "fornecedor",
+        "data_vencimento",
+        "valor_documento",
+        "status_titulo",
+        "empresa",
+    )
+    list_filter = ("empresa", "status_titulo", "data_vencimento")
+    search_fields = (
+        "numero_documento",
+        "numero_documento_fiscal",
+        "codigo_lancamento_omie",
+        "codigo_lancamento_integracao",
+        "fornecedor__razao_social",
+        "fornecedor__nome_fantasia",
+    )
+    readonly_fields = (
+        "categorias",
+        "distribuicao",
+        "cnab_integracao_bancaria",
+        "info",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+@admin.register(ContaReceberOmie)
+class ContaReceberOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "numero_documento",
+        "codigo_lancamento_omie",
+        "cliente",
+        "data_vencimento",
+        "valor_documento",
+        "status_titulo",
+        "empresa",
+    )
+    list_filter = ("empresa", "status_titulo", "data_vencimento")
+    search_fields = (
+        "numero_documento",
+        "numero_documento_fiscal",
+        "codigo_lancamento_omie",
+        "codigo_lancamento_integracao",
+        "cliente__razao_social",
+        "cliente__nome_fantasia",
+    )
+    readonly_fields = (
+        "boleto",
+        "categorias",
+        "distribuicao",
+        "info",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+@admin.register(LancamentoContaCorrenteOmie)
+class LancamentoContaCorrenteOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "codigo_lancamento_omie",
+        "data_lancamento",
+        "conta_corrente",
+        "valor_lancamento",
+        "natureza",
+        "origem",
+        "empresa",
+    )
+    list_filter = ("empresa", "natureza", "origem", "data_lancamento")
+    search_fields = (
+        "codigo_lancamento_omie",
+        "codigo_lancamento_integracao",
+        "numero_documento",
+        "observacao",
+        "cliente_fornecedor__razao_social",
+        "cliente_fornecedor__nome_fantasia",
+    )
+    readonly_fields = (
+        "categorias",
+        "departamentos",
+        "cabecalho",
+        "detalhes",
+        "diversos",
+        "transferencia",
+        "info",
         "dados_originais",
         "sincronizado_em",
         "criado_em",

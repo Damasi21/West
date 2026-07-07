@@ -302,6 +302,406 @@ class CategoriaOmie(models.Model):
         return re.fullmatch(r"\d+\.\d{2}\.\d{2}", self.codigo) is not None
 
 
+class TipoContaCorrenteOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="tipos_conta_corrente_omie",
+    )
+    codigo = models.CharField(max_length=2)
+    descricao = models.CharField(max_length=40)
+    grupo = models.CharField(max_length=2, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["codigo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo"],
+                name="tipo_cc_omie_empresa_codigo_unico",
+            )
+        ]
+        verbose_name = "tipo de conta corrente OMIE"
+        verbose_name_plural = "tipos de conta corrente OMIE"
+
+    def __str__(self):
+        return f"{self.codigo} - {self.descricao}"
+
+
+class ContaCorrenteOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="contas_correntes_omie",
+    )
+    codigo_omie = models.BigIntegerField()
+    codigo_integracao = models.CharField(max_length=20, blank=True)
+    tipo_conta = models.ForeignKey(
+        TipoContaCorrenteOmie,
+        on_delete=models.SET_NULL,
+        related_name="contas_correntes",
+        null=True,
+        blank=True,
+    )
+    tipo_codigo = models.CharField(max_length=2, blank=True)
+    codigo_banco = models.CharField(max_length=3, blank=True)
+    descricao = models.CharField(max_length=100, blank=True)
+    codigo_agencia = models.CharField(max_length=10, blank=True)
+    numero_conta_corrente = models.CharField(max_length=25, blank=True)
+    saldo_inicial = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    saldo_data = models.CharField(max_length=10, blank=True)
+    valor_limite = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    nao_fluxo = models.BooleanField(default=False)
+    nao_resumo = models.BooleanField(default=False)
+    realiza_cobranca = models.BooleanField(default=False)
+    emite_boleto = models.BooleanField(default=False)
+    emite_pix = models.BooleanField(default=False)
+    importado_api = models.BooleanField(default=False)
+    bloqueado = models.BooleanField(default=False)
+    inativo = models.BooleanField(default=False)
+    observacao = models.TextField(blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["descricao", "codigo_omie"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_omie"],
+                name="conta_cc_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "inativo"],
+                name="conta_cc_emp_ativo_idx",
+            ),
+            models.Index(
+                fields=["empresa", "tipo_codigo"],
+                name="conta_cc_emp_tipo_idx",
+            ),
+        ]
+        verbose_name = "conta corrente OMIE"
+        verbose_name_plural = "contas correntes OMIE"
+
+    def __str__(self):
+        return self.descricao or str(self.codigo_omie)
+
+
+class ContaPagarOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="contas_pagar_omie",
+    )
+    codigo_lancamento_omie = models.BigIntegerField()
+    codigo_lancamento_integracao = models.CharField(max_length=60, blank=True)
+    codigo_cliente_fornecedor = models.BigIntegerField(null=True, blank=True)
+    fornecedor = models.ForeignKey(
+        CadastroOmie,
+        on_delete=models.SET_NULL,
+        related_name="contas_pagar",
+        null=True,
+        blank=True,
+    )
+    id_conta_corrente = models.BigIntegerField(null=True, blank=True)
+    conta_corrente = models.ForeignKey(
+        ContaCorrenteOmie,
+        on_delete=models.SET_NULL,
+        related_name="contas_pagar",
+        null=True,
+        blank=True,
+    )
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        CategoriaOmie,
+        on_delete=models.SET_NULL,
+        related_name="contas_pagar",
+        null=True,
+        blank=True,
+    )
+    codigo_projeto = models.BigIntegerField(null=True, blank=True)
+    projeto = models.ForeignKey(
+        ProjetoOmie,
+        on_delete=models.SET_NULL,
+        related_name="contas_pagar",
+        null=True,
+        blank=True,
+    )
+    data_emissao = models.DateField(null=True, blank=True)
+    data_entrada = models.DateField(null=True, blank=True)
+    data_previsao = models.DateField(null=True, blank=True)
+    data_vencimento = models.DateField(null=True, blank=True)
+    valor_documento = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_a_pagar = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    status_titulo = models.CharField(max_length=30, blank=True)
+    numero_documento = models.CharField(max_length=20, blank=True)
+    numero_documento_fiscal = models.CharField(max_length=20, blank=True)
+    numero_parcela = models.CharField(max_length=7, blank=True)
+    codigo_tipo_documento = models.CharField(max_length=5, blank=True)
+    id_origem = models.CharField(max_length=4, blank=True)
+    retem_cofins = models.BooleanField(default=False)
+    retem_csll = models.BooleanField(default=False)
+    retem_inss = models.BooleanField(default=False)
+    retem_ir = models.BooleanField(default=False)
+    retem_iss = models.BooleanField(default=False)
+    retem_pis = models.BooleanField(default=False)
+    categorias = models.JSONField(default=list, blank=True)
+    distribuicao = models.JSONField(default=list, blank=True)
+    cnab_integracao_bancaria = models.JSONField(default=dict, blank=True)
+    info = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["data_vencimento", "codigo_lancamento_omie"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_lancamento_omie"],
+                name="conta_pagar_empresa_lancamento_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "data_vencimento"],
+                name="conta_pagar_emp_venc_idx",
+            ),
+            models.Index(
+                fields=["empresa", "status_titulo"],
+                name="conta_pagar_emp_status_idx",
+            ),
+        ]
+        verbose_name = "conta a pagar OMIE"
+        verbose_name_plural = "contas a pagar OMIE"
+
+    def __str__(self):
+        return self.numero_documento or str(self.codigo_lancamento_omie)
+
+
+class ContaReceberOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="contas_receber_omie",
+    )
+    codigo_lancamento_omie = models.BigIntegerField()
+    codigo_lancamento_integracao = models.CharField(max_length=60, blank=True)
+    codigo_cliente_fornecedor = models.BigIntegerField(null=True, blank=True)
+    cliente = models.ForeignKey(
+        CadastroOmie,
+        on_delete=models.SET_NULL,
+        related_name="contas_receber",
+        null=True,
+        blank=True,
+    )
+    id_conta_corrente = models.BigIntegerField(null=True, blank=True)
+    conta_corrente = models.ForeignKey(
+        ContaCorrenteOmie,
+        on_delete=models.SET_NULL,
+        related_name="contas_receber",
+        null=True,
+        blank=True,
+    )
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        CategoriaOmie,
+        on_delete=models.SET_NULL,
+        related_name="contas_receber",
+        null=True,
+        blank=True,
+    )
+    codigo_projeto = models.BigIntegerField(null=True, blank=True)
+    projeto = models.ForeignKey(
+        ProjetoOmie,
+        on_delete=models.SET_NULL,
+        related_name="contas_receber",
+        null=True,
+        blank=True,
+    )
+    data_emissao = models.DateField(null=True, blank=True)
+    data_previsao = models.DateField(null=True, blank=True)
+    data_registro = models.DateField(null=True, blank=True)
+    data_vencimento = models.DateField(null=True, blank=True)
+    valor_documento = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_a_receber = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    status_titulo = models.CharField(max_length=100, blank=True)
+    numero_documento = models.CharField(max_length=20, blank=True)
+    numero_documento_fiscal = models.CharField(max_length=20, blank=True)
+    numero_parcela = models.CharField(max_length=7, blank=True)
+    numero_pedido = models.CharField(max_length=15, blank=True)
+    codigo_pedido_omie = models.BigIntegerField(null=True, blank=True)
+    codigo_tipo_documento = models.CharField(max_length=5, blank=True)
+    chave_nfe = models.CharField(max_length=44, blank=True)
+    id_origem = models.CharField(max_length=4, blank=True)
+    operacao = models.CharField(max_length=2, blank=True)
+    tipo_agrupamento = models.CharField(max_length=1, blank=True)
+    retem_cofins = models.BooleanField(default=False)
+    retem_csll = models.BooleanField(default=False)
+    retem_inss = models.BooleanField(default=False)
+    retem_ir = models.BooleanField(default=False)
+    retem_iss = models.BooleanField(default=False)
+    retem_pis = models.BooleanField(default=False)
+    bloqueado = models.BooleanField(default=False)
+    bloquear_baixa = models.BooleanField(default=False)
+    importado_api = models.BooleanField(default=False)
+    boleto = models.JSONField(default=dict, blank=True)
+    categorias = models.JSONField(default=list, blank=True)
+    distribuicao = models.JSONField(default=list, blank=True)
+    info = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["data_vencimento", "codigo_lancamento_omie"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_lancamento_omie"],
+                name="conta_receber_empresa_lancamento_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "data_vencimento"],
+                name="conta_receber_emp_venc_idx",
+            ),
+            models.Index(
+                fields=["empresa", "status_titulo"],
+                name="conta_receber_emp_status_idx",
+            ),
+        ]
+        verbose_name = "conta a receber OMIE"
+        verbose_name_plural = "contas a receber OMIE"
+
+    def __str__(self):
+        return self.numero_documento or str(self.codigo_lancamento_omie)
+
+
+class LancamentoContaCorrenteOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="lancamentos_conta_corrente_omie",
+    )
+    codigo_lancamento_omie = models.BigIntegerField()
+    codigo_lancamento_integracao = models.CharField(max_length=20, blank=True)
+    codigo_agrupamento = models.BigIntegerField(null=True, blank=True)
+    codigo_conta_corrente = models.BigIntegerField(null=True, blank=True)
+    conta_corrente = models.ForeignKey(
+        ContaCorrenteOmie,
+        on_delete=models.SET_NULL,
+        related_name="lancamentos",
+        null=True,
+        blank=True,
+    )
+    data_lancamento = models.DateField(null=True, blank=True)
+    valor_lancamento = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        default=0,
+    )
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        CategoriaOmie,
+        on_delete=models.SET_NULL,
+        related_name="lancamentos_conta_corrente",
+        null=True,
+        blank=True,
+    )
+    tipo_documento = models.CharField(max_length=5, blank=True)
+    numero_documento = models.CharField(max_length=20, blank=True)
+    codigo_cliente_fornecedor = models.BigIntegerField(null=True, blank=True)
+    cliente_fornecedor = models.ForeignKey(
+        CadastroOmie,
+        on_delete=models.SET_NULL,
+        related_name="lancamentos_conta_corrente",
+        null=True,
+        blank=True,
+    )
+    codigo_projeto = models.BigIntegerField(null=True, blank=True)
+    projeto = models.ForeignKey(
+        ProjetoOmie,
+        on_delete=models.SET_NULL,
+        related_name="lancamentos_conta_corrente",
+        null=True,
+        blank=True,
+    )
+    observacao = models.TextField(blank=True)
+    natureza = models.CharField(max_length=1, blank=True)
+    origem = models.CharField(max_length=4, blank=True)
+    data_conciliacao = models.DateField(null=True, blank=True)
+    hora_conciliacao = models.CharField(max_length=8, blank=True)
+    usuario_conciliacao = models.CharField(max_length=10, blank=True)
+    identificacao_lancamento = models.CharField(max_length=40, blank=True)
+    codigo_lancamento_conta_pagar = models.BigIntegerField(null=True, blank=True)
+    conta_pagar = models.ForeignKey(
+        ContaPagarOmie,
+        on_delete=models.SET_NULL,
+        related_name="lancamentos_conta_corrente",
+        null=True,
+        blank=True,
+    )
+    codigo_lancamento_conta_receber = models.BigIntegerField(null=True, blank=True)
+    conta_receber = models.ForeignKey(
+        ContaReceberOmie,
+        on_delete=models.SET_NULL,
+        related_name="lancamentos_conta_corrente",
+        null=True,
+        blank=True,
+    )
+    codigo_conta_corrente_destino = models.BigIntegerField(null=True, blank=True)
+    conta_corrente_destino = models.ForeignKey(
+        ContaCorrenteOmie,
+        on_delete=models.SET_NULL,
+        related_name="transferencias_recebidas",
+        null=True,
+        blank=True,
+    )
+    importado_api = models.BooleanField(default=False)
+    categorias = models.JSONField(default=list, blank=True)
+    departamentos = models.JSONField(default=list, blank=True)
+    cabecalho = models.JSONField(default=dict, blank=True)
+    detalhes = models.JSONField(default=dict, blank=True)
+    diversos = models.JSONField(default=dict, blank=True)
+    transferencia = models.JSONField(default=dict, blank=True)
+    info = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["data_lancamento", "codigo_lancamento_omie"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_lancamento_omie"],
+                name="lanc_cc_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "data_lancamento"],
+                name="lanc_cc_emp_data_idx",
+            ),
+            models.Index(
+                fields=["empresa", "natureza"],
+                name="lanc_cc_emp_natureza_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_conta_corrente"],
+                name="lanc_cc_emp_conta_idx",
+            ),
+        ]
+        verbose_name = "lançamento de conta corrente OMIE"
+        verbose_name_plural = "lançamentos de conta corrente OMIE"
+
+    def __str__(self):
+        return self.numero_documento or str(self.codigo_lancamento_omie)
+
+
 class ContaDRE(models.Model):
     class Sinal(models.TextChoices):
         SOMA = "+", "Somatória (+)"
