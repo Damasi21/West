@@ -1,0 +1,84 @@
+<section class="cashflow-dashboard" data-cashflow-dashboard>
+    <div class="finance-kpis">
+        {% for indicador in fluxo.indicadores %}
+            <article class="finance-kpi finance-kpi-{{ indicador.tom }}">
+                <div>
+                    <span>{{ indicador.titulo }}</span>
+                    <strong>{{ indicador.valor }}</strong>
+                </div>
+                <i class="bi {{ indicador.icone }}"></i>
+            </article>
+        {% endfor %}
+    </div>
+
+    <article class="dre-chart-card cashflow-main-chart">
+        <div class="dre-chart-header">
+            <div>
+                <small>FLUXO PROJETADO</small>
+                <h2>Entradas, saidas e saldo acumulado</h2>
+            </div>
+        </div>
+        <div class="cashflow-chart-canvas">
+            <canvas data-cashflow-chart></canvas>
+        </div>
+    </article>
+
+    <div class="cashflow-bottom-grid">
+        <article class="finance-ranking-card cashflow-critical-card">
+            <div class="finance-ranking-header finance-ranking-despesa">
+                <i class="bi bi-exclamation-triangle"></i>
+                <div>
+                    <small>CRITICOS</small>
+                    <h2>Recebimentos pendentes - criticos</h2>
+                </div>
+            </div>
+            <div class="finance-ranking-table">
+                <div class="finance-ranking-row cashflow-critical-head">
+                    <span>Cliente / fornecedor</span>
+                    <span>Vencimento</span>
+                    <span>Valor</span>
+                </div>
+                {% for item in fluxo.criticos %}
+                    <div class="finance-ranking-row finance-ranking-expense">
+                        <span>{{ item.nome }}</span>
+                        <span>{{ item.vencimento_fmt }}</span>
+                        <strong>{{ item.valor_fmt }}</strong>
+                    </div>
+                {% empty %}
+                    <div class="finance-ranking-empty">Sem atrasos criticos no periodo.</div>
+                {% endfor %}
+            </div>
+        </article>
+
+        <article class="dre-chart-card cashflow-pie-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>ENTRADAS</small>
+                    <h2>Composicao das entradas previstas</h2>
+                </div>
+            </div>
+            <div class="cashflow-pie-canvas">
+                <canvas data-cashflow-in-pie></canvas>
+            </div>
+        </article>
+
+        <article class="dre-chart-card cashflow-pie-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>SAIDAS</small>
+                    <h2>Composicao das saidas previstas</h2>
+                </div>
+            </div>
+            <div class="cashflow-pie-canvas">
+                <canvas data-cashflow-out-pie></canvas>
+            </div>
+        </article>
+    </div>
+
+    {{ fluxo.labels|json_script:"cashflow-chart-labels" }}
+    {{ fluxo.entradas|json_script:"cashflow-chart-in" }}
+    {{ fluxo.saidas|json_script:"cashflow-chart-out" }}
+    {{ fluxo.saldo_acumulado|json_script:"cashflow-chart-balance" }}
+    {{ fluxo.composicao_entradas|json_script:"cashflow-pie-in" }}
+    {{ fluxo.composicao_saidas|json_script:"cashflow-pie-out" }}
+</section>

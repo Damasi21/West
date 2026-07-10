@@ -1,0 +1,97 @@
+<section class="finance-overview" data-finance-overview>
+    <div class="finance-kpis">
+        {% for indicador in visao.indicadores %}
+            <article class="finance-kpi finance-kpi-{{ indicador.tom }}">
+                <div>
+                    <span>{{ indicador.titulo }}</span>
+                    <strong>{{ indicador.valor }}</strong>
+                </div>
+                <i class="bi {{ indicador.icone }}"></i>
+            </article>
+        {% endfor %}
+    </div>
+
+    <div class="finance-chart-grid">
+        <article class="dre-chart-card finance-chart-card finance-chart-card-wide">
+            <div class="dre-chart-header">
+                <div>
+                    <small>EVOLUCAO</small>
+                    <h2>Recebimentos e pagamentos ao longo do tempo</h2>
+                </div>
+            </div>
+            <div class="finance-chart-canvas">
+                <canvas data-overview-flow-chart></canvas>
+            </div>
+        </article>
+        <article class="dre-chart-card finance-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>RESULTADO</small>
+                    <h2>Margem mensal</h2>
+                </div>
+            </div>
+            <div class="finance-chart-canvas">
+                <canvas data-overview-margin-chart></canvas>
+            </div>
+        </article>
+    </div>
+
+    <div class="finance-ranking-grid">
+        <article class="finance-ranking-card">
+            <div class="finance-ranking-header finance-ranking-receita">
+                <i class="bi bi-people"></i>
+                <div>
+                    <small>RECEITA</small>
+                    <h2>Maiores clientes</h2>
+                </div>
+            </div>
+            <div class="finance-ranking-table">
+                <div class="finance-ranking-row finance-ranking-head">
+                    <span>Cliente</span>
+                    <span>Categoria</span>
+                    <span>Valor</span>
+                </div>
+                {% for item in visao.maiores_clientes %}
+                    <div class="finance-ranking-row">
+                        <span>{{ item.pessoa }}</span>
+                        <span>{{ item.categoria }}</span>
+                        <strong>{{ item.valor_fmt }}</strong>
+                    </div>
+                {% empty %}
+                    <div class="finance-ranking-empty">Sem receitas no periodo.</div>
+                {% endfor %}
+            </div>
+        </article>
+
+        <article class="finance-ranking-card">
+            <div class="finance-ranking-header finance-ranking-despesa">
+                <i class="bi bi-buildings"></i>
+                <div>
+                    <small>DESPESA</small>
+                    <h2>Maiores fornecedores</h2>
+                </div>
+            </div>
+            <div class="finance-ranking-table">
+                <div class="finance-ranking-row finance-ranking-head">
+                    <span>Fornecedor</span>
+                    <span>Categoria</span>
+                    <span>Valor</span>
+                </div>
+                {% for item in visao.maiores_fornecedores %}
+                    <div class="finance-ranking-row finance-ranking-expense">
+                        <span>{{ item.pessoa }}</span>
+                        <span>{{ item.categoria }}</span>
+                        <strong>{{ item.valor_fmt }}</strong>
+                    </div>
+                {% empty %}
+                    <div class="finance-ranking-empty">Sem despesas no periodo.</div>
+                {% endfor %}
+            </div>
+        </article>
+    </div>
+
+    {{ visao.labels|json_script:"overview-chart-labels" }}
+    {{ visao.recebimentos|json_script:"overview-chart-receipts" }}
+    {{ visao.pagamentos|json_script:"overview-chart-payments" }}
+    {{ visao.margem|json_script:"overview-chart-margin" }}
+</section>

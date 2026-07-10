@@ -1,0 +1,121 @@
+{% load static %}
+
+<section class="dre-dashboard" data-dre-dashboard>
+    <div class="dre-metrics">
+        {% for indicador in dre.indicadores %}
+            <article class="dre-metric dre-metric-{{ indicador.tom }}">
+                <span>{{ indicador.titulo }}</span>
+                <strong>{{ indicador.valor }}</strong>
+            </article>
+        {% endfor %}
+    </div>
+
+    <article class="dre-table-card" data-dre-fullscreen>
+        <div class="dre-card-header">
+            <div>
+                <small>DRE GERENCIAL</small>
+                <h2>DRE Gerencial</h2>
+            </div>
+            <div class="dre-toolbar">
+                <button class="btn btn-white btn-sm" type="button" data-dre-expand-all>
+                    <i class="bi bi-arrows-expand"></i>
+                    <span>Expandir</span>
+                </button>
+                <button class="btn btn-white btn-sm" type="button" data-dre-collapse-all>
+                    <i class="bi bi-arrows-collapse"></i>
+                    <span>Recolher</span>
+                </button>
+                <button class="btn btn-white btn-sm dre-fullscreen-button" type="button" data-dre-fullscreen-button title="Expandir para tela inteira">
+                    <i class="bi bi-fullscreen"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="dre-table-wrap">
+            <table class="dre-table">
+                <thead>
+                    <tr>
+                        <th class="dre-account-col" rowspan="2">Grupo / Categoria</th>
+                        <th rowspan="2">Total</th>
+                        {% for mes in dre.meses %}
+                            <th colspan="3">{{ mes.rotulo }}</th>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        {% for mes in dre.meses %}
+                            <th>Realizado</th>
+                            <th>AV</th>
+                            <th>AH</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linha in dre.linhas %}
+                        <tr class="dre-row dre-level-{{ linha.nivel }} dre-row-{{ linha.tipo }}" data-row-id="{{ linha.id }}" data-parent-id="{{ linha.parent_id }}" {% if linha.parent_id %}hidden{% endif %}>
+                            <td class="dre-account-col">
+                                <div class="dre-account-name">
+                                    {% if linha.tem_filhos %}
+                                        <button type="button" class="dre-row-toggle" data-dre-row-toggle aria-expanded="false" title="Expandir linha">
+                                            <i class="bi bi-plus-lg"></i>
+                                        </button>
+                                    {% else %}
+                                        <span class="dre-row-spacer"></span>
+                                    {% endif %}
+                                    <span>{{ linha.nome }}</span>
+                                </div>
+                            </td>
+                            <td class="dre-number dre-total">{{ linha.total_fmt }}</td>
+                            {% for valor in linha.meses %}
+                                <td class="dre-number">{{ valor.realizado_fmt }}</td>
+                                <td class="dre-percent">{{ valor.av_fmt }}</td>
+                                <td class="dre-percent dre-trend dre-trend-{{ valor.direcao }}">
+                                    {{ valor.ah_fmt }}
+                                    {% if valor.direcao == "up" %}
+                                        <i class="bi bi-arrow-up-short"></i>
+                                    {% elif valor.direcao == "down" %}
+                                        <i class="bi bi-arrow-down-short"></i>
+                                    {% else %}
+                                        <i class="bi bi-dash"></i>
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <div class="dre-charts">
+        <article class="dre-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>REALIZADO</small>
+                    <h2>Contas do DRE</h2>
+                </div>
+                <select class="form-select form-select-sm" data-dre-chart-select>
+                    {% for opcao in dre.opcoes_grafico %}
+                        <option value="{{ opcao.valor }}">{{ opcao.rotulo }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="dre-chart-canvas">
+                <canvas data-dre-values-chart></canvas>
+            </div>
+        </article>
+        <article class="dre-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>ANALISE HORIZONTAL</small>
+                    <h2>AH por periodo</h2>
+                </div>
+            </div>
+            <div class="dre-chart-canvas">
+                <canvas data-dre-ah-chart></canvas>
+            </div>
+        </article>
+    </div>
+
+    {{ dre.grafico_labels|json_script:"dre-chart-labels" }}
+    {{ dre.grafico_datasets|json_script:"dre-chart-datasets" }}
+</section>

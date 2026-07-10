@@ -5,6 +5,10 @@ from django.http import Http404
 from django.shortcuts import render
 from django.utils.dateparse import parse_date
 
+from apps.dashboards.dre_services import dre_gerencial
+from apps.dashboards.fluxo_caixa_services import fluxo_de_caixa
+from apps.dashboards.inadimplencia_services import inadimplencia
+from apps.dashboards.visao_geral_services import visao_geral_financeira
 from apps.empresas.services import empresas_permitidas, obter_empresa_permitida
 
 
@@ -62,16 +66,16 @@ AREAS = {
                 "icone": "bi-file-earmark-spreadsheet",
             },
             {
-                "slug": "contas-a-receber",
-                "titulo": "Contas a receber",
-                "descricao": "Monitore vencimentos, recebimentos e inadimplência.",
-                "icone": "bi-wallet2",
+                "slug": "visao-geral",
+                "titulo": "Visao Geral",
+                "descricao": "Acompanhe recebimentos, pagamentos, resultado e margem.",
+                "icone": "bi-columns-gap",
             },
             {
-                "slug": "contas-a-pagar",
-                "titulo": "Contas a pagar",
-                "descricao": "Controle compromissos, vencimentos e pagamentos.",
-                "icone": "bi-receipt",
+                "slug": "inadimplencia",
+                "titulo": "Inadimplencia",
+                "descricao": "Monitore exposicao, aging, recuperacao e top devedores.",
+                "icone": "bi-exclamation-octagon",
             },
         ],
     },
@@ -191,6 +195,11 @@ MESES = (
     (12, "Dezembro"),
 )
 
+REGIMES_FINANCEIROS = {
+    "caixa": "Caixa",
+    "competencia": "Competencia",
+}
+
 
 def _periodos_disponiveis(periodo_selecionado):
     periodos = []
@@ -279,6 +288,10 @@ def _rotulo_periodo(valor, data_inicio="", data_fim=""):
 def _valores_validos(selecionados, permitidos):
     permitidos = set(permitidos)
     return [valor for valor in selecionados if valor in permitidos]
+
+
+def _regime_financeiro_valido(valor):
+    return valor if valor in REGIMES_FINANCEIROS else "caixa"
 
 
 def _contexto_base(request, empresa_slug):
@@ -390,6 +403,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         periodo_selecionado = _valor_periodo_valido(
             request.GET.get("periodo", "")
         )
+        regime_financeiro = _regime_financeiro_valido(
+            request.GET.get("regime_financeiro", "")
+        )
         data_inicio, data_fim = _datas_periodo_especifico(
             periodo_selecionado,
             request.GET.get("data_inicio"),
@@ -399,6 +415,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             periodo_selecionado = _valor_periodo_valido("")
         estado = {
             "periodo": periodo_selecionado,
+            "regime_financeiro": regime_financeiro,
             "data_inicio": data_inicio,
             "data_fim": data_fim,
             "projetos": projetos_selecionados,
@@ -418,6 +435,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         fonte_periodo = estado if estado.get("periodo") else estado_modulo
         periodo_selecionado = _valor_periodo_valido(
             fonte_periodo.get("periodo") or periodo_compartilhado or ""
+        )
+        regime_financeiro = _regime_financeiro_valido(
+            estado.get("regime_financeiro", "")
         )
         data_inicio, data_fim = _datas_periodo_especifico(
             periodo_selecionado,
@@ -458,6 +478,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             ),
             "data_inicio": data_inicio,
             "data_fim": data_fim,
+            "regime_financeiro": regime_financeiro,
+            "regime_financeiro_rotulo": REGIMES_FINANCEIROS[regime_financeiro],
+            "regimes_financeiros": REGIMES_FINANCEIROS,
             "periodo_foi_compartilhado": periodo_foi_compartilhado,
             "periodo_compartilhado": (
                 request.session.get(chave_modulo, {}).get("periodo")
@@ -480,4 +503,42 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "empresas_selecionadas": empresas_selecionadas,
         }
     )
+    if area_slug == "financeiro" and dashboard_slug == "dre-gerencial":
+        contexto["dre_gerencial"] = dre_gerencial(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_selecionados,
+            regime_financeiro,
+        )
+    if area_slug == "financeiro" and dashboard_slug == "visao-geral":
+        contexto["visao_geral"] = visao_geral_financeira(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_selecionados,
+            regime_financeiro,
+        )
+    if area_slug == "financeiro" and dashboard_slug == "fluxo-de-caixa":
+        contexto["fluxo_caixa"] = fluxo_de_caixa(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_selecionados,
+        )
+    if area_slug == "financeiro" and dashboard_slug == "inadimplencia":
+        contexto["inadimplencia"] = inadimplencia(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_selecionados,
+        )
     return render(request, "dashboards/dashboard.html", contexto)

@@ -5,9 +5,16 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.empresas.models import (
+    CadastroOmie,
+    CategoriaOmie,
+    ContaCorrenteOmie,
+    ContaDRE,
+    ContaPagarOmie,
+    ContaReceberOmie,
     DepartamentoOmie,
     Empresa,
     EmpresaUsuario,
+    LancamentoContaCorrenteOmie,
     ProjetoOmie,
 )
 
@@ -409,3 +416,387 @@ class DashboardPermissaoTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_dre_gerencial_exibe_indicadores_tabela_e_graficos(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        receita = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Receita Bruta",
+            ordem=1,
+        )
+        custos = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Deducoes e Gastos Variaveis",
+            sinal=ContaDRE.Sinal.SUBTRACAO,
+            ordem=2,
+        )
+        custos_variaveis = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Custos Variaveis",
+            conta_pai=custos,
+            sinal=ContaDRE.Sinal.SUBTRACAO,
+            ordem=1,
+        )
+        categoria = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.02.02",
+            descricao="Materia prima",
+            conta_dre=custos_variaveis,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=1001,
+            data_lancamento=date(ano_atual, 1, 10),
+            valor_lancamento=1200,
+            categoria_principal=categoria,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "dre-gerencial",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+                "regime_financeiro": "caixa",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Receita bruta")
+        self.assertContains(response, "Deducoes e gastos variaveis")
+        self.assertContains(response, "DRE Gerencial")
+        self.assertContains(response, "Custos Variaveis")
+        self.assertContains(response, "data-dre-expand-all")
+        self.assertContains(response, "data-dre-values-chart")
+        self.assertContains(response, "data-dre-ah-chart")
+        self.assertContains(response, 'option value="caixa" selected')
+
+    def test_visao_geral_financeira_exibe_indicadores_graficos_e_rankings(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        cliente = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=2001,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente Forte",
+            razao_social="Cliente Forte Ltda",
+        )
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=3001,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="Fornecedor Chave",
+            razao_social="Fornecedor Chave Ltda",
+        )
+        categoria_receita = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01.01",
+            descricao="Servicos Prestados",
+        )
+        categoria_despesa = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.01.01",
+            descricao="Alimentacao",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=4001,
+            cliente=cliente,
+            categoria_principal=categoria_receita,
+            data_previsao=date(ano_atual, 1, 10),
+            valor_documento=5000,
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=5001,
+            fornecedor=fornecedor,
+            categoria_principal=categoria_despesa,
+            data_previsao=date(ano_atual, 1, 12),
+            valor_documento=1800,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "visao-geral",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+                "regime_financeiro": "competencia",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Recebimentos")
+        self.assertContains(response, "Pagamentos")
+        self.assertContains(response, "Resultado")
+        self.assertContains(response, "Margem mensal")
+        self.assertContains(response, "Cliente Forte")
+        self.assertContains(response, "Fornecedor Chave")
+        self.assertContains(response, "data-overview-flow-chart")
+        self.assertContains(response, "data-overview-margin-chart")
+        self.assertContains(response, 'option value="competencia" selected')
+
+    def test_visao_geral_caixa_usa_lancamentos_de_conta_corrente(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        cliente = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=6001,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente Caixa",
+        )
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=7001,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="Fornecedor Caixa",
+        )
+        categoria_receita = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01.02",
+            descricao="Mensalidade",
+        )
+        categoria_despesa = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.01.02",
+            descricao="Insumos",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=8001,
+            cliente=cliente,
+            categoria_principal=categoria_receita,
+            data_registro=date(ano_atual, 2, 10),
+            valor_documento=9900,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=9001,
+            cliente_fornecedor=cliente,
+            categoria_principal=categoria_receita,
+            data_lancamento=date(ano_atual, 1, 10),
+            natureza="R",
+            valor_lancamento=1200,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=9002,
+            cliente_fornecedor=fornecedor,
+            categoria_principal=categoria_despesa,
+            data_lancamento=date(ano_atual, 1, 11),
+            natureza="P",
+            valor_lancamento=400,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "visao-geral",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+                "regime_financeiro": "caixa",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Cliente Caixa")
+        self.assertContains(response, "Fornecedor Caixa")
+        self.assertNotContains(response, "R$ 9.900,00")
+
+    def test_fluxo_de_caixa_exibe_indicadores_grafico_criticos_e_composicoes(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        cliente = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=10001,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente Critico",
+        )
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=10002,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="Fornecedor Critico",
+        )
+        categoria_receita = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.03.01",
+            descricao="Assinaturas",
+        )
+        categoria_despesa = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.03.01",
+            descricao="Operacional",
+        )
+        ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=101,
+            descricao="Conta principal",
+            saldo_inicial=15000,
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=11001,
+            cliente=cliente,
+            categoria_principal=categoria_receita,
+            data_vencimento=date(ano_atual, 1, 10),
+            valor_documento=7000,
+            valor_a_receber=7000,
+            status_titulo="ATRASADO",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=12001,
+            fornecedor=fornecedor,
+            categoria_principal=categoria_despesa,
+            data_entrada=date(ano_atual, 1, 1),
+            data_vencimento=date(ano_atual, 1, 15),
+            valor_documento=2500,
+            valor_a_pagar=2500,
+            status_titulo="ATRASADO",
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=13001,
+            data_lancamento=date(ano_atual, 1, 20),
+            natureza="R",
+            valor_lancamento=900,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=13002,
+            data_lancamento=date(ano_atual, 1, 21),
+            natureza="P",
+            valor_lancamento=300,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "fluxo-de-caixa",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Saldo atual")
+        self.assertContains(response, "Entradas previstas")
+        self.assertContains(response, "Saidas previstas")
+        self.assertContains(response, "Saldo projetado")
+        self.assertContains(response, "Prazo medio de pagamento")
+        self.assertContains(response, "Cliente Critico")
+        self.assertContains(response, "Fornecedor Critico")
+        self.assertContains(response, "Composicao das entradas previstas")
+        self.assertContains(response, "Composicao das saidas previstas")
+        self.assertContains(response, "data-cashflow-chart")
+        self.assertContains(response, "data-cashflow-in-pie")
+        self.assertContains(response, "data-cashflow-out-pie")
+
+    def test_inadimplencia_exibe_indicadores_graficos_e_top_devedores(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        cliente_a = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=14001,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Devedor Alfa",
+        )
+        cliente_b = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=14002,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Devedor Beta",
+        )
+        categoria = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.04.01",
+            descricao="Servicos em atraso",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=15001,
+            cliente=cliente_a,
+            categoria_principal=categoria,
+            data_emissao=date(ano_atual, 1, 1),
+            data_vencimento=date(ano_atual, 1, 10),
+            valor_documento=8000,
+            valor_a_receber=8000,
+            status_titulo="ATRASADO",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=15002,
+            cliente=cliente_b,
+            categoria_principal=categoria,
+            data_emissao=date(ano_atual, 1, 5),
+            data_vencimento=date(ano_atual, 2, 15),
+            valor_documento=3000,
+            valor_a_receber=3000,
+            status_titulo="ATRASADO",
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=16001,
+            cliente_fornecedor=cliente_a,
+            data_lancamento=date(ano_atual, 1, 20),
+            natureza="R",
+            valor_lancamento=1200,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "inadimplencia",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"ano-{ano_atual}",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Total inadimplente")
+        self.assertContains(response, "% Inadimplencia")
+        self.assertContains(response, "DSO")
+        self.assertContains(response, "Recuperado no mes")
+        self.assertContains(response, "Aging Schedule")
+        self.assertContains(response, "% Inadimplencia")
+        self.assertContains(response, "Devedor Alfa")
+        self.assertContains(response, "Devedor Beta")
+        self.assertContains(response, "data-aging-chart")
+        self.assertContains(response, "data-delinquency-trend-chart")

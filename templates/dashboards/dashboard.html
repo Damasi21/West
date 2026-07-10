@@ -83,6 +83,19 @@
         {% include "dashboards/partials/multiselect_filter.html" with nome="projeto" titulo="Projetos" icone="bi-kanban" opcoes=projetos selecionados=projetos_selecionados vazio="Todos os projetos" %}
         {% include "dashboards/partials/multiselect_filter.html" with nome="departamento" titulo="Departamentos" icone="bi-diagram-3" opcoes=departamentos selecionados=departamentos_selecionados vazio="Todos os departamentos" %}
 
+        {% if area_slug == "financeiro" %}
+            {% if dashboard_slug == "visao-geral" or dashboard_slug == "dre-gerencial" %}
+                <label class="regime-filter" title="Escolha a data usada nos calculos">
+                    <i class="bi bi-calendar-check"></i>
+                    <select name="regime_financeiro" aria-label="Regime financeiro">
+                        {% for valor, rotulo in regimes_financeiros.items %}
+                            <option value="{{ valor }}" {% if regime_financeiro == valor %}selected{% endif %}>{{ rotulo }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            {% endif %}
+        {% endif %}
+
         <div class="dashboard-filter" data-filter-dropdown>
             <button class="filter-trigger" type="button" aria-expanded="false">
                 <i class="bi bi-building"></i>
@@ -121,6 +134,15 @@
     </div>
 {% endif %}
 
+{% if dre_gerencial %}
+    {% include "dashboards/partials/dre_gerencial.html" with dre=dre_gerencial %}
+{% elif visao_geral %}
+    {% include "dashboards/partials/visao_geral.html" with visao=visao_geral %}
+{% elif fluxo_caixa %}
+    {% include "dashboards/partials/fluxo_caixa.html" with fluxo=fluxo_caixa %}
+{% elif inadimplencia %}
+    {% include "dashboards/partials/inadimplencia.html" with dados=inadimplencia %}
+{% else %}
 <div class="row g-3 mb-4">
     {% for item in "1234" %}
         <div class="col-sm-6 col-xl-3">
@@ -159,4 +181,5 @@
         </article>
     </div>
 </div>
+{% endif %}
 {% endblock %}

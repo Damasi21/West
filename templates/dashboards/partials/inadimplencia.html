@@ -1,0 +1,68 @@
+<section class="delinquency-dashboard" data-delinquency-dashboard>
+    <div class="delinquency-kpis">
+        {% for indicador in dados.indicadores %}
+            <article class="delinquency-kpi delinquency-kpi-{{ indicador.tom }}">
+                <span>{{ indicador.titulo }}</span>
+                <strong>{{ indicador.valor }}</strong>
+                <small>{{ indicador.subtitulo }}</small>
+            </article>
+        {% endfor %}
+    </div>
+
+    <div class="delinquency-chart-grid">
+        <article class="dre-chart-card delinquency-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>ESCADA DO RISCO</small>
+                    <h2>Aging Schedule</h2>
+                </div>
+            </div>
+            <div class="delinquency-chart-canvas">
+                <canvas data-aging-chart></canvas>
+            </div>
+        </article>
+
+        <article class="dre-chart-card delinquency-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>TENDENCIA</small>
+                    <h2>% Inadimplencia</h2>
+                </div>
+            </div>
+            <div class="delinquency-chart-canvas">
+                <canvas data-delinquency-trend-chart></canvas>
+            </div>
+        </article>
+    </div>
+
+    <article class="finance-ranking-card delinquency-table-card">
+        <div class="finance-ranking-header finance-ranking-despesa">
+            <i class="bi bi-person-exclamation"></i>
+            <div>
+                <small>CARTEIRA EM RISCO</small>
+                <h2>Top devedores</h2>
+            </div>
+        </div>
+        <div class="finance-ranking-table">
+            <div class="finance-ranking-row delinquency-row delinquency-head">
+                <span>Cliente</span>
+                <span>Dias em atraso</span>
+                <span>Valor em aberto</span>
+            </div>
+            {% for item in dados.top_devedores %}
+                <div class="finance-ranking-row delinquency-row finance-ranking-expense">
+                    <span>{{ item.cliente }}</span>
+                    <span>{{ item.dias }} dias</span>
+                    <strong>{{ item.valor_fmt }}</strong>
+                </div>
+            {% empty %}
+                <div class="finance-ranking-empty">Sem devedores em atraso no periodo.</div>
+            {% endfor %}
+        </div>
+    </article>
+
+    {{ dados.aging.labels|json_script:"aging-chart-labels" }}
+    {{ dados.aging.valores|json_script:"aging-chart-values" }}
+    {{ dados.tendencia.labels|json_script:"delinquency-trend-labels" }}
+    {{ dados.tendencia.valores|json_script:"delinquency-trend-values" }}
+</section>
