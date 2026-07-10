@@ -337,6 +337,47 @@ class EstruturaDRETests(TestCase):
         self.assertContains(response, "Selecione a conta pai.")
         self.assertFalse(ContaDRE.objects.filter(nome="Conta sem grupo").exists())
 
+    def test_cria_conta_de_resultado_sem_filhos(self):
+        self.client.force_login(self.administrador)
+
+        response = self.client.post(
+            self.url,
+            {
+                "nome": "Receita liquida",
+                "tipo": "resultado",
+                "conta_pai": "",
+                "sinal": "+",
+            },
+        )
+
+        self.assertRedirects(response, self.url)
+        resultado = ContaDRE.objects.get(nome="Receita liquida")
+        self.assertIsNone(resultado.conta_pai)
+        self.assertEqual(resultado.sinal, ContaDRE.Sinal.RESULTADO)
+        self.assertTrue(resultado.eh_resultado)
+
+    def test_conta_de_resultado_nao_pode_receber_filha(self):
+        resultado = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Receita liquida",
+            sinal=ContaDRE.Sinal.RESULTADO,
+            ordem=1,
+        )
+        self.client.force_login(self.administrador)
+
+        response = self.client.post(
+            self.url,
+            {
+                "nome": "Conta indevida",
+                "tipo": "filho",
+                "conta_pai": resultado.pk,
+                "sinal": "+",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ContaDRE.objects.filter(nome="Conta indevida").exists())
+
     def test_reordena_grupos_da_arvore(self):
         primeira = ContaDRE.objects.create(
             empresa=self.empresa,
@@ -433,6 +474,29 @@ class EstruturaDRETests(TestCase):
         self.assertEqual([ws["A3"].value, ws["B3"].value, ws["C3"].value], ["Vendas", "Filho", "-"])
         self.assertTrue(ws.data_validations.dataValidation)
 
+    def test_exporta_conta_de_resultado_com_tipo_proprio(self):
+        ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Receita liquida",
+            sinal=ContaDRE.Sinal.RESULTADO,
+            ordem=1,
+        )
+        self.client.force_login(self.administrador)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:exportar_planilha_dre",
+                kwargs={"empresa_slug": self.empresa.slug},
+            )
+        )
+
+        workbook = load_workbook(BytesIO(response.content))
+        ws = workbook["DRE"]
+        self.assertEqual(
+            [ws["A2"].value, ws["B2"].value, ws["C2"].value],
+            ["Receita liquida", "Resultado", "="],
+        )
+
     def test_importa_planilha_dre_e_monta_relacao_pai_filho(self):
         self.client.force_login(self.administrador)
         planilha = arquivo_xlsx(
@@ -462,6 +526,31 @@ class EstruturaDRETests(TestCase):
             ContaDRE.objects.get(empresa=self.empresa, nome="Resultado").sinal,
             "=",
         )
+        self.assertTrue(
+            ContaDRE.objects.get(empresa=self.empresa, nome="Resultado").eh_resultado
+        )
+
+    def test_importacao_dre_rejeita_resultado_como_filho(self):
+        self.client.force_login(self.administrador)
+        planilha = arquivo_xlsx(
+            "DRE",
+            ("Nome da conta DRE", "Tipo", "OperaÃ§Ã£o"),
+            (
+                ("Receitas", "Pai", "+"),
+                ("Receita liquida", "Filho", "="),
+            ),
+        )
+
+        response = self.client.post(
+            reverse(
+                "dashboards:importar_planilha_dre",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            {"planilha": planilha},
+        )
+
+        self.assertRedirects(response, self.url)
+        self.assertFalse(ContaDRE.objects.filter(nome="Receita liquida").exists())
 
     def test_importacao_dre_exige_confirmacao_para_sobrepor(self):
         atual = ContaDRE.objects.create(
@@ -587,6 +676,40 @@ class CategoriasOmieTests(TestCase):
         self.assertRedirects(response, self.url)
         self.categoria_filha.refresh_from_db()
         self.assertEqual(self.categoria_filha.conta_dre, self.conta_dre)
+
+    def test_nao_oferece_conta_de_resultado_para_categoria(self):
+        resultado = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Receita liquida",
+            sinal=ContaDRE.Sinal.RESULTADO,
+            ordem=2,
+        )
+        self.client.force_login(self.administrador)
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, self.conta_dre.nome)
+        self.assertNotContains(response, f'value="{resultado.pk}"')
+
+    def test_rejeita_vinculo_de_categoria_com_conta_de_resultado(self):
+        resultado = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Receita liquida",
+            sinal=ContaDRE.Sinal.RESULTADO,
+            ordem=2,
+        )
+        self.client.force_login(self.administrador)
+
+        response = self.client.post(
+            self.url,
+            {
+                f"conta_dre_{self.categoria_filha.pk}": resultado.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.categoria_filha.refresh_from_db()
+        self.assertIsNone(self.categoria_filha.conta_dre)
 
     def test_rejeita_conta_dre_de_outra_empresa(self):
         outra_empresa = Empresa.objects.create(

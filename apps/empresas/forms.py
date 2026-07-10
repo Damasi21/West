@@ -103,6 +103,7 @@ class ContaDREForm(forms.ModelForm):
     TIPO_CHOICES = (
         ("pai", "Conta pai / grupo"),
         ("filho", "Conta filho"),
+        ("resultado", "Conta de resultado"),
     )
 
     tipo = forms.ChoiceField(
@@ -135,12 +136,18 @@ class ContaDREForm(forms.ModelForm):
     def __init__(self, *args, empresa, **kwargs):
         super().__init__(*args, **kwargs)
         self.empresa = empresa
-        pais = ContaDRE.objects.filter(empresa=empresa, conta_pai__isnull=True)
+        pais = ContaDRE.objects.filter(
+            empresa=empresa,
+            conta_pai__isnull=True,
+        ).exclude(sinal=ContaDRE.Sinal.RESULTADO)
         if self.instance.pk:
             pais = pais.exclude(pk=self.instance.pk)
-            self.initial.setdefault(
-                "tipo", "filho" if self.instance.conta_pai_id else "pai"
-            )
+            tipo_inicial = "pai"
+            if self.instance.conta_pai_id:
+                tipo_inicial = "filho"
+            elif self.instance.eh_resultado:
+                tipo_inicial = "resultado"
+            self.initial.setdefault("tipo", tipo_inicial)
         self.fields["conta_pai"].queryset = pais
 
     def clean(self):
@@ -149,16 +156,28 @@ class ContaDREForm(forms.ModelForm):
         conta_pai = cleaned_data.get("conta_pai")
         if tipo == "filho" and not conta_pai:
             self.add_error("conta_pai", "Selecione a conta pai.")
-        if tipo == "pai":
+        if tipo == "filho" and conta_pai and conta_pai.eh_resultado:
+            self.add_error(
+                "conta_pai",
+                "Contas de resultado nao podem receber contas filhas.",
+            )
+        if tipo in {"pai", "resultado"}:
             cleaned_data["conta_pai"] = None
         if (
             self.instance.pk
-            and tipo == "filho"
+            and tipo in {"filho", "resultado"}
             and self.instance.contas_filhas.exists()
         ):
             self.add_error(
                 "tipo",
-                "Um grupo com contas filhas não pode ser transformado em conta filha.",
+                "Um grupo com contas filhas nao pode ser transformado neste tipo.",
+            )
+        if tipo == "resultado":
+            cleaned_data["sinal"] = ContaDRE.Sinal.RESULTADO
+        elif cleaned_data.get("sinal") == ContaDRE.Sinal.RESULTADO:
+            self.add_error(
+                "sinal",
+                "Use o tipo Conta de resultado para linhas calculadas.",
             )
         return cleaned_data
 

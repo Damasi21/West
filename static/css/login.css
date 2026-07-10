@@ -23,6 +23,12 @@
     box-shadow: 0 0 0 70px rgba(255,255,255,.025), 0 0 0 140px rgba(255,255,255,.018);
 }
 .visual-content { position: relative; z-index: 1; max-width: 600px; }
+.visual-logo {
+    display: block;
+    width: min(320px, 68vw);
+    height: auto;
+    margin-bottom: 2.2rem;
+}
 .visual-content .eyebrow { color: #9bb7ff; }
 .visual-content h1 { font-size: clamp(2.5rem, 5vw, 4.6rem); line-height: 1.02; letter-spacing: -.06em; }
 .visual-content p { max-width: 500px; margin-top: 1.5rem; color: #c5d1ef; font-size: 1.1rem; }
@@ -95,6 +101,12 @@
 .login-page:not(.register-page) .login-visual {
     isolation: isolate;
     background: transparent;
+}
+@media (min-width: 901px) {
+    .login-page:not(.register-page) .visual-content,
+    .login-page:not(.register-page) .login-card {
+        transform: translateY(-72px);
+    }
 }
 .login-page:not(.register-page) .login-brand {
     position: relative;

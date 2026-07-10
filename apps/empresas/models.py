@@ -741,6 +741,10 @@ class ContaDRE(models.Model):
     def nivel(self):
         return 2 if self.conta_pai_id else 1
 
+    @property
+    def eh_resultado(self):
+        return self.sinal == self.Sinal.RESULTADO and self.conta_pai_id is None
+
     def __str__(self):
         return self.nome
 

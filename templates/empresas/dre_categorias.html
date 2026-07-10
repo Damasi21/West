@@ -24,7 +24,7 @@
             <div>
                 <span class="eyebrow">ESTRUTURA DO DRE</span>
                 <h2>Plano de contas gerencial</h2>
-                <p>Crie grupos e contas com até dois níveis. Arraste os itens para ordenar.</p>
+                <p>Crie grupos, contas analíticas e resultados em cascata. Arraste os itens para ordenar.</p>
             </div>
             <div class="dre-heading-actions">
                 <div class="spreadsheet-actions">
@@ -127,9 +127,9 @@
                         </span>
                         <div class="dre-account-name">
                             <strong>{{ conta.nome }}</strong>
-                            <small>Grupo principal</small>
+                            <small>{% if conta.eh_resultado %}Resultado em cascata{% else %}Grupo principal{% endif %}</small>
                         </div>
-                        <span class="dre-level">Nível 1</span>
+                        <span class="dre-level">{% if conta.eh_resultado %}Resultado{% else %}Nível 1{% endif %}</span>
                         <div class="dre-row-actions">
                             <a
                                 class="btn btn-sm btn-light"
@@ -149,6 +149,7 @@
                         </div>
                     </div>
 
+                    {% if not conta.eh_resultado %}
                     <div class="dre-children" data-sortable-list data-parent-id="{{ conta.id }}">
                         {% for filha in conta.contas_filhas.all %}
                             <div class="dre-tree-child" draggable="true" data-dre-item data-id="{{ filha.id }}">
@@ -185,6 +186,7 @@
                             </div>
                         {% endfor %}
                     </div>
+                    {% endif %}
                 </article>
             {% empty %}
                 <div class="dre-empty-state">
@@ -206,6 +208,7 @@
         if (!workspace) return;
 
         const typeSelect = document.querySelector("[data-dre-tipo]");
+        const signalSelect = document.querySelector("[name='sinal']");
         const parentField = document.querySelector("[data-parent-field]");
         const csrfToken = document.querySelector("[data-dre-form] [name=csrfmiddlewaretoken]").value;
         const status = document.querySelector("[data-reorder-status]");
@@ -234,8 +237,16 @@
 
         function toggleParentField() {
             const isChild = typeSelect.value === "filho";
+            const isResult = typeSelect.value === "resultado";
             parentField.classList.toggle("d-none", !isChild);
             parentField.querySelector("select").disabled = !isChild;
+            if (isResult) {
+                signalSelect.value = "=";
+            } else if (signalSelect.value === "=") {
+                signalSelect.value = "+";
+            }
+            signalSelect.style.pointerEvents = isResult ? "none" : "";
+            signalSelect.setAttribute("aria-disabled", isResult ? "true" : "false");
         }
         typeSelect.addEventListener("change", toggleParentField);
         toggleParentField();

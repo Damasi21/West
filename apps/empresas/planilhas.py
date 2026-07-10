@@ -63,8 +63,11 @@ def exportar_dre(empresa):
         .order_by("ordem", "nome")
     )
     for conta in contas_pai:
-        ws.append((conta.nome, "Pai", conta.sinal))
+        tipo_conta = "Resultado" if conta.eh_resultado else "Pai"
+        ws.append((conta.nome, tipo_conta, conta.sinal))
         linha += 1
+        if conta.eh_resultado:
+            continue
         for filha in conta.contas_filhas.all():
             ws.append((filha.nome, "Filho", filha.sinal))
             linha += 1
@@ -74,11 +77,11 @@ def exportar_dre(empresa):
     listas.append(("Tipo", "Operação"))
     listas.append(("Pai", "+"))
     listas.append(("Filho", "-"))
-    listas.append((None, "="))
+    listas.append(("Resultado", "="))
 
-    tipo = DataValidation(type="list", formula1="'Listas'!$A$2:$A$3")
+    tipo = DataValidation(type="list", formula1="'Listas'!$A$2:$A$4")
     operacao = DataValidation(type="list", formula1="'Listas'!$B$2:$B$4")
-    tipo.error = "Selecione Pai ou Filho."
+    tipo.error = "Selecione Pai, Filho ou Resultado."
     operacao.error = "Selecione +, - ou =."
     tipo.errorTitle = operacao.errorTitle = "Valor inválido"
     tipo.showErrorMessage = operacao.showErrorMessage = True
@@ -93,8 +96,11 @@ def exportar_dre(empresa):
     instrucoes["A1"].font = Font(bold=True, color="FFFFFF")
     instrucoes["A1"].fill = PatternFill("solid", fgColor=AZUL)
     instrucoes["A2"] = "Cada conta Filho pertence à última conta Pai informada acima dela."
-    instrucoes["A3"] = "Mantenha as linhas na ordem em que devem aparecer no DRE."
-    instrucoes["A4"] = "Não altere os nomes das colunas nem o nome da aba DRE."
+    instrucoes["A3"] = (
+        "Contas Resultado ficam no nivel principal, usam Operação = e não recebem filhos."
+    )
+    instrucoes["A4"] = "Mantenha as linhas na ordem em que devem aparecer no DRE."
+    instrucoes["A5"] = "Não altere os nomes das colunas nem o nome da aba DRE."
     instrucoes.column_dimensions["A"].width = 80
     return _finalizar(workbook)
 
@@ -123,18 +129,29 @@ def importar_dre(arquivo):
         sinal = str(sinal or "").strip()
         if not nome:
             raise PlanilhaInvalida(f"Informe o nome da conta na linha {numero}.")
-        if tipo not in {"pai", "filho"}:
+        if tipo not in {"pai", "filho", "resultado"}:
             raise PlanilhaInvalida(
-                f'A coluna Tipo da linha {numero} deve conter "Pai" ou "Filho".'
+                f'A coluna Tipo da linha {numero} deve conter "Pai", '
+                '"Filho" ou "Resultado".'
             )
         if sinal not in {"+", "-", "="}:
             raise PlanilhaInvalida(
                 f"A Operação da linha {numero} deve ser +, - ou =."
             )
-        if tipo == "pai":
+        if sinal == "=" and tipo in {"pai", "resultado"}:
+            tipo = "resultado"
+        if tipo == "resultado" and sinal != "=":
+            raise PlanilhaInvalida(
+                f"A conta Resultado da linha {numero} deve usar Operação =."
+            )
+        if tipo == "filho" and sinal == "=":
+            raise PlanilhaInvalida(
+                f"A conta Resultado da linha {numero} não pode ser do tipo Filho."
+            )
+        if tipo in {"pai", "resultado"}:
             ordem_pais += 1
             ordem_filhas = 0
-            pai_atual = len(contas)
+            pai_atual = None if tipo == "resultado" else len(contas)
             ordem = ordem_pais
         else:
             if pai_atual is None:
@@ -160,6 +177,7 @@ def importar_dre(arquivo):
 def _rotulos_contas(empresa):
     contas = list(
         ContaDRE.objects.filter(empresa=empresa)
+        .exclude(sinal=ContaDRE.Sinal.RESULTADO)
         .select_related("conta_pai")
         .order_by("conta_pai_id", "ordem", "nome")
     )

@@ -216,6 +216,7 @@ def categorias(request, empresa_slug):
     )
     contas_pai = list(
         ContaDRE.objects.filter(empresa=empresa, conta_pai__isnull=True)
+        .exclude(sinal=ContaDRE.Sinal.RESULTADO)
         .prefetch_related("contas_filhas")
         .order_by("ordem", "nome")
     )
@@ -223,7 +224,9 @@ def categorias(request, empresa_slug):
     if request.method == "POST":
         contas_validas = {
             str(conta.pk): conta
-            for conta in ContaDRE.objects.filter(empresa=empresa)
+            for conta in ContaDRE.objects.filter(empresa=empresa).exclude(
+                sinal=ContaDRE.Sinal.RESULTADO,
+            )
         }
         ids_solicitados = {
             valor
@@ -426,7 +429,7 @@ def reordenar_contas_dre(request, empresa_slug):
         pk=parent_id,
         empresa=empresa,
         conta_pai__isnull=True,
-    ).exists():
+    ).exclude(sinal=ContaDRE.Sinal.RESULTADO).exists():
         return JsonResponse({"erro": "Grupo pai inválido."}, status=400)
 
     contas = list(
