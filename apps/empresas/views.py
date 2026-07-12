@@ -147,6 +147,15 @@ def parametros(request, empresa_slug):
             ).count(),
             "total_projetos_omie": empresa.projetos_omie.count(),
             "total_departamentos_omie": empresa.departamentos_omie.count(),
+            "total_vendedores_omie": empresa.vendedores_omie.count(),
+            "total_produtos_omie": empresa.produtos_omie.count(),
+            "total_servicos_omie": empresa.servicos_omie.count(),
+            "total_ordens_servico_omie": empresa.ordens_servico_omie.count(),
+            "total_itens_ordem_servico_omie": (
+                empresa.itens_ordem_servico_omie.count()
+            ),
+            "total_contratos_omie": empresa.contratos_omie.count(),
+            "total_itens_contrato_omie": empresa.itens_contrato_omie.count(),
             "total_categorias_omie": empresa.categorias_omie.count(),
             "total_tipos_conta_corrente_omie": (
                 empresa.tipos_conta_corrente_omie.count()
@@ -157,6 +166,8 @@ def parametros(request, empresa_slug):
             "total_lancamentos_conta_corrente_omie": (
                 empresa.lancamentos_conta_corrente_omie.count()
             ),
+            "total_pedidos_omie": empresa.pedidos_omie.count(),
+            "total_itens_pedido_omie": empresa.itens_pedido_omie.count(),
         },
     )
 
@@ -542,6 +553,13 @@ def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
             ).count(),
             "projetos": empresa.projetos_omie.count(),
             "departamentos": empresa.departamentos_omie.count(),
+            "vendedores": empresa.vendedores_omie.count(),
+            "produtos": empresa.produtos_omie.count(),
+            "servicos": empresa.servicos_omie.count(),
+            "ordens_servico": empresa.ordens_servico_omie.count(),
+            "itens_ordem_servico": empresa.itens_ordem_servico_omie.count(),
+            "contratos": empresa.contratos_omie.count(),
+            "itens_contrato": empresa.itens_contrato_omie.count(),
             "categorias": empresa.categorias_omie.count(),
             "tipos_conta_corrente": empresa.tipos_conta_corrente_omie.count(),
             "contas_correntes": empresa.contas_correntes_omie.count(),
@@ -550,6 +568,8 @@ def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
             "lancamentos_conta_corrente": (
                 empresa.lancamentos_conta_corrente_omie.count()
             ),
+            "pedidos": empresa.pedidos_omie.count(),
+            "itens_pedido": empresa.itens_pedido_omie.count(),
         }
     return JsonResponse(dados)
 

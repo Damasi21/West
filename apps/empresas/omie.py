@@ -15,19 +15,30 @@ from .models import (
     CadastroOmie,
     CategoriaOmie,
     ContaCorrenteOmie,
+    ContratoItemOmie,
+    ContratoOmie,
     ContaPagarOmie,
     ContaReceberOmie,
     DepartamentoOmie,
     LancamentoContaCorrenteOmie,
+    OrdemServicoItemOmie,
+    OrdemServicoOmie,
+    PedidoItemOmie,
+    PedidoOmie,
+    ProdutoOmie,
     ProjetoOmie,
+    ServicoOmie,
     SincronizacaoOmie,
     TipoContaCorrenteOmie,
+    VendedorOmie,
 )
 
 
 CLIENTES_URL = "https://app.omie.com.br/api/v1/geral/clientes/"
 PROJETOS_URL = "https://app.omie.com.br/api/v1/geral/projetos/"
 DEPARTAMENTOS_URL = "https://app.omie.com.br/api/v1/geral/departamentos/"
+VENDEDORES_URL = "https://app.omie.com.br/api/v1/geral/vendedores/"
+PRODUTOS_URL = "https://app.omie.com.br/api/v1/geral/produtos/"
 CATEGORIAS_URL = "https://app.omie.com.br/api/v1/geral/categorias/"
 TIPOS_CONTA_CORRENTE_URL = "https://app.omie.com.br/api/v1/geral/tipocc/"
 CONTAS_CORRENTES_URL = "https://app.omie.com.br/api/v1/geral/contacorrente/"
@@ -36,6 +47,10 @@ CONTAS_RECEBER_URL = "https://app.omie.com.br/api/v1/financas/contareceber/"
 LANCAMENTOS_CONTA_CORRENTE_URL = (
     "https://app.omie.com.br/api/v1/financas/contacorrentelancamentos/"
 )
+PEDIDOS_URL = "https://app.omie.com.br/api/v1/produtos/pedido/"
+SERVICOS_URL = "https://app.omie.com.br/api/v1/servicos/servico/"
+ORDENS_SERVICO_URL = "https://app.omie.com.br/api/v1/servicos/os/"
+CONTRATOS_URL = "https://app.omie.com.br/api/v1/servicos/contrato/"
 SSL_CONTEXT = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="omie-sync")
 
@@ -201,6 +216,87 @@ def consultar_departamentos(integracao, pagina, registros_por_pagina=50):
         raise OmieAPIError(f"Não foi possível conectar à OMIE: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise OmieAPIError("A OMIE retornou uma resposta inválida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_vendedores(integracao, pagina, registros_por_pagina=100):
+    payload = {
+        "call": "ListarVendedores",
+        "param": [
+            {
+                "pagina": pagina,
+                "registros_por_pagina": registros_por_pagina,
+                "apenas_importado_api": "N",
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        VENDEDORES_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_produtos(integracao, pagina, registros_por_pagina=50):
+    payload = {
+        "call": "ListarProdutos",
+        "param": [
+            {
+                "pagina": pagina,
+                "registros_por_pagina": registros_por_pagina,
+                "apenas_importado_api": "N",
+                "filtrar_apenas_omiepdv": "N",
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        PRODUTOS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
 
     if "faultstring" in dados:
         raise OmieAPIError(dados["faultstring"])
@@ -465,6 +561,181 @@ def consultar_lancamentos_conta_corrente(
     return dados
 
 
+def consultar_pedidos(
+    integracao,
+    pagina,
+    registros_por_pagina=100,
+):
+    payload = {
+        "call": "ListarPedidos",
+        "param": [
+            {
+                "pagina": pagina,
+                "registros_por_pagina": registros_por_pagina,
+                "apenas_importado_api": "N",
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        PEDIDOS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_servicos(
+    integracao,
+    pagina,
+    registros_por_pagina=20,
+):
+    payload = {
+        "call": "ListarCadastroServico",
+        "param": [
+            {
+                "nPagina": pagina,
+                "nRegPorPagina": registros_por_pagina,
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        SERVICOS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_ordens_servico(
+    integracao,
+    pagina,
+    registros_por_pagina=50,
+):
+    payload = {
+        "call": "ListarOS",
+        "param": [
+            {
+                "pagina": pagina,
+                "registros_por_pagina": registros_por_pagina,
+                "apenas_importado_api": "N",
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        ORDENS_SERVICO_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_contratos(
+    integracao,
+    pagina,
+    registros_por_pagina=50,
+):
+    payload = {
+        "call": "ListarContratos",
+        "param": [
+            {
+                "pagina": pagina,
+                "registros_por_pagina": registros_por_pagina,
+                "apenas_importado_api": "N",
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        CONTRATOS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
 def _valores_cadastro(item):
     tags = item.get("tags") or []
     return {
@@ -553,6 +824,542 @@ def _salvar_departamentos(empresa, itens):
                 "dados_originais": item,
             },
         )
+        processados += 1
+    return processados
+
+
+def _salvar_vendedores(empresa, itens):
+    processados = 0
+    for item in itens:
+        codigo = _inteiro_ou_none(item.get("codigo"))
+        if codigo is None:
+            continue
+        VendedorOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo=codigo,
+            defaults={
+                "codigo_integracao": str(item.get("codInt") or ""),
+                "nome": str(item.get("nome") or ""),
+                "email": str(item.get("email") or ""),
+                "comissao": _decimal(item.get("comissao")),
+                "fatura_pedido": _sim_nao(item.get("fatura_pedido")),
+                "visualiza_pedido": _sim_nao(item.get("visualiza_pedido")),
+                "inativo": _sim_nao(item.get("inativo")),
+                "dados_originais": item,
+            },
+        )
+        processados += 1
+    return processados
+
+
+def _salvar_produtos(empresa, itens):
+    processados = 0
+    for item in itens:
+        codigo_produto = _inteiro_ou_none(item.get("codigo_produto"))
+        if codigo_produto is None:
+            continue
+        ProdutoOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_produto=codigo_produto,
+            defaults={
+                "codigo": str(item.get("codigo") or ""),
+                "codigo_produto_integracao": str(
+                    item.get("codigo_produto_integracao") or ""
+                ),
+                "descricao": str(item.get("descricao") or ""),
+                "descr_detalhada": str(item.get("descr_detalhada") or ""),
+                "unidade": str(item.get("unidade") or ""),
+                "ncm": str(item.get("ncm") or ""),
+                "ean": str(item.get("ean") or ""),
+                "marca": str(item.get("marca") or ""),
+                "modelo": str(item.get("modelo") or ""),
+                "tipo_item": str(item.get("tipoItem") or ""),
+                "valor_unitario": _decimal(item.get("valor_unitario")),
+                "quantidade_estoque": _decimal(item.get("quantidade_estoque")),
+                "estoque_minimo": _decimal(item.get("estoque_minimo")),
+                "peso_bruto": _decimal(item.get("peso_bruto")),
+                "peso_liq": _decimal(item.get("peso_liq")),
+                "altura": _decimal(item.get("altura")),
+                "largura": _decimal(item.get("largura")),
+                "profundidade": _decimal(item.get("profundidade")),
+                "codigo_familia": _inteiro_ou_none(item.get("codigo_familia")),
+                "codigo_integracao_familia": str(
+                    item.get("codInt_familia") or ""
+                ),
+                "descricao_familia": str(item.get("descricao_familia") or ""),
+                "bloqueado": _sim_nao(item.get("bloqueado")),
+                "inativo": _sim_nao(item.get("inativo")),
+                "importado_api": _sim_nao(item.get("importado_api")),
+                "produto_lote": _sim_nao(item.get("produto_lote")),
+                "produto_variacao": _sim_nao(item.get("produto_variacao")),
+                "bloquear_exclusao": _sim_nao(item.get("bloquear_exclusao")),
+                "info": item.get("info") or {},
+                "recomendacoes_fiscais": item.get("recomendacoes_fiscais") or {},
+                "dados_originais": item,
+            },
+        )
+        processados += 1
+    return processados
+
+
+def _salvar_servicos(empresa, itens):
+    codigos_categorias = {
+        str((item.get("cabecalho") or {}).get("cCodCateg") or "").strip()
+        for item in itens
+        if str((item.get("cabecalho") or {}).get("cCodCateg") or "").strip()
+    }
+    categorias = {
+        categoria.codigo: categoria
+        for categoria in CategoriaOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_categorias,
+        )
+    }
+
+    processados = 0
+    for item in itens:
+        cabecalho = item.get("cabecalho") or {}
+        descricao = item.get("descricao") or {}
+        impostos = item.get("impostos") or {}
+        info = item.get("info") or {}
+        int_listar = item.get("intListar") or {}
+        codigo_servico = _inteiro_ou_none(int_listar.get("nCodServ"))
+        if codigo_servico is None:
+            continue
+
+        codigo_categoria = str(cabecalho.get("cCodCateg") or "").strip()
+        ServicoOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_servico=codigo_servico,
+            defaults={
+                "codigo_integracao_servico": str(
+                    int_listar.get("cCodIntServ") or ""
+                ),
+                "codigo": str(cabecalho.get("cCodigo") or ""),
+                "descricao": str(cabecalho.get("cDescricao") or ""),
+                "descricao_completa": str(descricao.get("cDescrCompleta") or ""),
+                "codigo_categoria": codigo_categoria,
+                "categoria_principal": categorias.get(codigo_categoria),
+                "codigo_lc116": str(cabecalho.get("cCodLC116") or ""),
+                "codigo_servico_municipal": str(
+                    cabecalho.get("cCodServMun") or ""
+                ),
+                "id_tributacao": str(cabecalho.get("cIdTrib") or ""),
+                "tipo_desconto": str(cabecalho.get("cTipoDesc") or ""),
+                "preco_unitario": _decimal(cabecalho.get("nPrecoUnit")),
+                "aliquota_desconto": _decimal(cabecalho.get("nAliqDesc")),
+                "valor_desconto": _decimal(cabecalho.get("nValorDesc")),
+                "aliquota_iss": _decimal(impostos.get("nAliqISS")),
+                "ret_cofins": _sim_nao(impostos.get("cRetCOFINS")),
+                "ret_csll": _sim_nao(impostos.get("cRetCSLL")),
+                "ret_inss": _sim_nao(impostos.get("cRetINSS")),
+                "ret_ir": _sim_nao(impostos.get("cRetIR")),
+                "ret_iss": _sim_nao(impostos.get("cRetISS")),
+                "ret_pis": _sim_nao(impostos.get("cRetPIS")),
+                "deduz_iss": bool(impostos.get("lDeduzISS")),
+                "importado_api": _sim_nao(info.get("cImpAPI")),
+                "inativo": _sim_nao(info.get("inativo")),
+                "cabecalho": cabecalho,
+                "descricao_dados": descricao,
+                "impostos": impostos,
+                "info": info,
+                "int_listar": int_listar,
+                "dados_originais": item,
+            },
+        )
+        processados += 1
+    return processados
+
+
+def _salvar_ordens_servico(empresa, itens):
+    codigos_clientes = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("Cabecalho") or {}).get("nCodCli"))]
+        if codigo is not None
+    }
+    codigos_contas = {
+        codigo
+        for item in itens
+        for codigo in [
+            _inteiro_ou_none((item.get("InformacoesAdicionais") or {}).get("nCodCC"))
+        ]
+        if codigo is not None
+    }
+    codigos_categorias = {
+        str((item.get("InformacoesAdicionais") or {}).get("cCodCateg") or "").strip()
+        for item in itens
+        if str((item.get("InformacoesAdicionais") or {}).get("cCodCateg") or "").strip()
+    }
+    codigos_servicos = {
+        codigo
+        for item in itens
+        for servico in item.get("ServicosPrestados") or []
+        for codigo in [_inteiro_ou_none(servico.get("nCodServico"))]
+        if codigo not in (None, 0)
+    }
+    codigos_categorias.update(
+        str(servico.get("cCodCategItem") or "").strip()
+        for item in itens
+        for servico in item.get("ServicosPrestados") or []
+        if str(servico.get("cCodCategItem") or "").strip()
+    )
+
+    clientes = {
+        cadastro.codigo_cliente_omie: cadastro
+        for cadastro in CadastroOmie.objects.filter(
+            empresa=empresa,
+            codigo_cliente_omie__in=codigos_clientes,
+        )
+    }
+    contas_correntes = {
+        conta.codigo_omie: conta
+        for conta in ContaCorrenteOmie.objects.filter(
+            empresa=empresa,
+            codigo_omie__in=codigos_contas,
+        )
+    }
+    categorias = {
+        categoria.codigo: categoria
+        for categoria in CategoriaOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_categorias,
+        )
+    }
+    servicos = {
+        servico.codigo_servico: servico
+        for servico in ServicoOmie.objects.filter(
+            empresa=empresa,
+            codigo_servico__in=codigos_servicos,
+        )
+    }
+
+    processados = 0
+    for item in itens:
+        cabecalho = item.get("Cabecalho") or {}
+        codigo_os = _inteiro_ou_none(cabecalho.get("nCodOS"))
+        if codigo_os is None:
+            continue
+
+        info = item.get("InfoCadastro") or {}
+        informacoes = item.get("InformacoesAdicionais") or {}
+        codigo_cliente = _inteiro_ou_none(cabecalho.get("nCodCli"))
+        codigo_conta = _inteiro_ou_none(informacoes.get("nCodCC"))
+        codigo_categoria = str(informacoes.get("cCodCateg") or "").strip()
+        ordem_servico, _criado = OrdemServicoOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_os=codigo_os,
+            defaults={
+                "codigo_integracao_os": str(cabecalho.get("cCodIntOS") or ""),
+                "numero_os": str(cabecalho.get("cNumOS") or ""),
+                "etapa": str(cabecalho.get("cEtapa") or ""),
+                "codigo_parcela": str(cabecalho.get("cCodParc") or ""),
+                "codigo_cliente": codigo_cliente,
+                "cliente": clientes.get(codigo_cliente),
+                "data_previsao": _data_omie(cabecalho.get("dDtPrevisao")),
+                "quantidade_parcelas": int(cabecalho.get("nQtdeParc") or 0),
+                "valor_total": _decimal(cabecalho.get("nValorTotal")),
+                "valor_total_impostos_retidos": _decimal(
+                    cabecalho.get("nValorTotalImpRet")
+                ),
+                "codigo_categoria": codigo_categoria,
+                "categoria_principal": categorias.get(codigo_categoria),
+                "codigo_conta_corrente": codigo_conta,
+                "conta_corrente": contas_correntes.get(codigo_conta),
+                "cidade_prestacao": str(informacoes.get("cCidPrestServ") or ""),
+                "numero_contrato": str(informacoes.get("cNumContrato") or ""),
+                "numero_recibo": str(informacoes.get("cNumRecibo") or ""),
+                "uso_consumo": _sim_nao(informacoes.get("cUsoConsumo")),
+                "cancelada": _sim_nao(info.get("cCancelada")),
+                "faturada": _sim_nao(info.get("cFaturada")),
+                "origem": str(info.get("cOrigem") or ""),
+                "data_inclusao": _data_omie(info.get("dDtInc")),
+                "data_alteracao": _data_omie(info.get("dDtAlt")),
+                "data_faturamento": _data_omie(info.get("dDtFat")),
+                "cabecalho": cabecalho,
+                "departamentos": item.get("Departamentos") or [],
+                "email": item.get("Email") or {},
+                "info_cadastro": info,
+                "informacoes_adicionais": informacoes,
+                "observacoes": item.get("Observacoes") or {},
+                "parcelas": item.get("Parcelas") or [],
+                "servicos_prestados": item.get("ServicosPrestados") or [],
+                "dados_originais": item,
+            },
+        )
+
+        itens_ativos = set()
+        for servico_item in item.get("ServicosPrestados") or []:
+            codigo_item = _inteiro_ou_none(servico_item.get("nIdItem"))
+            if codigo_item is None:
+                continue
+
+            codigo_servico = _inteiro_ou_none(servico_item.get("nCodServico"))
+            if codigo_servico == 0:
+                codigo_servico = None
+            codigo_categoria_item = str(
+                servico_item.get("cCodCategItem") or ""
+            ).strip()
+            impostos = servico_item.get("impostos") or {}
+            OrdemServicoItemOmie.objects.update_or_create(
+                empresa=empresa,
+                codigo_item=codigo_item,
+                defaults={
+                    "ordem_servico": ordem_servico,
+                    "sequencia": int(servico_item.get("nSeqItem") or 0),
+                    "codigo_servico": codigo_servico,
+                    "servico": servicos.get(codigo_servico),
+                    "descricao": str(servico_item.get("cDescServ") or ""),
+                    "codigo_categoria": codigo_categoria_item,
+                    "categoria_principal": categorias.get(codigo_categoria_item),
+                    "codigo_lc116": str(servico_item.get("cCodServLC116") or ""),
+                    "codigo_servico_municipal": str(
+                        servico_item.get("cCodServMun") or ""
+                    ),
+                    "tributacao_servico": str(servico_item.get("cTribServ") or ""),
+                    "quantidade": _decimal(servico_item.get("nQtde")),
+                    "valor_unitario": _decimal(servico_item.get("nValUnit")),
+                    "aliquota_desconto": _decimal(
+                        servico_item.get("nAliqDesconto")
+                    ),
+                    "valor_desconto": _decimal(
+                        servico_item.get("nValorDesconto")
+                    ),
+                    "valor_acrescimos": _decimal(
+                        servico_item.get("nValorAcrescimos")
+                    ),
+                    "valor_outras_retencoes": _decimal(
+                        servico_item.get("nValorOutrasRetencoes")
+                    ),
+                    "aliquota_iss": _decimal(impostos.get("nAliqISS")),
+                    "valor_iss": _decimal(impostos.get("nValorISS")),
+                    "base_iss": _decimal(impostos.get("nBaseISS")),
+                    "nao_gerar_financeiro": _sim_nao(
+                        servico_item.get("cNaoGerarFinanceiro")
+                    ),
+                    "reembolso": _sim_nao(servico_item.get("cReembolso")),
+                    "retem_iss": _sim_nao(servico_item.get("cRetemISS")),
+                    "deduz_iss": bool(impostos.get("lDeduzISS")),
+                    "impostos": impostos,
+                    "dados_originais": servico_item,
+                },
+            )
+            itens_ativos.add(codigo_item)
+
+        OrdemServicoItemOmie.objects.filter(
+            empresa=empresa,
+            ordem_servico=ordem_servico,
+        ).exclude(codigo_item__in=itens_ativos).delete()
+        processados += 1
+    return processados
+
+
+def _salvar_contratos(empresa, itens):
+    codigos_clientes = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("cabecalho") or {}).get("nCodCli"))]
+        if codigo is not None
+    }
+    codigos_contas = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("infAdic") or {}).get("nCodCC"))]
+        if codigo is not None
+    }
+    codigos_projetos = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("infAdic") or {}).get("nCodProj"))]
+        if codigo not in (None, 0)
+    }
+    codigos_categorias = {
+        str((item.get("infAdic") or {}).get("cCodCateg") or "").strip()
+        for item in itens
+        if str((item.get("infAdic") or {}).get("cCodCateg") or "").strip()
+    }
+    codigos_categorias.update(
+        str((item.get("despesasReembolsaveis") or {}).get("cCodCategReemb") or "").strip()
+        for item in itens
+        if str((item.get("despesasReembolsaveis") or {}).get("cCodCategReemb") or "").strip()
+    )
+    codigos_servicos = {
+        codigo
+        for item in itens
+        for detalhe in item.get("itensContrato") or []
+        for codigo in [
+            _inteiro_ou_none((detalhe.get("itemCabecalho") or {}).get("codServico"))
+        ]
+        if codigo not in (None, 0)
+    }
+    codigos_categorias.update(
+        str((detalhe.get("itemCabecalho") or {}).get("cCodCategItem") or "").strip()
+        for item in itens
+        for detalhe in item.get("itensContrato") or []
+        if str((detalhe.get("itemCabecalho") or {}).get("cCodCategItem") or "").strip()
+    )
+
+    clientes = {
+        cadastro.codigo_cliente_omie: cadastro
+        for cadastro in CadastroOmie.objects.filter(
+            empresa=empresa,
+            codigo_cliente_omie__in=codigos_clientes,
+        )
+    }
+    contas_correntes = {
+        conta.codigo_omie: conta
+        for conta in ContaCorrenteOmie.objects.filter(
+            empresa=empresa,
+            codigo_omie__in=codigos_contas,
+        )
+    }
+    projetos = {
+        projeto.codigo: projeto
+        for projeto in ProjetoOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_projetos,
+        )
+    }
+    categorias = {
+        categoria.codigo: categoria
+        for categoria in CategoriaOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_categorias,
+        )
+    }
+    servicos = {
+        servico.codigo_servico: servico
+        for servico in ServicoOmie.objects.filter(
+            empresa=empresa,
+            codigo_servico__in=codigos_servicos,
+        )
+    }
+
+    processados = 0
+    for item in itens:
+        cabecalho = item.get("cabecalho") or {}
+        codigo_contrato = _inteiro_ou_none(cabecalho.get("nCodCtr"))
+        if codigo_contrato is None:
+            continue
+
+        informacoes = item.get("infAdic") or {}
+        despesas = item.get("despesasReembolsaveis") or {}
+        codigo_cliente = _inteiro_ou_none(cabecalho.get("nCodCli"))
+        codigo_conta = _inteiro_ou_none(informacoes.get("nCodCC"))
+        codigo_projeto = _inteiro_ou_none(informacoes.get("nCodProj"))
+        if codigo_projeto == 0:
+            codigo_projeto = None
+        codigo_categoria = str(informacoes.get("cCodCateg") or "").strip()
+        codigo_categoria_reembolso = str(
+            despesas.get("cCodCategReemb") or ""
+        ).strip()
+
+        contrato, _criado = ContratoOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_contrato=codigo_contrato,
+            defaults={
+                "codigo_integracao_contrato": str(cabecalho.get("cCodIntCtr") or ""),
+                "numero_contrato": str(cabecalho.get("cNumCtr") or ""),
+                "codigo_situacao": str(cabecalho.get("cCodSit") or ""),
+                "tipo_faturamento": str(cabecalho.get("cTipoFat") or ""),
+                "codigo_cliente": codigo_cliente,
+                "cliente": clientes.get(codigo_cliente),
+                "vigencia_inicial": _data_omie(cabecalho.get("dVigInicial")),
+                "vigencia_final": _data_omie(cabecalho.get("dVigFinal")),
+                "dia_faturamento": int(cabecalho.get("nDiaFat") or 0),
+                "valor_total_mes": _decimal(cabecalho.get("nValTotMes")),
+                "codigo_categoria": codigo_categoria,
+                "categoria_principal": categorias.get(codigo_categoria),
+                "codigo_categoria_reembolso": codigo_categoria_reembolso,
+                "categoria_reembolso": categorias.get(codigo_categoria_reembolso),
+                "codigo_conta_corrente": codigo_conta,
+                "conta_corrente": contas_correntes.get(codigo_conta),
+                "codigo_projeto": codigo_projeto,
+                "projeto": projetos.get(codigo_projeto),
+                "codigo_vendedor": _inteiro_ou_none(informacoes.get("nCodVend")),
+                "cidade_prestacao": str(informacoes.get("cCidPrestServ") or ""),
+                "uso_consumo": _sim_nao(informacoes.get("cUsoConsumo")),
+                "cabecalho": cabecalho,
+                "departamentos": item.get("departamentos") or [],
+                "despesas_reembolsaveis": despesas,
+                "email_cliente": item.get("emailCliente") or {},
+                "informacoes_adicionais": informacoes,
+                "observacoes": item.get("observacoes") or {},
+                "venc_textos": item.get("vencTextos") or {},
+                "dados_originais": item,
+            },
+        )
+
+        itens_ativos = set()
+        for detalhe in item.get("itensContrato") or []:
+            item_cabecalho = detalhe.get("itemCabecalho") or {}
+            codigo_item = _inteiro_ou_none(item_cabecalho.get("codItem"))
+            if codigo_item is None:
+                continue
+
+            codigo_servico = _inteiro_ou_none(item_cabecalho.get("codServico"))
+            if codigo_servico == 0:
+                codigo_servico = None
+            codigo_categoria_item = str(
+                item_cabecalho.get("cCodCategItem") or ""
+            ).strip()
+            item_descricao = detalhe.get("itemDescrServ") or {}
+            item_impostos = detalhe.get("itemImpostos") or {}
+            ContratoItemOmie.objects.update_or_create(
+                empresa=empresa,
+                codigo_item=codigo_item,
+                defaults={
+                    "contrato": contrato,
+                    "sequencia": int(item_cabecalho.get("seq") or 0),
+                    "codigo_servico": codigo_servico,
+                    "servico": servicos.get(codigo_servico),
+                    "descricao": str(item_descricao.get("descrCompleta") or ""),
+                    "codigo_categoria": codigo_categoria_item,
+                    "categoria_principal": categorias.get(codigo_categoria_item),
+                    "codigo_lc116": str(item_cabecalho.get("codLC116") or ""),
+                    "codigo_servico_municipal": str(
+                        item_cabecalho.get("codServMunic") or ""
+                    ),
+                    "codigo_nbs": str(item_cabecalho.get("codNBS") or ""),
+                    "natureza_operacao": str(
+                        item_cabecalho.get("natOperacao") or ""
+                    ),
+                    "nao_gerar_financeiro": _sim_nao(
+                        item_cabecalho.get("cNaoGerarFinanceiro")
+                    ),
+                    "quantidade": _decimal(item_cabecalho.get("quant")),
+                    "valor_unitario": _decimal(item_cabecalho.get("valorUnit")),
+                    "valor_total": _decimal(item_cabecalho.get("valorTotal")),
+                    "valor_acrescimo": _decimal(
+                        item_cabecalho.get("valorAcrescimo")
+                    ),
+                    "valor_deducao": _decimal(item_cabecalho.get("valorDed")),
+                    "valor_desconto": _decimal(
+                        item_cabecalho.get("valorDesconto")
+                    ),
+                    "valor_outras_retencoes": _decimal(
+                        item_cabecalho.get("valorOutrasRetencoes")
+                    ),
+                    "aliquota_desconto": _decimal(
+                        item_cabecalho.get("aliqDesconto")
+                    ),
+                    "aliquota_iss": _decimal(item_impostos.get("aliqISS")),
+                    "valor_iss": _decimal(item_impostos.get("valorISS")),
+                    "ret_iss": _sim_nao(item_impostos.get("retISS")),
+                    "deduz_iss": bool(item_impostos.get("lDeduzISS")),
+                    "item_cabecalho": item_cabecalho,
+                    "item_descricao_servico": item_descricao,
+                    "item_impostos": item_impostos,
+                    "item_lei_transparencia": detalhe.get("itemLeiTranspImp") or {},
+                    "dados_originais": detalhe,
+                },
+            )
+            itens_ativos.add(codigo_item)
+
+        ContratoItemOmie.objects.filter(
+            empresa=empresa,
+            contrato=contrato,
+        ).exclude(codigo_item__in=itens_ativos).delete()
         processados += 1
     return processados
 
@@ -1075,6 +1882,235 @@ def _salvar_lancamentos_conta_corrente(empresa, itens):
     return processados
 
 
+def _salvar_pedidos(empresa, itens):
+    codigos_clientes = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("cabecalho") or {}).get("codigo_cliente"))]
+        if codigo is not None
+    }
+    codigos_contas = {
+        codigo
+        for item in itens
+        for codigo in [
+            _inteiro_ou_none(
+                (item.get("informacoes_adicionais") or {}).get(
+                    "codigo_conta_corrente"
+                )
+            )
+        ]
+        if codigo is not None
+    }
+    codigos_projetos = {
+        codigo
+        for item in itens
+        for codigo in [
+            _inteiro_ou_none((item.get("informacoes_adicionais") or {}).get("codProj"))
+        ]
+        if codigo not in (None, 0)
+    }
+    codigos_categorias = {
+        str((item.get("informacoes_adicionais") or {}).get("codigo_categoria") or "").strip()
+        for item in itens
+        if str((item.get("informacoes_adicionais") or {}).get("codigo_categoria") or "").strip()
+    }
+    codigos_produtos = {
+        codigo
+        for item in itens
+        for detalhe in item.get("det") or []
+        for codigo in [_inteiro_ou_none((detalhe.get("produto") or {}).get("codigo_produto"))]
+        if codigo is not None
+    }
+    codigos_categorias.update(
+        str((detalhe.get("inf_adic") or {}).get("codigo_categoria_item") or "").strip()
+        for item in itens
+        for detalhe in item.get("det") or []
+        if str((detalhe.get("inf_adic") or {}).get("codigo_categoria_item") or "").strip()
+    )
+
+    clientes = {
+        cadastro.codigo_cliente_omie: cadastro
+        for cadastro in CadastroOmie.objects.filter(
+            empresa=empresa,
+            codigo_cliente_omie__in=codigos_clientes,
+        )
+    }
+    contas_correntes = {
+        conta.codigo_omie: conta
+        for conta in ContaCorrenteOmie.objects.filter(
+            empresa=empresa,
+            codigo_omie__in=codigos_contas,
+        )
+    }
+    projetos = {
+        projeto.codigo: projeto
+        for projeto in ProjetoOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_projetos,
+        )
+    }
+    categorias = {
+        categoria.codigo: categoria
+        for categoria in CategoriaOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_categorias,
+        )
+    }
+    produtos = {
+        produto.codigo_produto: produto
+        for produto in ProdutoOmie.objects.filter(
+            empresa=empresa,
+            codigo_produto__in=codigos_produtos,
+        )
+    }
+
+    processados = 0
+    for item in itens:
+        cabecalho = item.get("cabecalho") or {}
+        codigo_pedido = _inteiro_ou_none(cabecalho.get("codigo_pedido"))
+        if codigo_pedido is None:
+            continue
+
+        info = item.get("infoCadastro") or {}
+        informacoes = item.get("informacoes_adicionais") or {}
+        total = item.get("total_pedido") or {}
+        frete = item.get("frete") or {}
+        codigo_cliente = _inteiro_ou_none(cabecalho.get("codigo_cliente"))
+        codigo_conta = _inteiro_ou_none(informacoes.get("codigo_conta_corrente"))
+        codigo_projeto = _inteiro_ou_none(informacoes.get("codProj"))
+        if codigo_projeto == 0:
+            codigo_projeto = None
+        codigo_categoria = str(informacoes.get("codigo_categoria") or "").strip()
+
+        pedido, _criado = PedidoOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_pedido=codigo_pedido,
+            defaults={
+                "codigo_pedido_integracao": str(
+                    cabecalho.get("codigo_pedido_integracao") or ""
+                ),
+                "numero_pedido": str(cabecalho.get("numero_pedido") or ""),
+                "codigo_cliente": codigo_cliente,
+                "cliente": clientes.get(codigo_cliente),
+                "codigo_empresa_omie": _inteiro_ou_none(
+                    cabecalho.get("codigo_empresa")
+                ),
+                "codigo_parcela": str(cabecalho.get("codigo_parcela") or ""),
+                "codigo_cenario_impostos": str(
+                    cabecalho.get("codigo_cenario_impostos") or ""
+                ),
+                "etapa": str(cabecalho.get("etapa") or ""),
+                "origem_pedido": str(cabecalho.get("origem_pedido") or ""),
+                "data_previsao": _data_omie(cabecalho.get("data_previsao")),
+                "encerrado": _sim_nao(cabecalho.get("encerrado")),
+                "bloqueado": _sim_nao(cabecalho.get("bloqueado")),
+                "importado_api": _sim_nao(
+                    cabecalho.get("importado_api") or info.get("cImpAPI")
+                ),
+                "quantidade_itens": int(cabecalho.get("quantidade_itens") or 0),
+                "quantidade_parcelas": int(cabecalho.get("qtde_parcelas") or 0),
+                "codigo_categoria": codigo_categoria,
+                "categoria_principal": categorias.get(codigo_categoria),
+                "codigo_conta_corrente": codigo_conta,
+                "conta_corrente": contas_correntes.get(codigo_conta),
+                "codigo_projeto": codigo_projeto,
+                "projeto": projetos.get(codigo_projeto),
+                "codigo_vendedor": _inteiro_ou_none(informacoes.get("codVend")),
+                "consumidor_final": _sim_nao(informacoes.get("consumidor_final")),
+                "autorizado": _sim_nao(info.get("autorizado")),
+                "cancelado": _sim_nao(info.get("cancelado")),
+                "denegado": _sim_nao(info.get("denegado")),
+                "devolvido": _sim_nao(info.get("devolvido")),
+                "devolvido_parcial": _sim_nao(info.get("devolvido_parcial")),
+                "faturado": _sim_nao(info.get("faturado")),
+                "data_inclusao": _data_omie(info.get("dInc")),
+                "data_alteracao": _data_omie(info.get("dAlt")),
+                "data_faturamento": _data_omie(info.get("dFat")),
+                "valor_mercadorias": _decimal(total.get("valor_mercadorias")),
+                "valor_total_pedido": _decimal(total.get("valor_total_pedido")),
+                "valor_descontos": _decimal(total.get("valor_descontos")),
+                "valor_frete": _decimal(frete.get("valor_frete")),
+                "valor_seguro": _decimal(frete.get("valor_seguro")),
+                "cabecalho": cabecalho,
+                "departamentos": item.get("departamentos") or [],
+                "exportacao": item.get("exportacao") or {},
+                "frete": frete,
+                "info_cadastro": info,
+                "informacoes_adicionais": informacoes,
+                "lista_parcelas": item.get("lista_parcelas") or {},
+                "observacoes": item.get("observacoes") or {},
+                "total_pedido": total,
+                "dados_originais": item,
+            },
+        )
+
+        itens_ativos = set()
+        for detalhe in item.get("det") or []:
+            ide = detalhe.get("ide") or {}
+            produto_dados = detalhe.get("produto") or {}
+            inf_adic = detalhe.get("inf_adic") or {}
+            codigo_item = _inteiro_ou_none(ide.get("codigo_item"))
+            if codigo_item is None:
+                continue
+
+            codigo_produto = _inteiro_ou_none(produto_dados.get("codigo_produto"))
+            codigo_categoria_item = str(
+                inf_adic.get("codigo_categoria_item") or ""
+            ).strip()
+            PedidoItemOmie.objects.update_or_create(
+                empresa=empresa,
+                codigo_item=codigo_item,
+                defaults={
+                    "pedido": pedido,
+                    "codigo_item_integracao": str(
+                        ide.get("codigo_item_integracao") or ""
+                    ),
+                    "codigo_produto": codigo_produto,
+                    "produto": produtos.get(codigo_produto),
+                    "codigo_produto_texto": str(produto_dados.get("codigo") or ""),
+                    "descricao": str(produto_dados.get("descricao") or ""),
+                    "unidade": str(produto_dados.get("unidade") or ""),
+                    "ncm": str(produto_dados.get("ncm") or ""),
+                    "cfop": str(produto_dados.get("cfop") or ""),
+                    "codigo_categoria": codigo_categoria_item,
+                    "categoria_principal": categorias.get(codigo_categoria_item),
+                    "codigo_local_estoque": _inteiro_ou_none(
+                        inf_adic.get("codigo_local_estoque")
+                    ),
+                    "quantidade": _decimal(produto_dados.get("quantidade")),
+                    "valor_unitario": _decimal(produto_dados.get("valor_unitario")),
+                    "valor_total": _decimal(produto_dados.get("valor_total")),
+                    "valor_mercadoria": _decimal(
+                        produto_dados.get("valor_mercadoria")
+                    ),
+                    "valor_desconto": _decimal(produto_dados.get("valor_desconto")),
+                    "percentual_desconto": _decimal(
+                        produto_dados.get("percentual_desconto")
+                    ),
+                    "nao_gerar_financeiro": _sim_nao(
+                        inf_adic.get("nao_gerar_financeiro")
+                    ),
+                    "nao_movimentar_estoque": _sim_nao(
+                        inf_adic.get("nao_movimentar_estoque")
+                    ),
+                    "nao_somar_total": _sim_nao(inf_adic.get("nao_somar_total")),
+                    "reservado": _sim_nao(produto_dados.get("reservado")),
+                    "ide": ide,
+                    "produto_dados": produto_dados,
+                    "imposto": detalhe.get("imposto") or {},
+                    "inf_adic": inf_adic,
+                    "dados_originais": detalhe,
+                },
+            )
+            itens_ativos.add(codigo_item)
+
+        PedidoItemOmie.objects.filter(empresa=empresa, pedido=pedido).exclude(
+            codigo_item__in=itens_ativos
+        ).delete()
+        processados += 1
+    return processados
+
+
 def executar_sincronizacao_omie(sincronizacao_id):
     close_old_connections()
     sincronizacao = SincronizacaoOmie.objects.select_related(
@@ -1109,10 +2145,30 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "salvar": _salvar_departamentos,
             },
             {
+                "nome": "Vendedores",
+                "consultar": consultar_vendedores,
+                "chave": "cadastro",
+                "salvar": _salvar_vendedores,
+            },
+            {
+                "nome": "Produtos",
+                "consultar": consultar_produtos,
+                "chave": "produto_servico_cadastro",
+                "salvar": _salvar_produtos,
+            },
+            {
                 "nome": "Categorias",
                 "consultar": consultar_categorias,
                 "chave": "categoria_cadastro",
                 "salvar": _salvar_categorias,
+            },
+            {
+                "nome": "Servicos",
+                "consultar": consultar_servicos,
+                "chave": "cadastros",
+                "chave_total_paginas": "nTotPaginas",
+                "chave_total_registros": "nTotRegistros",
+                "salvar": _salvar_servicos,
             },
             {
                 "nome": "Tipos de conta corrente",
@@ -1125,6 +2181,18 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "consultar": consultar_contas_correntes,
                 "chave": "ListarContasCorrentes",
                 "salvar": _salvar_contas_correntes,
+            },
+            {
+                "nome": "Contratos",
+                "consultar": consultar_contratos,
+                "chave": "contratoCadastro",
+                "salvar": _salvar_contratos,
+            },
+            {
+                "nome": "Ordens de servico",
+                "consultar": consultar_ordens_servico,
+                "chave": "osCadastro",
+                "salvar": _salvar_ordens_servico,
             },
             {
                 "nome": "Contas a pagar",
@@ -1145,6 +2213,12 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_paginas": "nTotPaginas",
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_lancamentos_conta_corrente,
+            },
+            {
+                "nome": "Pedidos",
+                "consultar": consultar_pedidos,
+                "chave": "pedido_venda_produto",
+                "salvar": _salvar_pedidos,
             },
         ]
 

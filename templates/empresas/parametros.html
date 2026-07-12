@@ -150,11 +150,20 @@
                     <div><span>Fornecedores</span><strong data-total-fornecedores>{{ total_fornecedores_omie }}</strong></div>
                     <div><span>Projetos</span><strong data-total-projetos>{{ total_projetos_omie }}</strong></div>
                     <div><span>Departamentos</span><strong data-total-departamentos>{{ total_departamentos_omie }}</strong></div>
+                    <div><span>Vendedores</span><strong data-total-vendedores>{{ total_vendedores_omie }}</strong></div>
+                    <div><span>Produtos</span><strong data-total-produtos>{{ total_produtos_omie }}</strong></div>
+                    <div><span>Servicos</span><strong data-total-servicos>{{ total_servicos_omie }}</strong></div>
+                    <div><span>Contratos</span><strong data-total-contratos>{{ total_contratos_omie }}</strong></div>
+                    <div><span>Itens contrato</span><strong data-total-itens-contrato>{{ total_itens_contrato_omie }}</strong></div>
+                    <div><span>Ordens servico</span><strong data-total-ordens-servico>{{ total_ordens_servico_omie }}</strong></div>
+                    <div><span>Itens OS</span><strong data-total-itens-ordem-servico>{{ total_itens_ordem_servico_omie }}</strong></div>
                     <div><span>Categorias</span><strong data-total-categorias>{{ total_categorias_omie }}</strong></div>
                     <div><span>Tipos de conta</span><strong data-total-tipos-conta-corrente>{{ total_tipos_conta_corrente_omie }}</strong></div>
                     <div><span>Contas correntes</span><strong data-total-contas-correntes>{{ total_contas_correntes_omie }}</strong></div>
                     <div><span>Contas a pagar</span><strong data-total-contas-pagar>{{ total_contas_pagar_omie }}</strong></div>
                     <div><span>Contas a receber</span><strong data-total-contas-receber>{{ total_contas_receber_omie }}</strong></div>
+                    <div><span>Pedidos</span><strong data-total-pedidos>{{ total_pedidos_omie }}</strong></div>
+                    <div><span>Itens pedido</span><strong data-total-itens-pedido>{{ total_itens_pedido_omie }}</strong></div>
                     <div><span>Lançamentos CC</span><strong data-total-lancamentos-conta-corrente>{{ total_lancamentos_conta_corrente_omie }}</strong></div>
                 </div>
 
@@ -244,12 +253,21 @@
                 panel.querySelector("[data-total-fornecedores]").textContent = data.totais.fornecedores;
                 panel.querySelector("[data-total-projetos]").textContent = data.totais.projetos;
                 panel.querySelector("[data-total-departamentos]").textContent = data.totais.departamentos;
+                panel.querySelector("[data-total-vendedores]").textContent = data.totais.vendedores;
+                panel.querySelector("[data-total-produtos]").textContent = data.totais.produtos;
+                panel.querySelector("[data-total-servicos]").textContent = data.totais.servicos;
+                panel.querySelector("[data-total-contratos]").textContent = data.totais.contratos;
+                panel.querySelector("[data-total-itens-contrato]").textContent = data.totais.itens_contrato;
+                panel.querySelector("[data-total-ordens-servico]").textContent = data.totais.ordens_servico;
+                panel.querySelector("[data-total-itens-ordem-servico]").textContent = data.totais.itens_ordem_servico;
                 panel.querySelector("[data-total-categorias]").textContent = data.totais.categorias;
                 panel.querySelector("[data-total-tipos-conta-corrente]").textContent = data.totais.tipos_conta_corrente;
                 panel.querySelector("[data-total-contas-correntes]").textContent = data.totais.contas_correntes;
                 panel.querySelector("[data-total-contas-pagar]").textContent = data.totais.contas_pagar;
                 panel.querySelector("[data-total-contas-receber]").textContent = data.totais.contas_receber;
                 panel.querySelector("[data-total-lancamentos-conta-corrente]").textContent = data.totais.lancamentos_conta_corrente;
+                panel.querySelector("[data-total-pedidos]").textContent = data.totais.pedidos;
+                panel.querySelector("[data-total-itens-pedido]").textContent = data.totais.itens_pedido;
             }
             return finished;
         }

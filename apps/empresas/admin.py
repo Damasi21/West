@@ -7,14 +7,23 @@ from .models import (
     ContaPagarOmie,
     ContaReceberOmie,
     ContaDRE,
+    ContratoItemOmie,
+    ContratoOmie,
     DepartamentoOmie,
     Empresa,
     EmpresaUsuario,
     IntegracaoOmie,
     LancamentoContaCorrenteOmie,
+    OrdemServicoItemOmie,
+    OrdemServicoOmie,
+    PedidoItemOmie,
+    PedidoOmie,
+    ProdutoOmie,
     ProjetoOmie,
+    ServicoOmie,
     SincronizacaoOmie,
     TipoContaCorrenteOmie,
+    VendedorOmie,
 )
 
 
@@ -95,6 +104,330 @@ class DepartamentoOmieAdmin(admin.ModelAdmin):
     list_filter = ("empresa", "inativo", "nivel_totalizador")
     search_fields = ("descricao", "codigo", "estrutura")
     readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
+
+
+@admin.register(VendedorOmie)
+class VendedorOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "nome",
+        "codigo",
+        "email",
+        "comissao",
+        "fatura_pedido",
+        "visualiza_pedido",
+        "empresa",
+        "inativo",
+    )
+    list_filter = ("empresa", "inativo", "fatura_pedido", "visualiza_pedido")
+    search_fields = ("nome", "email", "codigo", "codigo_integracao")
+    readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
+
+
+@admin.register(ProdutoOmie)
+class ProdutoOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "descricao",
+        "codigo",
+        "unidade",
+        "valor_unitario",
+        "quantidade_estoque",
+        "empresa",
+        "inativo",
+    )
+    list_filter = ("empresa", "inativo", "bloqueado", "importado_api", "unidade")
+    search_fields = (
+        "descricao",
+        "codigo",
+        "codigo_produto",
+        "codigo_produto_integracao",
+        "ncm",
+        "ean",
+    )
+    readonly_fields = (
+        "info",
+        "recomendacoes_fiscais",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+@admin.register(ServicoOmie)
+class ServicoOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "descricao",
+        "codigo",
+        "preco_unitario",
+        "aliquota_iss",
+        "empresa",
+        "inativo",
+    )
+    list_filter = ("empresa", "inativo", "importado_api", "ret_iss")
+    search_fields = (
+        "descricao",
+        "descricao_completa",
+        "codigo",
+        "codigo_servico",
+        "codigo_integracao_servico",
+        "codigo_lc116",
+    )
+    readonly_fields = (
+        "cabecalho",
+        "descricao_dados",
+        "impostos",
+        "info",
+        "int_listar",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+class OrdemServicoItemOmieInline(admin.TabularInline):
+    model = OrdemServicoItemOmie
+    extra = 0
+    fields = (
+        "codigo_item",
+        "sequencia",
+        "descricao",
+        "quantidade",
+        "valor_unitario",
+        "reembolso",
+    )
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(OrdemServicoOmie)
+class OrdemServicoOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "numero_os",
+        "codigo_os",
+        "cliente",
+        "data_previsao",
+        "valor_total",
+        "faturada",
+        "cancelada",
+        "empresa",
+    )
+    list_filter = ("empresa", "faturada", "cancelada", "etapa", "data_previsao")
+    search_fields = (
+        "numero_os",
+        "codigo_os",
+        "codigo_integracao_os",
+        "cliente__razao_social",
+        "cliente__nome_fantasia",
+    )
+    readonly_fields = (
+        "cabecalho",
+        "departamentos",
+        "email",
+        "info_cadastro",
+        "informacoes_adicionais",
+        "observacoes",
+        "parcelas",
+        "servicos_prestados",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+    inlines = [OrdemServicoItemOmieInline]
+
+
+@admin.register(OrdemServicoItemOmie)
+class OrdemServicoItemOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "ordem_servico",
+        "codigo_item",
+        "codigo_servico",
+        "descricao",
+        "quantidade",
+        "valor_unitario",
+        "reembolso",
+        "empresa",
+    )
+    list_filter = ("empresa", "reembolso", "nao_gerar_financeiro")
+    search_fields = (
+        "ordem_servico__numero_os",
+        "codigo_item",
+        "codigo_servico",
+        "descricao",
+    )
+    readonly_fields = (
+        "impostos",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+class ContratoItemOmieInline(admin.TabularInline):
+    model = ContratoItemOmie
+    extra = 0
+    fields = (
+        "codigo_item",
+        "sequencia",
+        "descricao",
+        "quantidade",
+        "valor_unitario",
+        "valor_total",
+    )
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ContratoOmie)
+class ContratoOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "numero_contrato",
+        "codigo_contrato",
+        "cliente",
+        "vigencia_inicial",
+        "vigencia_final",
+        "valor_total_mes",
+        "codigo_situacao",
+        "empresa",
+    )
+    list_filter = ("empresa", "codigo_situacao", "tipo_faturamento")
+    search_fields = (
+        "numero_contrato",
+        "codigo_contrato",
+        "codigo_integracao_contrato",
+        "cliente__razao_social",
+        "cliente__nome_fantasia",
+    )
+    readonly_fields = (
+        "cabecalho",
+        "departamentos",
+        "despesas_reembolsaveis",
+        "email_cliente",
+        "informacoes_adicionais",
+        "observacoes",
+        "venc_textos",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+    inlines = [ContratoItemOmieInline]
+
+
+@admin.register(ContratoItemOmie)
+class ContratoItemOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "contrato",
+        "codigo_item",
+        "codigo_servico",
+        "descricao",
+        "quantidade",
+        "valor_total",
+        "empresa",
+    )
+    list_filter = ("empresa", "nao_gerar_financeiro")
+    search_fields = (
+        "contrato__numero_contrato",
+        "codigo_item",
+        "codigo_servico",
+        "descricao",
+    )
+    readonly_fields = (
+        "item_cabecalho",
+        "item_descricao_servico",
+        "item_impostos",
+        "item_lei_transparencia",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+class PedidoItemOmieInline(admin.TabularInline):
+    model = PedidoItemOmie
+    extra = 0
+    fields = (
+        "codigo_item",
+        "codigo_produto_texto",
+        "descricao",
+        "quantidade",
+        "valor_unitario",
+        "valor_total",
+    )
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PedidoOmie)
+class PedidoOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "numero_pedido",
+        "codigo_pedido",
+        "cliente",
+        "data_previsao",
+        "valor_total_pedido",
+        "faturado",
+        "cancelado",
+        "empresa",
+    )
+    list_filter = ("empresa", "faturado", "cancelado", "etapa", "data_previsao")
+    search_fields = (
+        "numero_pedido",
+        "codigo_pedido",
+        "codigo_pedido_integracao",
+        "cliente__razao_social",
+        "cliente__nome_fantasia",
+    )
+    readonly_fields = (
+        "cabecalho",
+        "departamentos",
+        "exportacao",
+        "frete",
+        "info_cadastro",
+        "informacoes_adicionais",
+        "lista_parcelas",
+        "observacoes",
+        "total_pedido",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+    inlines = [PedidoItemOmieInline]
+
+
+@admin.register(PedidoItemOmie)
+class PedidoItemOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "pedido",
+        "codigo_item",
+        "codigo_produto_texto",
+        "descricao",
+        "quantidade",
+        "valor_total",
+        "empresa",
+    )
+    list_filter = ("empresa", "unidade", "cfop")
+    search_fields = (
+        "pedido__numero_pedido",
+        "codigo_item",
+        "codigo_produto_texto",
+        "descricao",
+    )
+    readonly_fields = (
+        "ide",
+        "produto_dados",
+        "imposto",
+        "inf_adic",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
 
 
 @admin.register(CategoriaOmie)

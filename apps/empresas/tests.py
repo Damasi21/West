@@ -17,21 +17,36 @@ from .models import (
     ContaPagarOmie,
     ContaReceberOmie,
     ContaDRE,
+    ContratoItemOmie,
+    ContratoOmie,
     DepartamentoOmie,
     Empresa,
     EmpresaUsuario,
     IntegracaoOmie,
     LancamentoContaCorrenteOmie,
+    OrdemServicoItemOmie,
+    OrdemServicoOmie,
+    PedidoItemOmie,
+    PedidoOmie,
+    ProdutoOmie,
     ProjetoOmie,
+    ServicoOmie,
     SincronizacaoOmie,
     TipoContaCorrenteOmie,
+    VendedorOmie,
 )
 from .omie import (
+    consultar_contratos,
     consultar_contas_correntes,
     consultar_contas_pagar,
     consultar_contas_receber,
     consultar_lancamentos_conta_corrente,
+    consultar_ordens_servico,
+    consultar_pedidos,
+    consultar_produtos,
+    consultar_servicos,
     consultar_tipos_conta_corrente,
+    consultar_vendedores,
     executar_sincronizacao_omie,
 )
 
@@ -919,6 +934,12 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_contas_pagar(self.integracao, 4)
         consultar_contas_receber(self.integracao, 5)
         consultar_lancamentos_conta_corrente(self.integracao, 6)
+        consultar_produtos(self.integracao, 7)
+        consultar_pedidos(self.integracao, 8)
+        consultar_servicos(self.integracao, 9)
+        consultar_ordens_servico(self.integracao, 10)
+        consultar_contratos(self.integracao, 11)
+        consultar_vendedores(self.integracao, 12)
 
         requisicao_tipos = urlopen_mock.call_args_list[0].args[0]
         payload_tipos = json.loads(requisicao_tipos.data)
@@ -993,12 +1014,98 @@ class SincronizacaoClientesOmieTests(TestCase):
             },
         )
 
+        requisicao_produtos = urlopen_mock.call_args_list[5].args[0]
+        payload_produtos = json.loads(requisicao_produtos.data)
+        self.assertTrue(requisicao_produtos.full_url.endswith("/geral/produtos/"))
+        self.assertEqual(payload_produtos["call"], "ListarProdutos")
+        self.assertEqual(
+            payload_produtos["param"][0],
+            {
+                "pagina": 7,
+                "registros_por_pagina": 50,
+                "apenas_importado_api": "N",
+                "filtrar_apenas_omiepdv": "N",
+            },
+        )
+
+        requisicao_pedidos = urlopen_mock.call_args_list[6].args[0]
+        payload_pedidos = json.loads(requisicao_pedidos.data)
+        self.assertTrue(requisicao_pedidos.full_url.endswith("/produtos/pedido/"))
+        self.assertEqual(payload_pedidos["call"], "ListarPedidos")
+        self.assertEqual(
+            payload_pedidos["param"][0],
+            {
+                "pagina": 8,
+                "registros_por_pagina": 100,
+                "apenas_importado_api": "N",
+            },
+        )
+
+        requisicao_servicos = urlopen_mock.call_args_list[7].args[0]
+        payload_servicos = json.loads(requisicao_servicos.data)
+        self.assertTrue(requisicao_servicos.full_url.endswith("/servicos/servico/"))
+        self.assertEqual(payload_servicos["call"], "ListarCadastroServico")
+        self.assertEqual(
+            payload_servicos["param"][0],
+            {
+                "nPagina": 9,
+                "nRegPorPagina": 20,
+            },
+        )
+
+        requisicao_os = urlopen_mock.call_args_list[8].args[0]
+        payload_os = json.loads(requisicao_os.data)
+        self.assertTrue(requisicao_os.full_url.endswith("/servicos/os/"))
+        self.assertEqual(payload_os["call"], "ListarOS")
+        self.assertEqual(
+            payload_os["param"][0],
+            {
+                "pagina": 10,
+                "registros_por_pagina": 50,
+                "apenas_importado_api": "N",
+            },
+        )
+
+        requisicao_contratos = urlopen_mock.call_args_list[9].args[0]
+        payload_contratos = json.loads(requisicao_contratos.data)
+        self.assertTrue(
+            requisicao_contratos.full_url.endswith("/servicos/contrato/")
+        )
+        self.assertEqual(payload_contratos["call"], "ListarContratos")
+        self.assertEqual(
+            payload_contratos["param"][0],
+            {
+                "pagina": 11,
+                "registros_por_pagina": 50,
+                "apenas_importado_api": "N",
+            },
+        )
+
+        requisicao_vendedores = urlopen_mock.call_args_list[10].args[0]
+        payload_vendedores = json.loads(requisicao_vendedores.data)
+        self.assertTrue(requisicao_vendedores.full_url.endswith("/geral/vendedores/"))
+        self.assertEqual(payload_vendedores["call"], "ListarVendedores")
+        self.assertEqual(
+            payload_vendedores["param"][0],
+            {
+                "pagina": 12,
+                "registros_por_pagina": 100,
+                "apenas_importado_api": "N",
+            },
+        )
+
+    @patch("apps.empresas.omie.consultar_contratos")
+    @patch("apps.empresas.omie.consultar_ordens_servico")
+    @patch("apps.empresas.omie.consultar_servicos")
+    @patch("apps.empresas.omie.consultar_pedidos")
+    @patch("apps.empresas.omie.consultar_produtos")
     @patch("apps.empresas.omie.consultar_lancamentos_conta_corrente")
     @patch("apps.empresas.omie.consultar_contas_receber")
     @patch("apps.empresas.omie.consultar_contas_pagar")
     @patch("apps.empresas.omie.consultar_contas_correntes")
     @patch("apps.empresas.omie.consultar_tipos_conta_corrente")
     @patch("apps.empresas.omie.consultar_categorias")
+    @patch("apps.empresas.omie.consultar_vendedores")
     @patch("apps.empresas.omie.consultar_departamentos")
     @patch("apps.empresas.omie.consultar_projetos")
     @patch("apps.empresas.omie.consultar_clientes")
@@ -1007,12 +1114,18 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_clientes_mock,
         consultar_projetos_mock,
         consultar_departamentos_mock,
+        consultar_vendedores_mock,
         consultar_categorias_mock,
         consultar_tipos_conta_corrente_mock,
         consultar_contas_correntes_mock,
         consultar_contas_pagar_mock,
         consultar_contas_receber_mock,
         consultar_lancamentos_conta_corrente_mock,
+        consultar_produtos_mock,
+        consultar_pedidos_mock,
+        consultar_servicos_mock,
+        consultar_ordens_servico_mock,
+        consultar_contratos_mock,
     ):
         consultar_clientes_mock.side_effect = [
             {
@@ -1074,6 +1187,23 @@ class SincronizacaoClientesOmieTests(TestCase):
                 }
             ],
         }
+        consultar_vendedores_mock.return_value = {
+            "pagina": 1,
+            "total_de_paginas": 1,
+            "total_de_registros": 1,
+            "cadastro": [
+                {
+                    "codInt": "CRM Omie",
+                    "codigo": 4290841436,
+                    "comissao": 0,
+                    "email": "",
+                    "fatura_pedido": "N",
+                    "inativo": "N",
+                    "nome": "CRM Omie",
+                    "visualiza_pedido": "N",
+                }
+            ],
+        }
         consultar_categorias_mock.return_value = {
             "pagina": 1,
             "total_de_paginas": 1,
@@ -1097,6 +1227,296 @@ class SincronizacaoClientesOmieTests(TestCase):
                     "tipo_categoria": "",
                     "totalizadora": "S",
                     "transferencia": "S",
+                }
+            ],
+        }
+        consultar_produtos_mock.return_value = {
+            "pagina": 1,
+            "total_de_paginas": 1,
+            "total_de_registros": 1,
+            "produto_servico_cadastro": [
+                {
+                    "bloqueado": "N",
+                    "bloquear_exclusao": "N",
+                    "codInt_familia": "",
+                    "codigo": "PRD00041",
+                    "codigo_familia": 0,
+                    "codigo_produto": 3293025013,
+                    "codigo_produto_integracao": "",
+                    "descr_detalhada": "",
+                    "descricao": "FILME DE POLIETILENO",
+                    "descricao_familia": "",
+                    "ean": "",
+                    "estoque_minimo": 0,
+                    "importado_api": "N",
+                    "inativo": "N",
+                    "info": {
+                        "dAlt": "02/07/2021",
+                        "dInc": "02/07/2021",
+                    },
+                    "marca": "",
+                    "modelo": "",
+                    "ncm": "3915.90.00",
+                    "peso_bruto": 0,
+                    "peso_liq": 0,
+                    "produto_lote": "N",
+                    "produto_variacao": "N",
+                    "quantidade_estoque": 0,
+                    "recomendacoes_fiscais": {
+                        "cupom_fiscal": "N",
+                        "market_place": "N",
+                    },
+                    "tipoItem": "99",
+                    "unidade": "KG",
+                    "valor_unitario": 0,
+                }
+            ],
+        }
+        consultar_servicos_mock.return_value = {
+            "nPagina": 1,
+            "nTotPaginas": 1,
+            "nRegistros": 1,
+            "nTotRegistros": 1,
+            "cadastros": [
+                {
+                    "cabecalho": {
+                        "cCodCateg": "0.01",
+                        "cCodLC116": "14.06",
+                        "cCodServMun": "1702",
+                        "cCodigo": "SRV00001",
+                        "cDescricao": "SERVICO DE CALIBRACAO",
+                        "cIdTrib": "01",
+                        "cTipoDesc": "",
+                        "nAliqDesc": 0,
+                        "nPrecoUnit": 150,
+                        "nValorDesc": 0,
+                    },
+                    "descricao": {
+                        "cDescrCompleta": "SERVICO DE CALIBRACAO",
+                    },
+                    "impostos": {
+                        "cRetCOFINS": "N",
+                        "cRetCSLL": "N",
+                        "cRetINSS": "N",
+                        "cRetIR": "N",
+                        "cRetISS": "N",
+                        "cRetPIS": "N",
+                        "lDeduzISS": False,
+                        "nAliqISS": 5,
+                    },
+                    "info": {
+                        "cImpAPI": "N",
+                        "dAlt": "30/09/2025",
+                        "dInc": "30/09/2025",
+                        "inativo": "N",
+                    },
+                    "intListar": {
+                        "cCodIntServ": "",
+                        "nCodServ": 4290828325,
+                    },
+                }
+            ],
+        }
+        consultar_ordens_servico_mock.return_value = {
+            "pagina": 1,
+            "total_de_paginas": 1,
+            "total_de_registros": 1,
+            "osCadastro": [
+                {
+                    "Cabecalho": {
+                        "cCodIntOS": "",
+                        "cCodParc": "000",
+                        "cEtapa": "60",
+                        "cNumOS": "2",
+                        "dDtPrevisao": "23/05/2026",
+                        "nCodCli": 101,
+                        "nCodOS": 4362685093,
+                        "nQtdeParc": 1,
+                        "nValorTotal": 200,
+                        "nValorTotalImpRet": 0,
+                    },
+                    "Departamentos": [],
+                    "Email": {
+                        "cEnvBoleto": "N",
+                        "cEnvLink": "N",
+                        "cEnvPix": "N",
+                        "cEnvRecibo": "S",
+                        "cEnviarPara": "cliente@example.com",
+                    },
+                    "InfoCadastro": {
+                        "cCancelada": "N",
+                        "cFaturada": "S",
+                        "cOrigem": "CTR",
+                        "dDtAlt": "23/05/2026",
+                        "dDtFat": "23/05/2026",
+                        "dDtInc": "23/05/2026",
+                    },
+                    "InformacoesAdicionais": {
+                        "cCidPrestServ": "ARACOIABA DA SERRA (SP)",
+                        "cCodCateg": "0.01",
+                        "cNumContrato": "2026/00001",
+                        "cNumRecibo": "1",
+                        "cUsoConsumo": "N",
+                        "nCodCC": 3036783065,
+                    },
+                    "Observacoes": {},
+                    "Parcelas": [
+                        {
+                            "dDtVenc": "10/06/2026",
+                            "nDias": 0,
+                            "nParcela": 1,
+                            "nPercentual": 100,
+                            "nValor": 200,
+                        }
+                    ],
+                    "ServicosPrestados": [
+                        {
+                            "cCodCategItem": "0.01",
+                            "cCodServLC116": "14.06",
+                            "cCodServMun": "1702",
+                            "cDescServ": "SERVICO DE CALIBRACAO",
+                            "cNaoGerarFinanceiro": "N",
+                            "cReembolso": "N",
+                            "cRetemISS": "",
+                            "cTribServ": "01",
+                            "impostos": {
+                                "cRetemCOFINS": "N",
+                                "cRetemCSLL": "N",
+                                "cRetemINSS": "N",
+                                "cRetemIRRF": "N",
+                                "cRetemPIS": "N",
+                                "lDeduzISS": False,
+                                "nAliqISS": 5,
+                                "nBaseISS": 150,
+                                "nValorISS": 7.5,
+                            },
+                            "nAliqDesconto": 0,
+                            "nCodServico": 4290828325,
+                            "nIdItem": 4362684824,
+                            "nQtde": 1,
+                            "nSeqItem": 1,
+                            "nValUnit": 150,
+                            "nValorAcrescimos": 0,
+                            "nValorDesconto": 0,
+                            "nValorOutrasRetencoes": 0,
+                        },
+                        {
+                            "cCodCategItem": "0.01",
+                            "cCodServLC116": "14.06",
+                            "cCodServMun": "1702",
+                            "cDescServ": "Despesas reembolsaveis",
+                            "cNaoGerarFinanceiro": "N",
+                            "cReembolso": "S",
+                            "cRetemISS": "",
+                            "cTribServ": "",
+                            "impostos": {
+                                "lDeduzISS": False,
+                                "nAliqISS": 0,
+                                "nBaseISS": 0,
+                                "nValorISS": 0,
+                            },
+                            "nAliqDesconto": 0,
+                            "nCodServico": 0,
+                            "nIdItem": 4362685095,
+                            "nQtde": 1,
+                            "nSeqItem": 2,
+                            "nValUnit": 50,
+                            "nValorAcrescimos": 0,
+                            "nValorDesconto": 0,
+                            "nValorOutrasRetencoes": 0,
+                        },
+                    ],
+                }
+            ],
+        }
+        consultar_contratos_mock.return_value = {
+            "pagina": 1,
+            "total_de_paginas": 1,
+            "total_de_registros": 1,
+            "contratoCadastro": [
+                {
+                    "cabecalho": {
+                        "cCodIntCtr": "",
+                        "cCodSit": "10",
+                        "cNumCtr": "2026/00001",
+                        "cTipoFat": "01",
+                        "dVigFinal": "26/05/2029",
+                        "dVigInicial": "05/03/2025",
+                        "nCodCli": 101,
+                        "nCodCtr": 4362684823,
+                        "nDiaFat": 1,
+                        "nValTotMes": 150,
+                    },
+                    "departamentos": [],
+                    "despesasReembolsaveis": {
+                        "cCodCategReemb": "0.01",
+                        "despesaReembolsavel": [
+                            {
+                                "cDescReemb": "motop",
+                                "cRecorrenteReemb": "N",
+                                "dDataReemb": "23/05/2026",
+                                "nCodReemb": 4362684835,
+                                "nValorReemb": 50,
+                            }
+                        ],
+                    },
+                    "emailCliente": {
+                        "cEnviarBoleto": "N",
+                        "cEnviarLinkNfse": "N",
+                        "cEnviarPix": "N",
+                        "cEnviarRecibo": "S",
+                    },
+                    "infAdic": {
+                        "cCidPrestServ": "ARACOIABA DA SERRA (SP)",
+                        "cCodCateg": "0.01",
+                        "cUsoConsumo": "N",
+                        "nCodCC": 3036783065,
+                        "nCodProj": 303,
+                        "nCodVend": 0,
+                    },
+                    "itensContrato": [
+                        {
+                            "itemCabecalho": {
+                                "aliqDesconto": 0,
+                                "cCodCategItem": "0.01",
+                                "cNaoGerarFinanceiro": "N",
+                                "cTpDesconto": "",
+                                "codItem": 4362684824,
+                                "codLC116": "14.06",
+                                "codNBS": "",
+                                "codServMunic": "1702",
+                                "codServico": 4290828325,
+                                "natOperacao": "01",
+                                "quant": 1,
+                                "seq": 1,
+                                "valorAcrescimo": 0,
+                                "valorDed": 0,
+                                "valorDesconto": 0,
+                                "valorOutrasRetencoes": 0,
+                                "valorTotal": 150,
+                                "valorUnit": 150,
+                            },
+                            "itemDescrServ": {
+                                "descrCompleta": "SERVICO DE CALIBRACAO",
+                            },
+                            "itemImpostos": {
+                                "aliqISS": 5,
+                                "lDeduzISS": False,
+                                "retISS": "N",
+                                "valorISS": 7.5,
+                            },
+                            "itemLeiTranspImp": {},
+                        }
+                    ],
+                    "observacoes": {"cObsContrato": ""},
+                    "vencTextos": {
+                        "cCodPerRef": "001",
+                        "cPostergar": "S",
+                        "cProxMes": "S",
+                        "cTpVenc": "002",
+                        "nDiaFixo": 10,
+                        "nDias": 5,
+                    },
                 }
             ],
         }
@@ -1289,14 +1709,106 @@ class SincronizacaoClientesOmieTests(TestCase):
                 }
             ],
         }
+        consultar_pedidos_mock.return_value = {
+            "pagina": 1,
+            "total_de_paginas": 1,
+            "total_de_registros": 1,
+            "pedido_venda_produto": [
+                {
+                    "cabecalho": {
+                        "bloqueado": "N",
+                        "codigo_cenario_impostos": "3037132865",
+                        "codigo_cliente": 101,
+                        "codigo_empresa": 3036783056,
+                        "codigo_parcela": "000",
+                        "codigo_pedido": 3037132866,
+                        "codigo_pedido_integracao": "",
+                        "data_previsao": "14/10/2020",
+                        "encerrado": "",
+                        "etapa": "60",
+                        "importado_api": "",
+                        "numero_pedido": "1",
+                        "origem_pedido": "",
+                        "qtde_parcelas": 0,
+                        "quantidade_itens": 1,
+                    },
+                    "departamentos": [],
+                    "det": [
+                        {
+                            "ide": {
+                                "codigo_item": 3037133403,
+                                "codigo_item_integracao": "",
+                                "simples_nacional": "N",
+                            },
+                            "imposto": {"icms": {}},
+                            "inf_adic": {
+                                "codigo_categoria_item": "0.01",
+                                "codigo_cenario_impostos_item": "3037132865",
+                                "codigo_local_estoque": 3036783070,
+                                "nao_gerar_financeiro": "S",
+                                "nao_movimentar_estoque": "N",
+                                "nao_somar_total": "N",
+                            },
+                            "produto": {
+                                "cfop": "5.102",
+                                "codigo": "PRD00041",
+                                "codigo_produto": 3293025013,
+                                "descricao": "FILME DE POLIETILENO",
+                                "ncm": "3915.90.00",
+                                "percentual_desconto": 0,
+                                "quantidade": 3848,
+                                "reservado": "N",
+                                "unidade": "KG",
+                                "valor_desconto": 0,
+                                "valor_mercadoria": 8080.8,
+                                "valor_total": 8080.8,
+                                "valor_unitario": 2.1,
+                            },
+                        }
+                    ],
+                    "exportacao": {"nao_exportacao": "N"},
+                    "frete": {
+                        "modalidade": "9",
+                        "valor_frete": 0,
+                        "valor_seguro": 0,
+                    },
+                    "infoCadastro": {
+                        "autorizado": "S",
+                        "cImpAPI": "N",
+                        "cancelado": "N",
+                        "dAlt": "14/10/2020",
+                        "dFat": "14/10/2020",
+                        "dInc": "14/10/2020",
+                        "denegado": "N",
+                        "devolvido": "N",
+                        "devolvido_parcial": "N",
+                        "faturado": "S",
+                    },
+                    "informacoes_adicionais": {
+                        "codProj": 303,
+                        "codVend": 0,
+                        "codigo_categoria": "0.01",
+                        "codigo_conta_corrente": 3036783065,
+                        "consumidor_final": "N",
+                    },
+                    "lista_parcelas": {"parcela": []},
+                    "observacoes": {"obs_venda": ""},
+                    "total_pedido": {
+                        "valor_descontos": 0,
+                        "valor_mercadorias": 8080.8,
+                        "valor_total_pedido": 8080.8,
+                    },
+                }
+            ],
+        }
         sincronizacao = SincronizacaoOmie.objects.create(empresa=self.empresa)
 
         executar_sincronizacao_omie(sincronizacao.pk)
 
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA)
-        self.assertEqual(sincronizacao.pagina_atual, 10)
-        self.assertEqual(sincronizacao.registros_processados, 10)
+        self.assertEqual(sincronizacao.pagina_atual, 16)
+        self.assertEqual(sincronizacao.registros_processados, 16)
         self.assertEqual(CadastroOmie.objects.count(), 2)
         self.assertEqual(
             CadastroOmie.objects.get(codigo_cliente_omie=101).tipo,
@@ -1312,6 +1824,21 @@ class SincronizacaoClientesOmieTests(TestCase):
         departamento = DepartamentoOmie.objects.get(codigo="5476993662")
         self.assertEqual(departamento.descricao, "Hinfoluz")
         self.assertEqual(departamento.estrutura, "001.001.001")
+        vendedor = VendedorOmie.objects.get(codigo=4290841436)
+        self.assertEqual(vendedor.nome, "CRM Omie")
+        self.assertEqual(vendedor.codigo_integracao, "CRM Omie")
+        self.assertEqual(str(vendedor.comissao), "0.0000")
+        self.assertFalse(vendedor.fatura_pedido)
+        self.assertFalse(vendedor.visualiza_pedido)
+        self.assertFalse(vendedor.inativo)
+        self.assertEqual(vendedor.dados_originais["nome"], "CRM Omie")
+        produto = ProdutoOmie.objects.get(codigo_produto=3293025013)
+        self.assertEqual(produto.codigo, "PRD00041")
+        self.assertEqual(produto.descricao, "FILME DE POLIETILENO")
+        self.assertEqual(produto.unidade, "KG")
+        self.assertEqual(produto.ncm, "3915.90.00")
+        self.assertFalse(produto.inativo)
+        self.assertEqual(produto.info["dAlt"], "02/07/2021")
         categoria = CategoriaOmie.objects.get(codigo="0.01")
         self.assertEqual(categoria.descricao, "Transferência")
         self.assertEqual(categoria.categoria_superior, "0")
@@ -1319,6 +1846,16 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertTrue(categoria.transferencia)
         self.assertTrue(categoria.nao_exibir)
         self.assertFalse(categoria.conta_inativa)
+        servico = ServicoOmie.objects.get(codigo_servico=4290828325)
+        self.assertEqual(servico.codigo, "SRV00001")
+        self.assertEqual(servico.descricao, "SERVICO DE CALIBRACAO")
+        self.assertEqual(servico.descricao_completa, "SERVICO DE CALIBRACAO")
+        self.assertEqual(servico.categoria_principal, categoria)
+        self.assertEqual(servico.codigo_lc116, "14.06")
+        self.assertEqual(str(servico.preco_unitario), "150.0000")
+        self.assertEqual(str(servico.aliquota_iss), "5.0000")
+        self.assertFalse(servico.inativo)
+        self.assertEqual(servico.info["dAlt"], "30/09/2025")
         tipo_conta = TipoContaCorrenteOmie.objects.get(codigo="CX")
         self.assertEqual(tipo_conta.descricao, "Caixinha")
         self.assertEqual(tipo_conta.grupo, "CX")
@@ -1332,6 +1869,68 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertTrue(conta.emite_pix)
         self.assertFalse(conta.inativo)
         self.assertEqual(conta.dados_originais["codigo_banco"], "999")
+        contrato = ContratoOmie.objects.get(codigo_contrato=4362684823)
+        self.assertEqual(contrato.numero_contrato, "2026/00001")
+        self.assertEqual(contrato.cliente.codigo_cliente_omie, 101)
+        self.assertEqual(contrato.conta_corrente, conta)
+        self.assertEqual(contrato.categoria_principal, categoria)
+        self.assertEqual(contrato.categoria_reembolso, categoria)
+        self.assertEqual(contrato.projeto, projeto)
+        self.assertEqual(contrato.vigencia_inicial.isoformat(), "2025-03-05")
+        self.assertEqual(contrato.vigencia_final.isoformat(), "2029-05-26")
+        self.assertEqual(str(contrato.valor_total_mes), "150.0000")
+        self.assertEqual(
+            contrato.despesas_reembolsaveis["despesaReembolsavel"][0]["nValorReemb"],
+            50,
+        )
+        item_contrato = ContratoItemOmie.objects.get(codigo_item=4362684824)
+        self.assertEqual(item_contrato.contrato, contrato)
+        self.assertEqual(item_contrato.servico, servico)
+        self.assertEqual(item_contrato.categoria_principal, categoria)
+        self.assertEqual(str(item_contrato.quantidade), "1.0000")
+        self.assertEqual(str(item_contrato.valor_unitario), "150.0000")
+        self.assertEqual(str(item_contrato.valor_total), "150.0000")
+        self.assertEqual(str(item_contrato.valor_iss), "7.5000")
+        ordem_servico = OrdemServicoOmie.objects.get(codigo_os=4362685093)
+        self.assertEqual(ordem_servico.numero_os, "2")
+        self.assertEqual(ordem_servico.cliente.codigo_cliente_omie, 101)
+        self.assertEqual(ordem_servico.conta_corrente, conta)
+        self.assertEqual(ordem_servico.categoria_principal, categoria)
+        self.assertTrue(ordem_servico.faturada)
+        self.assertFalse(ordem_servico.cancelada)
+        self.assertEqual(ordem_servico.data_previsao.isoformat(), "2026-05-23")
+        self.assertEqual(str(ordem_servico.valor_total), "200.0000")
+        self.assertEqual(len(ordem_servico.parcelas), 1)
+        item_os = OrdemServicoItemOmie.objects.get(codigo_item=4362684824)
+        self.assertEqual(item_os.ordem_servico, ordem_servico)
+        self.assertEqual(item_os.servico, servico)
+        self.assertEqual(item_os.categoria_principal, categoria)
+        self.assertEqual(str(item_os.quantidade), "1.0000")
+        self.assertEqual(str(item_os.valor_unitario), "150.0000")
+        self.assertEqual(str(item_os.valor_iss), "7.5000")
+        self.assertFalse(item_os.reembolso)
+        reembolso = OrdemServicoItemOmie.objects.get(codigo_item=4362685095)
+        self.assertIsNone(reembolso.servico)
+        self.assertTrue(reembolso.reembolso)
+        self.assertEqual(str(reembolso.valor_unitario), "50.0000")
+        pedido = PedidoOmie.objects.get(codigo_pedido=3037132866)
+        self.assertEqual(pedido.numero_pedido, "1")
+        self.assertEqual(pedido.cliente.codigo_cliente_omie, 101)
+        self.assertEqual(pedido.conta_corrente, conta)
+        self.assertEqual(pedido.categoria_principal, categoria)
+        self.assertEqual(pedido.projeto, projeto)
+        self.assertTrue(pedido.faturado)
+        self.assertFalse(pedido.cancelado)
+        self.assertEqual(pedido.data_previsao.isoformat(), "2020-10-14")
+        self.assertEqual(str(pedido.valor_total_pedido), "8080.8000")
+        item_pedido = PedidoItemOmie.objects.get(codigo_item=3037133403)
+        self.assertEqual(item_pedido.pedido, pedido)
+        self.assertEqual(item_pedido.produto, produto)
+        self.assertEqual(item_pedido.categoria_principal, categoria)
+        self.assertEqual(str(item_pedido.quantidade), "3848.0000")
+        self.assertEqual(str(item_pedido.valor_unitario), "2.1000")
+        self.assertTrue(item_pedido.nao_gerar_financeiro)
+        self.assertFalse(item_pedido.nao_movimentar_estoque)
         conta_pagar = ContaPagarOmie.objects.get(
             codigo_lancamento_omie=1344090316
         )

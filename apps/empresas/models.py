@@ -235,6 +235,740 @@ class DepartamentoOmie(models.Model):
         return self.descricao
 
 
+class VendedorOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="vendedores_omie",
+    )
+    codigo = models.BigIntegerField()
+    codigo_integracao = models.CharField(max_length=100, blank=True)
+    nome = models.CharField(max_length=150, blank=True)
+    email = models.EmailField(max_length=254, blank=True)
+    comissao = models.DecimalField(max_digits=9, decimal_places=4, default=0)
+    fatura_pedido = models.BooleanField(default=False)
+    visualiza_pedido = models.BooleanField(default=False)
+    inativo = models.BooleanField(default=False)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["nome", "codigo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo"],
+                name="vendedor_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "inativo"],
+                name="vend_omie_emp_ativo_idx",
+            ),
+        ]
+        verbose_name = "vendedor OMIE"
+        verbose_name_plural = "vendedores OMIE"
+
+    def __str__(self):
+        return self.nome or str(self.codigo)
+
+
+class ProdutoOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="produtos_omie",
+    )
+    codigo_produto = models.BigIntegerField()
+    codigo = models.CharField(max_length=60, blank=True)
+    codigo_produto_integracao = models.CharField(max_length=100, blank=True)
+    descricao = models.CharField(max_length=255, blank=True)
+    descr_detalhada = models.TextField(blank=True)
+    unidade = models.CharField(max_length=10, blank=True)
+    ncm = models.CharField(max_length=20, blank=True)
+    ean = models.CharField(max_length=30, blank=True)
+    marca = models.CharField(max_length=100, blank=True)
+    modelo = models.CharField(max_length=100, blank=True)
+    tipo_item = models.CharField(max_length=5, blank=True)
+    valor_unitario = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    quantidade_estoque = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        default=0,
+    )
+    estoque_minimo = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    peso_bruto = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    peso_liq = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    altura = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    largura = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    profundidade = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    codigo_familia = models.BigIntegerField(null=True, blank=True)
+    codigo_integracao_familia = models.CharField(max_length=100, blank=True)
+    descricao_familia = models.CharField(max_length=120, blank=True)
+    bloqueado = models.BooleanField(default=False)
+    inativo = models.BooleanField(default=False)
+    importado_api = models.BooleanField(default=False)
+    produto_lote = models.BooleanField(default=False)
+    produto_variacao = models.BooleanField(default=False)
+    bloquear_exclusao = models.BooleanField(default=False)
+    info = models.JSONField(default=dict, blank=True)
+    recomendacoes_fiscais = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["descricao", "codigo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_produto"],
+                name="produto_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "inativo"],
+                name="prod_omie_emp_ativo_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo"],
+                name="prod_omie_emp_codigo_idx",
+            ),
+        ]
+        verbose_name = "produto OMIE"
+        verbose_name_plural = "produtos OMIE"
+
+    def __str__(self):
+        return self.descricao or self.codigo or str(self.codigo_produto)
+
+
+class ServicoOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="servicos_omie",
+    )
+    codigo_servico = models.BigIntegerField()
+    codigo_integracao_servico = models.CharField(max_length=100, blank=True)
+    codigo = models.CharField(max_length=60, blank=True)
+    descricao = models.CharField(max_length=255, blank=True)
+    descricao_completa = models.TextField(blank=True)
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        "CategoriaOmie",
+        on_delete=models.SET_NULL,
+        related_name="servicos_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_lc116 = models.CharField(max_length=20, blank=True)
+    codigo_servico_municipal = models.CharField(max_length=40, blank=True)
+    id_tributacao = models.CharField(max_length=10, blank=True)
+    tipo_desconto = models.CharField(max_length=10, blank=True)
+    preco_unitario = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    aliquota_desconto = models.DecimalField(
+        max_digits=9,
+        decimal_places=4,
+        default=0,
+    )
+    valor_desconto = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    aliquota_iss = models.DecimalField(max_digits=9, decimal_places=4, default=0)
+    ret_cofins = models.BooleanField(default=False)
+    ret_csll = models.BooleanField(default=False)
+    ret_inss = models.BooleanField(default=False)
+    ret_ir = models.BooleanField(default=False)
+    ret_iss = models.BooleanField(default=False)
+    ret_pis = models.BooleanField(default=False)
+    deduz_iss = models.BooleanField(default=False)
+    importado_api = models.BooleanField(default=False)
+    inativo = models.BooleanField(default=False)
+    cabecalho = models.JSONField(default=dict, blank=True)
+    descricao_dados = models.JSONField(default=dict, blank=True)
+    impostos = models.JSONField(default=dict, blank=True)
+    info = models.JSONField(default=dict, blank=True)
+    int_listar = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["descricao", "codigo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_servico"],
+                name="servico_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "inativo"],
+                name="serv_omie_emp_ativo_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo"],
+                name="serv_omie_emp_codigo_idx",
+            ),
+        ]
+        verbose_name = "servico OMIE"
+        verbose_name_plural = "servicos OMIE"
+
+    def __str__(self):
+        return self.descricao or self.codigo or str(self.codigo_servico)
+
+
+class OrdemServicoOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="ordens_servico_omie",
+    )
+    codigo_os = models.BigIntegerField()
+    codigo_integracao_os = models.CharField(max_length=100, blank=True)
+    numero_os = models.CharField(max_length=30, blank=True)
+    etapa = models.CharField(max_length=10, blank=True)
+    codigo_parcela = models.CharField(max_length=20, blank=True)
+    codigo_cliente = models.BigIntegerField(null=True, blank=True)
+    cliente = models.ForeignKey(
+        CadastroOmie,
+        on_delete=models.SET_NULL,
+        related_name="ordens_servico_omie",
+        null=True,
+        blank=True,
+    )
+    data_previsao = models.DateField(null=True, blank=True)
+    quantidade_parcelas = models.PositiveIntegerField(default=0)
+    valor_total = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_total_impostos_retidos = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        default=0,
+    )
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        "CategoriaOmie",
+        on_delete=models.SET_NULL,
+        related_name="ordens_servico_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_conta_corrente = models.BigIntegerField(null=True, blank=True)
+    conta_corrente = models.ForeignKey(
+        "ContaCorrenteOmie",
+        on_delete=models.SET_NULL,
+        related_name="ordens_servico_omie",
+        null=True,
+        blank=True,
+    )
+    cidade_prestacao = models.CharField(max_length=120, blank=True)
+    numero_contrato = models.CharField(max_length=60, blank=True)
+    numero_recibo = models.CharField(max_length=40, blank=True)
+    uso_consumo = models.BooleanField(default=False)
+    cancelada = models.BooleanField(default=False)
+    faturada = models.BooleanField(default=False)
+    origem = models.CharField(max_length=10, blank=True)
+    data_inclusao = models.DateField(null=True, blank=True)
+    data_alteracao = models.DateField(null=True, blank=True)
+    data_faturamento = models.DateField(null=True, blank=True)
+    cabecalho = models.JSONField(default=dict, blank=True)
+    departamentos = models.JSONField(default=list, blank=True)
+    email = models.JSONField(default=dict, blank=True)
+    info_cadastro = models.JSONField(default=dict, blank=True)
+    informacoes_adicionais = models.JSONField(default=dict, blank=True)
+    observacoes = models.JSONField(default=dict, blank=True)
+    parcelas = models.JSONField(default=list, blank=True)
+    servicos_prestados = models.JSONField(default=list, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data_previsao", "-codigo_os"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_os"],
+                name="os_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "data_previsao"],
+                name="os_omie_emp_prev_idx",
+            ),
+            models.Index(
+                fields=["empresa", "numero_os"],
+                name="os_omie_emp_num_idx",
+            ),
+            models.Index(
+                fields=["empresa", "faturada"],
+                name="os_omie_emp_fat_idx",
+            ),
+        ]
+        verbose_name = "ordem de servico OMIE"
+        verbose_name_plural = "ordens de servico OMIE"
+
+    def __str__(self):
+        return self.numero_os or str(self.codigo_os)
+
+
+class OrdemServicoItemOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="itens_ordem_servico_omie",
+    )
+    ordem_servico = models.ForeignKey(
+        OrdemServicoOmie,
+        on_delete=models.CASCADE,
+        related_name="itens",
+    )
+    codigo_item = models.BigIntegerField()
+    sequencia = models.PositiveIntegerField(default=0)
+    codigo_servico = models.BigIntegerField(null=True, blank=True)
+    servico = models.ForeignKey(
+        ServicoOmie,
+        on_delete=models.SET_NULL,
+        related_name="itens_ordem_servico_omie",
+        null=True,
+        blank=True,
+    )
+    descricao = models.TextField(blank=True)
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        "CategoriaOmie",
+        on_delete=models.SET_NULL,
+        related_name="itens_ordem_servico_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_lc116 = models.CharField(max_length=20, blank=True)
+    codigo_servico_municipal = models.CharField(max_length=40, blank=True)
+    tributacao_servico = models.CharField(max_length=10, blank=True)
+    quantidade = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_unitario = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    aliquota_desconto = models.DecimalField(
+        max_digits=9,
+        decimal_places=4,
+        default=0,
+    )
+    valor_desconto = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_acrescimos = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_outras_retencoes = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        default=0,
+    )
+    aliquota_iss = models.DecimalField(max_digits=9, decimal_places=4, default=0)
+    valor_iss = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    base_iss = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    nao_gerar_financeiro = models.BooleanField(default=False)
+    reembolso = models.BooleanField(default=False)
+    retem_iss = models.BooleanField(default=False)
+    deduz_iss = models.BooleanField(default=False)
+    impostos = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["ordem_servico_id", "sequencia", "codigo_item"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_item"],
+                name="os_item_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "codigo_servico"],
+                name="os_item_emp_serv_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_categoria"],
+                name="os_item_emp_cat_idx",
+            ),
+        ]
+        verbose_name = "item de ordem de servico OMIE"
+        verbose_name_plural = "itens de ordem de servico OMIE"
+
+    def __str__(self):
+        return self.descricao or str(self.codigo_item)
+
+
+class ContratoOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="contratos_omie",
+    )
+    codigo_contrato = models.BigIntegerField()
+    codigo_integracao_contrato = models.CharField(max_length=100, blank=True)
+    numero_contrato = models.CharField(max_length=60, blank=True)
+    codigo_situacao = models.CharField(max_length=10, blank=True)
+    tipo_faturamento = models.CharField(max_length=10, blank=True)
+    codigo_cliente = models.BigIntegerField(null=True, blank=True)
+    cliente = models.ForeignKey(
+        CadastroOmie,
+        on_delete=models.SET_NULL,
+        related_name="contratos_omie",
+        null=True,
+        blank=True,
+    )
+    vigencia_inicial = models.DateField(null=True, blank=True)
+    vigencia_final = models.DateField(null=True, blank=True)
+    dia_faturamento = models.PositiveIntegerField(default=0)
+    valor_total_mes = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        "CategoriaOmie",
+        on_delete=models.SET_NULL,
+        related_name="contratos_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_categoria_reembolso = models.CharField(max_length=20, blank=True)
+    categoria_reembolso = models.ForeignKey(
+        "CategoriaOmie",
+        on_delete=models.SET_NULL,
+        related_name="contratos_reembolso_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_conta_corrente = models.BigIntegerField(null=True, blank=True)
+    conta_corrente = models.ForeignKey(
+        "ContaCorrenteOmie",
+        on_delete=models.SET_NULL,
+        related_name="contratos_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_projeto = models.BigIntegerField(null=True, blank=True)
+    projeto = models.ForeignKey(
+        ProjetoOmie,
+        on_delete=models.SET_NULL,
+        related_name="contratos_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_vendedor = models.BigIntegerField(null=True, blank=True)
+    cidade_prestacao = models.CharField(max_length=120, blank=True)
+    uso_consumo = models.BooleanField(default=False)
+    cabecalho = models.JSONField(default=dict, blank=True)
+    departamentos = models.JSONField(default=list, blank=True)
+    despesas_reembolsaveis = models.JSONField(default=dict, blank=True)
+    email_cliente = models.JSONField(default=dict, blank=True)
+    informacoes_adicionais = models.JSONField(default=dict, blank=True)
+    observacoes = models.JSONField(default=dict, blank=True)
+    venc_textos = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["numero_contrato", "codigo_contrato"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_contrato"],
+                name="contrato_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "numero_contrato"],
+                name="ctr_omie_emp_num_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_situacao"],
+                name="ctr_omie_emp_sit_idx",
+            ),
+        ]
+        verbose_name = "contrato OMIE"
+        verbose_name_plural = "contratos OMIE"
+
+    def __str__(self):
+        return self.numero_contrato or str(self.codigo_contrato)
+
+
+class ContratoItemOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="itens_contrato_omie",
+    )
+    contrato = models.ForeignKey(
+        ContratoOmie,
+        on_delete=models.CASCADE,
+        related_name="itens",
+    )
+    codigo_item = models.BigIntegerField()
+    sequencia = models.PositiveIntegerField(default=0)
+    codigo_servico = models.BigIntegerField(null=True, blank=True)
+    servico = models.ForeignKey(
+        ServicoOmie,
+        on_delete=models.SET_NULL,
+        related_name="itens_contrato_omie",
+        null=True,
+        blank=True,
+    )
+    descricao = models.TextField(blank=True)
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        "CategoriaOmie",
+        on_delete=models.SET_NULL,
+        related_name="itens_contrato_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_lc116 = models.CharField(max_length=20, blank=True)
+    codigo_servico_municipal = models.CharField(max_length=40, blank=True)
+    codigo_nbs = models.CharField(max_length=40, blank=True)
+    natureza_operacao = models.CharField(max_length=10, blank=True)
+    nao_gerar_financeiro = models.BooleanField(default=False)
+    quantidade = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_unitario = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_total = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_acrescimo = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_deducao = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_desconto = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_outras_retencoes = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        default=0,
+    )
+    aliquota_desconto = models.DecimalField(
+        max_digits=9,
+        decimal_places=4,
+        default=0,
+    )
+    aliquota_iss = models.DecimalField(max_digits=9, decimal_places=4, default=0)
+    valor_iss = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    ret_iss = models.BooleanField(default=False)
+    deduz_iss = models.BooleanField(default=False)
+    item_cabecalho = models.JSONField(default=dict, blank=True)
+    item_descricao_servico = models.JSONField(default=dict, blank=True)
+    item_impostos = models.JSONField(default=dict, blank=True)
+    item_lei_transparencia = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["contrato_id", "sequencia", "codigo_item"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_item"],
+                name="contrato_item_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "codigo_servico"],
+                name="ctr_item_emp_serv_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_categoria"],
+                name="ctr_item_emp_cat_idx",
+            ),
+        ]
+        verbose_name = "item de contrato OMIE"
+        verbose_name_plural = "itens de contrato OMIE"
+
+    def __str__(self):
+        return self.descricao or str(self.codigo_item)
+
+
+class PedidoOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="pedidos_omie",
+    )
+    codigo_pedido = models.BigIntegerField()
+    codigo_pedido_integracao = models.CharField(max_length=100, blank=True)
+    numero_pedido = models.CharField(max_length=30, blank=True)
+    codigo_cliente = models.BigIntegerField(null=True, blank=True)
+    cliente = models.ForeignKey(
+        CadastroOmie,
+        on_delete=models.SET_NULL,
+        related_name="pedidos_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_empresa_omie = models.BigIntegerField(null=True, blank=True)
+    codigo_parcela = models.CharField(max_length=20, blank=True)
+    codigo_cenario_impostos = models.CharField(max_length=30, blank=True)
+    etapa = models.CharField(max_length=10, blank=True)
+    origem_pedido = models.CharField(max_length=40, blank=True)
+    data_previsao = models.DateField(null=True, blank=True)
+    encerrado = models.BooleanField(default=False)
+    bloqueado = models.BooleanField(default=False)
+    importado_api = models.BooleanField(default=False)
+    quantidade_itens = models.PositiveIntegerField(default=0)
+    quantidade_parcelas = models.PositiveIntegerField(default=0)
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        "CategoriaOmie",
+        on_delete=models.SET_NULL,
+        related_name="pedidos_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_conta_corrente = models.BigIntegerField(null=True, blank=True)
+    conta_corrente = models.ForeignKey(
+        "ContaCorrenteOmie",
+        on_delete=models.SET_NULL,
+        related_name="pedidos_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_projeto = models.BigIntegerField(null=True, blank=True)
+    projeto = models.ForeignKey(
+        ProjetoOmie,
+        on_delete=models.SET_NULL,
+        related_name="pedidos_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_vendedor = models.BigIntegerField(null=True, blank=True)
+    consumidor_final = models.BooleanField(default=False)
+    autorizado = models.BooleanField(default=False)
+    cancelado = models.BooleanField(default=False)
+    denegado = models.BooleanField(default=False)
+    devolvido = models.BooleanField(default=False)
+    devolvido_parcial = models.BooleanField(default=False)
+    faturado = models.BooleanField(default=False)
+    data_inclusao = models.DateField(null=True, blank=True)
+    data_alteracao = models.DateField(null=True, blank=True)
+    data_faturamento = models.DateField(null=True, blank=True)
+    valor_mercadorias = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_total_pedido = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_descontos = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_frete = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_seguro = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    cabecalho = models.JSONField(default=dict, blank=True)
+    departamentos = models.JSONField(default=list, blank=True)
+    exportacao = models.JSONField(default=dict, blank=True)
+    frete = models.JSONField(default=dict, blank=True)
+    info_cadastro = models.JSONField(default=dict, blank=True)
+    informacoes_adicionais = models.JSONField(default=dict, blank=True)
+    lista_parcelas = models.JSONField(default=dict, blank=True)
+    observacoes = models.JSONField(default=dict, blank=True)
+    total_pedido = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data_previsao", "-codigo_pedido"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_pedido"],
+                name="pedido_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "data_previsao"],
+                name="ped_omie_emp_prev_idx",
+            ),
+            models.Index(
+                fields=["empresa", "numero_pedido"],
+                name="ped_omie_emp_num_idx",
+            ),
+            models.Index(
+                fields=["empresa", "faturado"],
+                name="ped_omie_emp_fat_idx",
+            ),
+        ]
+        verbose_name = "pedido OMIE"
+        verbose_name_plural = "pedidos OMIE"
+
+    def __str__(self):
+        return self.numero_pedido or str(self.codigo_pedido)
+
+
+class PedidoItemOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="itens_pedido_omie",
+    )
+    pedido = models.ForeignKey(
+        PedidoOmie,
+        on_delete=models.CASCADE,
+        related_name="itens",
+    )
+    codigo_item = models.BigIntegerField()
+    codigo_item_integracao = models.CharField(max_length=100, blank=True)
+    codigo_produto = models.BigIntegerField(null=True, blank=True)
+    produto = models.ForeignKey(
+        ProdutoOmie,
+        on_delete=models.SET_NULL,
+        related_name="itens_pedido_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_produto_texto = models.CharField(max_length=60, blank=True)
+    descricao = models.CharField(max_length=255, blank=True)
+    unidade = models.CharField(max_length=10, blank=True)
+    ncm = models.CharField(max_length=20, blank=True)
+    cfop = models.CharField(max_length=10, blank=True)
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        "CategoriaOmie",
+        on_delete=models.SET_NULL,
+        related_name="itens_pedido_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_local_estoque = models.BigIntegerField(null=True, blank=True)
+    quantidade = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_unitario = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_total = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_mercadoria = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_desconto = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    percentual_desconto = models.DecimalField(
+        max_digits=9,
+        decimal_places=4,
+        default=0,
+    )
+    nao_gerar_financeiro = models.BooleanField(default=False)
+    nao_movimentar_estoque = models.BooleanField(default=False)
+    nao_somar_total = models.BooleanField(default=False)
+    reservado = models.BooleanField(default=False)
+    ide = models.JSONField(default=dict, blank=True)
+    produto_dados = models.JSONField(default=dict, blank=True)
+    imposto = models.JSONField(default=dict, blank=True)
+    inf_adic = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["pedido_id", "codigo_item"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_item"],
+                name="pedido_item_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "codigo_produto"],
+                name="ped_item_emp_prod_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_categoria"],
+                name="ped_item_emp_cat_idx",
+            ),
+        ]
+        verbose_name = "item de pedido OMIE"
+        verbose_name_plural = "itens de pedido OMIE"
+
+    def __str__(self):
+        return self.descricao or str(self.codigo_item)
+
+
 class CategoriaOmie(models.Model):
     empresa = models.ForeignKey(
         Empresa,
