@@ -1045,6 +1045,7 @@ def _salvar_ordens_servico(empresa, itens):
         informacoes = item.get("InformacoesAdicionais") or {}
         codigo_cliente = _inteiro_ou_none(cabecalho.get("nCodCli"))
         codigo_conta = _inteiro_ou_none(informacoes.get("nCodCC"))
+        codigo_vendedor = _inteiro_ou_none(cabecalho.get("nCodVend"))
         codigo_categoria = str(informacoes.get("cCodCateg") or "").strip()
         ordem_servico, _criado = OrdemServicoOmie.objects.update_or_create(
             empresa=empresa,
@@ -1066,6 +1067,7 @@ def _salvar_ordens_servico(empresa, itens):
                 "categoria_principal": categorias.get(codigo_categoria),
                 "codigo_conta_corrente": codigo_conta,
                 "conta_corrente": contas_correntes.get(codigo_conta),
+                "codigo_vendedor": codigo_vendedor,
                 "cidade_prestacao": str(informacoes.get("cCidPrestServ") or ""),
                 "numero_contrato": str(informacoes.get("cNumContrato") or ""),
                 "numero_recibo": str(informacoes.get("cNumRecibo") or ""),

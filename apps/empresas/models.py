@@ -460,6 +460,7 @@ class OrdemServicoOmie(models.Model):
         null=True,
         blank=True,
     )
+    codigo_vendedor = models.BigIntegerField(null=True, blank=True)
     cidade_prestacao = models.CharField(max_length=120, blank=True)
     numero_contrato = models.CharField(max_length=60, blank=True)
     numero_recibo = models.CharField(max_length=40, blank=True)
@@ -1481,6 +1482,36 @@ class ContaDRE(models.Model):
 
     def __str__(self):
         return self.nome
+
+
+class MetaVendedorComercial(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="metas_vendedores_comerciais",
+    )
+    vendedor = models.ForeignKey(
+        VendedorOmie,
+        on_delete=models.CASCADE,
+        related_name="metas_comerciais",
+    )
+    valor_mensal = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    atualizada_em = models.DateTimeField(auto_now=True)
+    criada_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["vendedor__nome", "vendedor__codigo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "vendedor"],
+                name="meta_vendedor_empresa_vendedor_unico",
+            )
+        ]
+        verbose_name = "meta comercial por vendedor"
+        verbose_name_plural = "metas comerciais por vendedor"
+
+    def __str__(self):
+        return f"{self.vendedor} - {self.valor_mensal}"
 
 
 class SincronizacaoOmie(models.Model):

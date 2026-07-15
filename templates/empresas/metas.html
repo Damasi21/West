@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Metas e objetivos | MD21 BI{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">PARAMETROS</span>
+        <h1>Metas e objetivos</h1>
+        <p>Defina metas mensais por vendedor para os dashboards comerciais da {{ empresa.nome_fantasia }}.</p>
+    </div>
+    <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">
+        <i class="bi bi-arrow-left me-2"></i>Voltar
+    </a>
+</div>
+
+<form method="post" class="sales-goals-form">
+    {% csrf_token %}
+    <section class="sales-goals-card">
+        <div class="sales-goals-header">
+            <div>
+                <span class="eyebrow">COMERCIAL</span>
+                <h2>Metas por vendedor</h2>
+                <p>A meta mensal informada aqui alimenta o indicador e a linha de meta do dashboard Faturamento.</p>
+            </div>
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-check2-circle me-2"></i>Salvar metas
+            </button>
+        </div>
+
+        <div class="sales-goals-summary">
+            <span>Total mensal configurado</span>
+            <strong>R$ {{ total_mensal|floatformat:2 }}</strong>
+        </div>
+
+        <div class="sales-goals-columns" aria-hidden="true">
+            <span>Vendedor</span>
+            <span>Email</span>
+            <span>Meta mensal</span>
+        </div>
+        <div class="sales-goals-list">
+            {% for linha in linhas %}
+                <div class="sales-goals-row">
+                    <div class="sales-goals-seller">
+                        <strong>{{ linha.vendedor.nome|default:linha.vendedor.codigo }}</strong>
+                        <small>Código {{ linha.vendedor.codigo }}</small>
+                    </div>
+                    <span class="sales-goals-email">{{ linha.vendedor.email|default:"-" }}</span>
+                    <label class="sales-goals-value">
+                        <span class="visually-hidden">Meta de {{ linha.vendedor.nome }}</span>
+                        <span>R$</span>
+                        <input
+                            type="text"
+                            inputmode="decimal"
+                            name="meta_{{ linha.vendedor.pk }}"
+                            value="{{ linha.valor|floatformat:2 }}"
+                            class="form-control"
+                        >
+                    </label>
+                </div>
+            {% empty %}
+                <div class="sales-goals-empty">
+                    <i class="bi bi-person-badge"></i>
+                    <strong>Nenhum vendedor ativo encontrado</strong>
+                    <p>Atualize os dados da OMIE em Parametros para listar os vendedores.</p>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="sales-goals-actions">
+            <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">Cancelar</a>
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-check2-circle me-2"></i>Salvar metas
+            </button>
+        </div>
+    </section>
+</form>
+{% endblock %}

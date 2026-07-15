@@ -1,5 +1,6 @@
 import json
 from datetime import timedelta
+from decimal import Decimal
 from io import BytesIO
 from unittest.mock import patch
 
@@ -24,6 +25,7 @@ from .models import (
     EmpresaUsuario,
     IntegracaoOmie,
     LancamentoContaCorrenteOmie,
+    MetaVendedorComercial,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoItemOmie,
@@ -299,6 +301,48 @@ class EstruturaDRETests(TestCase):
                 kwargs={"empresa_slug": self.empresa.slug},
             ),
         )
+        self.assertContains(
+            response,
+            reverse(
+                "dashboards:metas",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+        )
+
+    def test_metas_lista_vendedores_e_salva_valores(self):
+        vendedor = VendedorOmie.objects.create(
+            empresa=self.empresa,
+            codigo=101,
+            nome="Ana Comercial",
+        )
+        VendedorOmie.objects.create(
+            empresa=self.empresa,
+            codigo=102,
+            nome="Vendedor inativo",
+            inativo=True,
+        )
+        url = reverse("dashboards:metas", kwargs={"empresa_slug": self.empresa.slug})
+        self.client.force_login(self.administrador)
+
+        response = self.client.get(url)
+
+        self.assertContains(response, "Ana Comercial")
+        self.assertNotContains(response, "Vendedor inativo")
+
+        response = self.client.post(url, {f"meta_{vendedor.pk}": "12.500,50"})
+
+        self.assertRedirects(response, url)
+        meta = MetaVendedorComercial.objects.get(vendedor=vendedor)
+        self.assertEqual(meta.valor_mensal, Decimal("12500.50"))
+
+    def test_usuario_comum_nao_acessa_metas(self):
+        self.client.force_login(self.cliente)
+
+        response = self.client.get(
+            reverse("dashboards:metas", kwargs={"empresa_slug": self.empresa.slug})
+        )
+
+        self.assertEqual(response.status_code, 403)
 
     def test_usuario_comum_nao_acessa_estrutura_dre(self):
         self.client.force_login(self.cliente)
@@ -1331,6 +1375,7 @@ class SincronizacaoClientesOmieTests(TestCase):
                         "dDtPrevisao": "23/05/2026",
                         "nCodCli": 101,
                         "nCodOS": 4362685093,
+                        "nCodVend": 4290841436,
                         "nQtdeParc": 1,
                         "nValorTotal": 200,
                         "nValorTotalImpRet": 0,
@@ -1896,6 +1941,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(ordem_servico.cliente.codigo_cliente_omie, 101)
         self.assertEqual(ordem_servico.conta_corrente, conta)
         self.assertEqual(ordem_servico.categoria_principal, categoria)
+        self.assertEqual(ordem_servico.codigo_vendedor, 4290841436)
         self.assertTrue(ordem_servico.faturada)
         self.assertFalse(ordem_servico.cancelada)
         self.assertEqual(ordem_servico.data_previsao.isoformat(), "2026-05-23")

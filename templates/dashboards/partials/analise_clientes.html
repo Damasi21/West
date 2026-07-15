@@ -1,0 +1,68 @@
+<section class="client-analysis-dashboard" data-client-analysis-dashboard>
+    <div class="client-analysis-kpis">
+        {% for indicador in dados.indicadores %}
+            <article class="client-analysis-kpi client-analysis-kpi-{{ indicador.tom }}">
+                <div>
+                    <span>{{ indicador.titulo }}</span>
+                    <strong>{{ indicador.valor }}</strong>
+                    <small>{{ indicador.subvalor }}</small>
+                </div>
+                <i class="bi {{ indicador.icone }}"></i>
+            </article>
+        {% endfor %}
+    </div>
+
+    <div class="client-analysis-chart-grid">
+        <article class="dre-chart-card client-analysis-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>CARTEIRA</small>
+                    <h2>Tipos de clientes</h2>
+                </div>
+            </div>
+            <div class="client-analysis-segments">
+                {% for segmento in dados.segmentos %}
+                    <span style="--segment-color: {{ segmento.cor }}">
+                        <i></i>{{ segmento.rotulo }} {{ segmento.percentual_fmt }}
+                    </span>
+                {% endfor %}
+            </div>
+            <div class="client-analysis-chart-canvas">
+                <canvas data-client-segment-chart></canvas>
+            </div>
+        </article>
+
+        <article class="dre-chart-card client-analysis-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>CONCENTRACAO</small>
+                    <h2>Top 10 clientes vs. restante</h2>
+                </div>
+            </div>
+            <div class="client-analysis-chart-canvas client-analysis-pie-canvas">
+                <canvas data-client-top-chart></canvas>
+            </div>
+        </article>
+
+        <article class="dre-chart-card client-analysis-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>TICKET</small>
+                    <h2>Ticket medio por segmento</h2>
+                </div>
+            </div>
+            <div class="client-analysis-chart-canvas">
+                <canvas data-client-ticket-chart></canvas>
+            </div>
+        </article>
+    </div>
+
+    {{ dados.segmento_labels|json_script:"client-segment-labels" }}
+    {{ dados.segmento_percentuais|json_script:"client-segment-percentages" }}
+    {{ dados.segmento_cores|json_script:"client-segment-colors" }}
+    {{ dados.top_labels|json_script:"client-top-labels" }}
+    {{ dados.top_valores|json_script:"client-top-values" }}
+    {{ dados.ticket_labels|json_script:"client-ticket-labels" }}
+    {{ dados.ticket_valores|json_script:"client-ticket-values" }}
+    {{ dados.ticket_frequencia|json_script:"client-ticket-frequency" }}
+</section>

@@ -15,7 +15,15 @@ from apps.empresas.models import (
     Empresa,
     EmpresaUsuario,
     LancamentoContaCorrenteOmie,
+    MetaVendedorComercial,
+    OrdemServicoItemOmie,
+    OrdemServicoOmie,
+    PedidoItemOmie,
+    PedidoOmie,
+    ProdutoOmie,
     ProjetoOmie,
+    ServicoOmie,
+    VendedorOmie,
 )
 
 
@@ -134,10 +142,10 @@ class DashboardPermissaoTests(TestCase):
             )
         )
 
-        self.assertContains(response, "Visão de vendas")
+        self.assertContains(response, "Faturamento")
         self.assertContains(response, "Desempenho de vendedores")
         self.assertContains(response, "Análise de clientes")
-        self.assertContains(response, "Produtos vendidos")
+        self.assertContains(response, "Margem e Rentabilidade")
 
     def test_dashboard_da_area_pode_ser_aberto(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
@@ -149,13 +157,13 @@ class DashboardPermissaoTests(TestCase):
                 kwargs={
                     "empresa_slug": self.empresa.slug,
                     "area_slug": "comercial",
-                    "dashboard_slug": "visao-de-vendas",
+                    "dashboard_slug": "faturamento",
                 },
             )
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Visão de vendas")
+        self.assertContains(response, "Faturamento")
 
     def test_dashboard_exibe_filtros_e_projetos_ativos(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
@@ -190,7 +198,7 @@ class DashboardPermissaoTests(TestCase):
                 kwargs={
                     "empresa_slug": self.empresa.slug,
                     "area_slug": "comercial",
-                    "dashboard_slug": "visao-de-vendas",
+                    "dashboard_slug": "faturamento",
                 },
             ),
             {
@@ -206,6 +214,411 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Hinfoluz")
         self.assertNotContains(response, "Departamento inativo")
         self.assertContains(response, self.empresa.nome_fantasia)
+
+    def test_faturamento_exibe_indicadores_graficos_top5_e_filtros(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        vendedor = VendedorOmie.objects.create(
+            empresa=self.empresa,
+            codigo=77,
+            nome="Maria Vendas",
+        )
+        MetaVendedorComercial.objects.create(
+            empresa=self.empresa,
+            vendedor=vendedor,
+            valor_mensal=10000,
+        )
+        produto = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=100,
+            codigo="NB-15",
+            descricao="Notebook Pro 15",
+        )
+        servico = ServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_servico=200,
+            codigo="SUP",
+            descricao="Suporte tecnico",
+        )
+        pedido = PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=300,
+            numero_pedido="PV-300",
+            codigo_vendedor=vendedor.codigo,
+            data_inclusao=date(ano_atual, 1, 5),
+            data_faturamento=date(ano_atual, 1, 8),
+            faturado=True,
+            valor_total_pedido=3000,
+        )
+        PedidoItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=301,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            descricao=produto.descricao,
+            quantidade=2,
+            valor_unitario=1500,
+            valor_total=3000,
+        )
+        ordem = OrdemServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_os=400,
+            numero_os="OS-400",
+            codigo_vendedor=vendedor.codigo,
+            data_inclusao=date(ano_atual, 1, 7),
+            data_faturamento=date(ano_atual, 1, 9),
+            faturada=True,
+            valor_total=1200,
+        )
+        OrdemServicoItemOmie.objects.create(
+            empresa=self.empresa,
+            ordem_servico=ordem,
+            codigo_item=401,
+            servico=servico,
+            codigo_servico=servico.codigo_servico,
+            descricao=servico.descricao,
+            quantidade=3,
+            valor_unitario=400,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "comercial",
+                    "dashboard_slug": "faturamento",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+                "vendedor": f"{self.empresa.pk}:{vendedor.codigo}",
+                "tipo_faturamento": ["produtos", "servicos"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Faturado")
+        self.assertContains(response, "Meta do periodo")
+        self.assertContains(response, "R$ 10,00 Mil")
+        self.assertContains(response, "Pedidos emitidos")
+        self.assertContains(response, "Ticket medio")
+        self.assertContains(response, "Maria Vendas")
+        self.assertContains(response, "Produtos")
+        self.assertContains(response, "Servicos")
+        self.assertContains(response, "Notebook Pro 15")
+        self.assertContains(response, "Suporte tecnico")
+        self.assertContains(response, "data-billing-main-chart")
+        self.assertContains(response, "data-billing-goal-chart")
+        self.assertContains(response, "[10000.0]")
+        self.assertEqual(response.context["vendedores_selecionados"], [f"{self.empresa.pk}:{vendedor.codigo}"])
+        self.assertEqual(
+            response.context["tipos_faturamento_selecionados"],
+            ["produtos", "servicos"],
+        )
+
+    def test_desempenho_vendedores_exibe_indicadores_graficos_e_carteira(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        ana = VendedorOmie.objects.create(
+            empresa=self.empresa,
+            codigo=201,
+            nome="Ana",
+        )
+        carlos = VendedorOmie.objects.create(
+            empresa=self.empresa,
+            codigo=202,
+            nome="Carlos",
+        )
+        fernanda = VendedorOmie.objects.create(
+            empresa=self.empresa,
+            codigo=203,
+            nome="Fernanda",
+        )
+        for vendedor, meta in ((ana, 10000), (carlos, 9000), (fernanda, 8000)):
+            MetaVendedorComercial.objects.create(
+                empresa=self.empresa,
+                vendedor=vendedor,
+                valor_mensal=meta,
+            )
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=2101,
+            numero_pedido="PV-2101",
+            codigo_vendedor=ana.codigo,
+            data_inclusao=date(ano_atual, 1, 5),
+            data_faturamento=date(ano_atual, 1, 10),
+            faturado=True,
+            valor_total_pedido=12000,
+        )
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=2102,
+            numero_pedido="PV-2102",
+            codigo_vendedor=carlos.codigo,
+            data_inclusao=date(ano_atual, 1, 6),
+            data_faturamento=date(ano_atual, 1, 11),
+            faturado=True,
+            valor_total_pedido=7000,
+        )
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=2103,
+            numero_pedido="PV-2103",
+            codigo_vendedor=fernanda.codigo,
+            data_inclusao=date(ano_atual, 1, 7),
+            data_faturamento=date(ano_atual, 1, 12),
+            faturado=True,
+            valor_total_pedido=3000,
+        )
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=2201,
+            numero_pedido="PV-2201",
+            codigo_vendedor=ana.codigo,
+            data_inclusao=date(ano_atual, 1, 15),
+            faturado=False,
+            valor_total_pedido=5000,
+        )
+        OrdemServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_os=2301,
+            numero_os="OS-2301",
+            codigo_vendedor=ana.codigo,
+            data_inclusao=date(ano_atual, 1, 16),
+            data_faturamento=date(ano_atual, 1, 20),
+            faturada=True,
+            valor_total=4000,
+        )
+        OrdemServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_os=2302,
+            numero_os="OS-2302",
+            codigo_vendedor=carlos.codigo,
+            data_inclusao=date(ano_atual, 1, 18),
+            faturada=False,
+            valor_total=2500,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "comercial",
+                    "dashboard_slug": "desempenho-de-vendedores",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+                "tipo_faturamento": ["produtos", "servicos"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Faturamento total da equipe")
+        self.assertContains(response, "% da meta atingida")
+        self.assertContains(response, "Melhor performance")
+        self.assertContains(response, "Ticket medio da equipe")
+        self.assertContains(response, "Meta vs. realizado")
+        self.assertContains(response, "Tendencia mensal - top 3 vendedores")
+        self.assertContains(response, "Pedidos em aberto por vendedor")
+        self.assertContains(response, "Produtos")
+        self.assertContains(response, "Servicos")
+        self.assertContains(response, "Ana")
+        self.assertContains(response, "Carlos")
+        self.assertContains(response, "Fernanda")
+        self.assertContains(response, "Acima da meta")
+        self.assertContains(response, "data-seller-ranking-chart")
+        self.assertContains(response, "data-seller-trend-chart")
+        self.assertEqual(
+            response.context["tipos_faturamento_selecionados"],
+            ["produtos", "servicos"],
+        )
+
+    def test_analise_clientes_exibe_indicadores_e_graficos(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        vip = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=3101,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente VIP",
+        )
+        ativo = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=3102,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente Ativo",
+        )
+        risco = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=3103,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente Risco",
+        )
+        CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=3104,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente Inativo",
+            inativo=True,
+        )
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=3201,
+            numero_pedido="PV-3201",
+            codigo_cliente=vip.codigo_cliente_omie,
+            cliente=vip,
+            data_faturamento=date(ano_atual, 1, 10),
+            faturado=True,
+            valor_total_pedido=5000,
+        )
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=3202,
+            numero_pedido="PV-3202",
+            codigo_cliente=vip.codigo_cliente_omie,
+            cliente=vip,
+            data_faturamento=date(ano_atual, 2, 10),
+            faturado=True,
+            valor_total_pedido=3000,
+        )
+        OrdemServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_os=3301,
+            numero_os="OS-3301",
+            codigo_cliente=ativo.codigo_cliente_omie,
+            cliente=ativo,
+            data_faturamento=date(ano_atual, 3, 10),
+            faturada=True,
+            valor_total=2000,
+        )
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=3203,
+            numero_pedido="PV-3203",
+            codigo_cliente=risco.codigo_cliente_omie,
+            cliente=risco,
+            data_faturamento=date(ano_atual - 1, 9, 10),
+            faturado=True,
+            valor_total_pedido=1500,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "comercial",
+                    "dashboard_slug": "analise-de-clientes",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"ano-{ano_atual}",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Clientes ativos")
+        self.assertContains(response, "Novos no periodo")
+        self.assertContains(response, "Churn no periodo")
+        self.assertContains(response, "Ticket medio")
+        self.assertContains(response, "Tipos de clientes")
+        self.assertContains(response, "Top 10 clientes vs. restante")
+        self.assertContains(response, "Ticket medio por segmento")
+        self.assertContains(response, "Cliente VIP")
+        self.assertContains(response, "data-client-segment-chart")
+        self.assertContains(response, "data-client-top-chart")
+        self.assertContains(response, "data-client-ticket-chart")
+
+    def test_margem_rentabilidade_exibe_indicadores_grafico_e_rankings(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        produto_lucrativo = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=4101,
+            codigo="LUC-01",
+            descricao="Produto Lucrativo",
+            info={"valor_custo": "40"},
+        )
+        produto_critico = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=4102,
+            codigo="CRT-01",
+            descricao="Produto Critico",
+            info={"valor_custo": "130"},
+        )
+        pedido = PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=4201,
+            numero_pedido="PV-4201",
+            data_faturamento=date(ano_atual, 1, 15),
+            faturado=True,
+            valor_total_pedido=2400,
+            valor_descontos=100,
+        )
+        PedidoItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=4301,
+            produto=produto_lucrativo,
+            codigo_produto=produto_lucrativo.codigo_produto,
+            codigo_produto_texto=produto_lucrativo.codigo,
+            descricao=produto_lucrativo.descricao,
+            quantidade=10,
+            valor_unitario=150,
+            valor_total=1500,
+            valor_desconto=50,
+        )
+        PedidoItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=4302,
+            produto=produto_critico,
+            codigo_produto=produto_critico.codigo_produto,
+            codigo_produto_texto=produto_critico.codigo,
+            descricao=produto_critico.descricao,
+            quantidade=10,
+            valor_unitario=90,
+            valor_total=900,
+            valor_desconto=50,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "comercial",
+                    "dashboard_slug": "margem-e-rentabilidade",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Margem bruta media")
+        self.assertContains(response, "Receita total")
+        self.assertContains(response, "Produtos c/ mg negativa")
+        self.assertContains(response, "Desconto medio")
+        self.assertContains(response, "Receita x margem")
+        self.assertContains(response, "Top 5 mais rentaveis")
+        self.assertContains(response, "Bottom 5 - Atencao urgente")
+        self.assertContains(response, "Produto Lucrativo")
+        self.assertContains(response, "Produto Critico")
+        self.assertContains(response, "data-margin-bubble-chart")
 
     def test_dashboard_permite_multisselecao_de_filtros(self):
         ano_atual = date.today().year
@@ -242,7 +655,7 @@ class DashboardPermissaoTests(TestCase):
             kwargs={
                 "empresa_slug": self.empresa.slug,
                 "area_slug": "comercial",
-                "dashboard_slug": "visao-de-vendas",
+                "dashboard_slug": "faturamento",
             },
         )
 
@@ -281,7 +694,7 @@ class DashboardPermissaoTests(TestCase):
             kwargs={
                 "empresa_slug": self.empresa.slug,
                 "area_slug": "comercial",
-                "dashboard_slug": "visao-de-vendas",
+                "dashboard_slug": "faturamento",
             },
         )
         url_clientes = reverse(
@@ -321,7 +734,7 @@ class DashboardPermissaoTests(TestCase):
                 kwargs={
                     "empresa_slug": self.empresa.slug,
                     "area_slug": "comercial",
-                    "dashboard_slug": "visao-de-vendas",
+                    "dashboard_slug": "faturamento",
                 },
             )
         )
@@ -341,7 +754,7 @@ class DashboardPermissaoTests(TestCase):
             kwargs={
                 "empresa_slug": self.empresa.slug,
                 "area_slug": "comercial",
-                "dashboard_slug": "visao-de-vendas",
+                "dashboard_slug": "faturamento",
             },
         )
         url_produtos = reverse(
@@ -349,7 +762,7 @@ class DashboardPermissaoTests(TestCase):
             kwargs={
                 "empresa_slug": self.empresa.slug,
                 "area_slug": "comercial",
-                "dashboard_slug": "produtos-vendidos",
+                "dashboard_slug": "margem-e-rentabilidade",
             },
         )
 
@@ -384,7 +797,7 @@ class DashboardPermissaoTests(TestCase):
                 kwargs={
                     "empresa_slug": self.empresa.slug,
                     "area_slug": "comercial",
-                    "dashboard_slug": "visao-de-vendas",
+                    "dashboard_slug": "faturamento",
                 },
             ),
             {

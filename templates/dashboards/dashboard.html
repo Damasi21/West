@@ -83,6 +83,13 @@
         {% include "dashboards/partials/multiselect_filter.html" with nome="projeto" titulo="Projetos" icone="bi-kanban" opcoes=projetos selecionados=projetos_selecionados vazio="Todos os projetos" %}
         {% include "dashboards/partials/multiselect_filter.html" with nome="departamento" titulo="Departamentos" icone="bi-diagram-3" opcoes=departamentos selecionados=departamentos_selecionados vazio="Todos os departamentos" %}
 
+        {% if area_slug == "comercial" and dashboard_slug == "faturamento" or area_slug == "comercial" and dashboard_slug == "desempenho-de-vendedores" %}
+            {% include "dashboards/partials/multiselect_filter.html" with nome="vendedor" titulo="Vendedores" icone="bi-person-badge" opcoes=vendedores selecionados=vendedores_selecionados vazio="Todos os vendedores" %}
+        {% endif %}
+        {% if area_slug == "comercial" and dashboard_slug == "faturamento" or area_slug == "comercial" and dashboard_slug == "desempenho-de-vendedores" %}
+            {% include "dashboards/partials/multiselect_filter.html" with nome="tipo_faturamento" titulo="Tipo" icone="bi-ui-checks-grid" opcoes=tipos_faturamento selecionados=tipos_faturamento_selecionados vazio="Produtos e servicos" %}
+        {% endif %}
+
         {% if area_slug == "financeiro" %}
             {% if dashboard_slug == "visao-geral" or dashboard_slug == "dre-gerencial" %}
                 <label class="regime-filter" title="Escolha a data usada nos calculos">
@@ -136,6 +143,14 @@
 
 {% if dre_gerencial %}
     {% include "dashboards/partials/dre_gerencial.html" with dre=dre_gerencial %}
+{% elif faturamento %}
+    {% include "dashboards/partials/faturamento.html" with dados=faturamento %}
+{% elif desempenho_vendedores %}
+    {% include "dashboards/partials/desempenho_vendedores.html" with dados=desempenho_vendedores %}
+{% elif analise_clientes %}
+    {% include "dashboards/partials/analise_clientes.html" with dados=analise_clientes %}
+{% elif margem_rentabilidade %}
+    {% include "dashboards/partials/margem_rentabilidade.html" with dados=margem_rentabilidade %}
 {% elif visao_geral %}
     {% include "dashboards/partials/visao_geral.html" with visao=visao_geral %}
 {% elif fluxo_caixa %}

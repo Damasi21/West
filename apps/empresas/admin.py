@@ -207,6 +207,7 @@ class OrdemServicoOmieAdmin(admin.ModelAdmin):
         "numero_os",
         "codigo_os",
         "cliente",
+        "codigo_vendedor",
         "data_previsao",
         "valor_total",
         "faturada",

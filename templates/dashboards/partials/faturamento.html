@@ -1,0 +1,85 @@
+<section class="billing-dashboard" data-billing-dashboard>
+    <div class="billing-kpis">
+        {% for indicador in dados.indicadores %}
+            <article class="billing-kpi billing-kpi-{{ indicador.tom }}">
+                <div>
+                    <span>{{ indicador.titulo }}</span>
+                    <strong>{{ indicador.valor }}</strong>
+                </div>
+                <i class="bi {{ indicador.icone }}"></i>
+            </article>
+        {% endfor %}
+    </div>
+
+    <article class="dre-chart-card billing-main-chart">
+        <div class="dre-chart-header">
+            <div>
+                <small>FATURAMENTO</small>
+                <h2>Produtos, servicos e acumulado do periodo</h2>
+            </div>
+        </div>
+        <div class="billing-chart-canvas billing-chart-canvas-large">
+            <canvas data-billing-main-chart></canvas>
+        </div>
+    </article>
+
+    <div class="billing-bottom-grid">
+        <article class="dre-chart-card billing-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>META</small>
+                    <h2>Faturamento realizado x meta</h2>
+                </div>
+            </div>
+            <div class="billing-chart-canvas">
+                <canvas data-billing-goal-chart></canvas>
+            </div>
+        </article>
+
+        <article class="billing-ranking-card">
+            <div class="billing-ranking-header">
+                <div>
+                    <small>TOP 5</small>
+                    <h2>Produtos ou servicos mais vendidos</h2>
+                </div>
+            </div>
+            <div class="billing-ranking-table">
+                <div class="billing-ranking-row billing-ranking-head">
+                    <span>#</span>
+                    <span>Produto / servico</span>
+                    <span>Qtd</span>
+                    <span>Valor</span>
+                    <span>% periodo</span>
+                    <span>Vs. ant.</span>
+                </div>
+                {% for item in dados.ranking %}
+                    <div class="billing-ranking-row">
+                        <span>{{ forloop.counter }}</span>
+                        <strong>{{ item.nome }}</strong>
+                        <span>{{ item.quantidade }}</span>
+                        <span>{{ item.valor_fmt }}</span>
+                        <span>
+                            {{ item.participacao_fmt }}
+                            <small class="billing-share-bar">
+                                <i style="width: {{ item.participacao }}%"></i>
+                            </small>
+                        </span>
+                        <span class="billing-trend billing-trend-{{ item.variacao_tom }}">
+                            {% if item.variacao_tom == "up" %}<i class="bi bi-caret-up-fill"></i>{% else %}<i class="bi bi-caret-down-fill"></i>{% endif %}
+                            {{ item.variacao_fmt }}
+                        </span>
+                    </div>
+                {% empty %}
+                    <div class="billing-ranking-empty">Sem produtos ou servicos faturados no periodo.</div>
+                {% endfor %}
+            </div>
+        </article>
+    </div>
+
+    {{ dados.labels|json_script:"billing-chart-labels" }}
+    {{ dados.produtos|json_script:"billing-chart-products" }}
+    {{ dados.servicos|json_script:"billing-chart-services" }}
+    {{ dados.media_anterior|json_script:"billing-chart-previous-average" }}
+    {{ dados.acumulado|json_script:"billing-chart-accumulated" }}
+    {{ dados.meta|json_script:"billing-chart-goal" }}
+</section>

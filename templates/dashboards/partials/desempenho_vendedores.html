@@ -1,0 +1,88 @@
+<section class="seller-performance-dashboard" data-seller-performance-dashboard>
+    <div class="seller-performance-kpis">
+        {% for indicador in dados.indicadores %}
+            <article class="seller-performance-kpi seller-performance-kpi-{{ indicador.tom }}">
+                <div>
+                    <span>{{ indicador.titulo }}</span>
+                    <strong>{{ indicador.valor }}</strong>
+                    {% if indicador.subvalor %}<small>{{ indicador.subvalor }} da meta</small>{% endif %}
+                </div>
+                <i class="bi {{ indicador.icone }}"></i>
+            </article>
+        {% endfor %}
+    </div>
+
+    <div class="seller-performance-chart-grid">
+        <article class="dre-chart-card seller-performance-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>RANKING</small>
+                    <h2>Meta vs. realizado</h2>
+                </div>
+            </div>
+            <div class="seller-performance-chart-canvas">
+                <canvas data-seller-ranking-chart></canvas>
+            </div>
+        </article>
+
+        <article class="dre-chart-card seller-performance-chart-card">
+            <div class="dre-chart-header">
+                <div>
+                    <small>TENDENCIA</small>
+                    <h2>Tendencia mensal - top 3 vendedores</h2>
+                </div>
+            </div>
+            <div class="seller-performance-chart-canvas">
+                <canvas data-seller-trend-chart></canvas>
+            </div>
+        </article>
+    </div>
+
+    <article class="seller-wallet-card">
+        <div class="seller-wallet-header">
+            <div>
+                <small>CARTEIRA ATIVA</small>
+                <h2>Pedidos em aberto por vendedor</h2>
+            </div>
+        </div>
+        <div class="seller-wallet-table">
+            <div class="seller-wallet-row seller-wallet-head">
+                <span>Vendedor</span>
+                <span>Pedidos</span>
+                <span>Valor</span>
+                <span>Ticket medio</span>
+                <span>Mais antigo</span>
+                <span>% meta</span>
+                <span>Status</span>
+            </div>
+            {% for item in dados.carteira %}
+                <div class="seller-wallet-row">
+                    <div class="seller-wallet-person">
+                        <span class="seller-avatar seller-avatar-{{ item.status.tom }}">{{ item.iniciais }}</span>
+                        <strong>{{ item.vendedor }}</strong>
+                    </div>
+                    <span>{{ item.pedidos }}</span>
+                    <span class="seller-wallet-value">{{ item.valor_fmt }}</span>
+                    <span>{{ item.ticket_fmt }}</span>
+                    <span>{{ item.mais_antigo }}</span>
+                    <span>
+                        {{ item.percentual_fmt }}
+                        <small class="seller-goal-bar seller-goal-{{ item.status.tom }}">
+                            <i style="width: {{ item.percentual }}%"></i>
+                        </small>
+                    </span>
+                    <span class="seller-status seller-status-{{ item.status.tom }}">{{ item.status.rotulo }}</span>
+                </div>
+            {% empty %}
+                <div class="seller-wallet-empty">Sem pedidos em aberto no periodo.</div>
+            {% endfor %}
+        </div>
+    </article>
+
+    {{ dados.ranking_labels|json_script:"seller-ranking-labels" }}
+    {{ dados.ranking_realizado|json_script:"seller-ranking-realized" }}
+    {{ dados.ranking_falta|json_script:"seller-ranking-missing" }}
+    {{ dados.ranking_meta|json_script:"seller-ranking-goal" }}
+    {{ dados.tendencia_labels|json_script:"seller-trend-labels" }}
+    {{ dados.tendencia_series|json_script:"seller-trend-series" }}
+</section>

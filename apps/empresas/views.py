@@ -1,5 +1,6 @@
 import json
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
@@ -19,7 +20,9 @@ from .models import (
     ContaDRE,
     Empresa,
     IntegracaoOmie,
+    MetaVendedorComercial,
     SincronizacaoOmie,
+    VendedorOmie,
 )
 from .omie import iniciar_sincronizacao_omie
 from .planilhas import (
@@ -95,7 +98,11 @@ def parametros(request, empresa_slug):
             "titulo": "Metas e objetivos",
             "descricao": "Cadastre metas comerciais, financeiras e operacionais por empresa ou área.",
             "icone": "bi-bullseye",
-            "status": "Planejado",
+            "status": "DisponÃ­vel",
+            "url": reverse(
+                "dashboards:metas",
+                kwargs={"empresa_slug": empresa.slug},
+            ),
         },
         {
             "titulo": "Indicadores",
@@ -168,6 +175,82 @@ def parametros(request, empresa_slug):
             ),
             "total_pedidos_omie": empresa.pedidos_omie.count(),
             "total_itens_pedido_omie": empresa.itens_pedido_omie.count(),
+        },
+    )
+
+
+@login_required
+def metas(request, empresa_slug):
+    _exigir_administrador(request)
+    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    vendedores = list(
+        VendedorOmie.objects.filter(empresa=empresa, inativo=False).order_by(
+            "nome",
+            "codigo",
+        )
+    )
+    metas_atuais = {
+        meta.vendedor_id: meta
+        for meta in MetaVendedorComercial.objects.filter(
+            empresa=empresa,
+            vendedor__in=vendedores,
+        )
+    }
+
+    if request.method == "POST":
+        alteradas = []
+        criadas = []
+        for vendedor in vendedores:
+            valor_bruto = request.POST.get(f"meta_{vendedor.pk}", "")
+            valor_normalizado = valor_bruto.replace(".", "").replace(",", ".").strip()
+            try:
+                valor = max(Decimal(valor_normalizado or "0"), Decimal("0"))
+            except Exception:
+                messages.error(request, "Informe metas com valores numericos validos.")
+                return redirect("dashboards:metas", empresa_slug=empresa.slug)
+
+            meta = metas_atuais.get(vendedor.pk)
+            if meta:
+                if meta.valor_mensal != valor:
+                    meta.valor_mensal = valor
+                    alteradas.append(meta)
+            elif valor:
+                criadas.append(
+                    MetaVendedorComercial(
+                        empresa=empresa,
+                        vendedor=vendedor,
+                        valor_mensal=valor,
+                    )
+                )
+
+        with transaction.atomic():
+            if criadas:
+                MetaVendedorComercial.objects.bulk_create(criadas)
+            if alteradas:
+                MetaVendedorComercial.objects.bulk_update(alteradas, ["valor_mensal"])
+        messages.success(request, "Metas comerciais salvas.")
+        return redirect("dashboards:metas", empresa_slug=empresa.slug)
+
+    linhas = []
+    total_mensal = Decimal("0")
+    for vendedor in vendedores:
+        meta = metas_atuais.get(vendedor.pk)
+        valor = meta.valor_mensal if meta else Decimal("0")
+        total_mensal += valor
+        linhas.append(
+            {
+                "vendedor": vendedor,
+                "valor": valor,
+            }
+        )
+
+    return render(
+        request,
+        "empresas/metas.html",
+        {
+            "empresa": empresa,
+            "linhas": linhas,
+            "total_mensal": total_mensal,
         },
     )
 

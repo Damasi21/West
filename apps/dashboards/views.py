@@ -5,9 +5,18 @@ from django.http import Http404
 from django.shortcuts import render
 from django.utils.dateparse import parse_date
 
+from apps.dashboards.analise_clientes_services import analise_clientes_comercial
+from apps.dashboards.desempenho_vendedores_services import desempenho_vendedores
 from apps.dashboards.dre_services import dre_gerencial
+from apps.dashboards.faturamento_services import (
+    TIPOS_FATURAMENTO,
+    faturamento_comercial,
+)
 from apps.dashboards.fluxo_caixa_services import fluxo_de_caixa
 from apps.dashboards.inadimplencia_services import inadimplencia
+from apps.dashboards.margem_rentabilidade_services import (
+    margem_rentabilidade_comercial,
+)
 from apps.dashboards.visao_geral_services import visao_geral_financeira
 from apps.empresas.services import empresas_permitidas, obter_empresa_permitida
 
@@ -21,9 +30,9 @@ AREAS = {
         "cor": "primary",
         "dashboards": [
             {
-                "slug": "visao-de-vendas",
-                "titulo": "Visão de vendas",
-                "descricao": "Acompanhe vendas, faturamento e evolução comercial.",
+                "slug": "faturamento",
+                "titulo": "Faturamento",
+                "descricao": "Acompanhe faturamento, pedidos emitidos e top itens.",
                 "icone": "bi-bar-chart-line",
             },
             {
@@ -39,10 +48,10 @@ AREAS = {
                 "icone": "bi-people",
             },
             {
-                "slug": "produtos-vendidos",
-                "titulo": "Produtos vendidos",
+                "slug": "margem-e-rentabilidade",
+                "titulo": "Margem e Rentabilidade",
                 "descricao": "Veja os produtos e categorias com maior participação.",
-                "icone": "bi-box-seam",
+                "icone": "bi-bullseye",
             },
         ],
     },
@@ -363,13 +372,17 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
     empresas_consulta_ids = empresas_selecionadas or [
         str(item.pk) for item in empresas
     ]
-    from apps.empresas.models import DepartamentoOmie, ProjetoOmie
+    from apps.empresas.models import DepartamentoOmie, ProjetoOmie, VendedorOmie
 
     projetos = ProjetoOmie.objects.filter(
         empresa_id__in=empresas_consulta_ids,
         inativo=False,
     ).select_related("empresa")
     departamentos = DepartamentoOmie.objects.filter(
+        empresa_id__in=empresas_consulta_ids,
+        inativo=False,
+    ).select_related("empresa")
+    vendedores = VendedorOmie.objects.filter(
         empresa_id__in=empresas_consulta_ids,
         inativo=False,
     ).select_related("empresa")
@@ -390,6 +403,18 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         }
         for departamento in departamentos
     ]
+    vendedores_opcoes = [
+        {
+            "valor": f"{vendedor.empresa_id}:{vendedor.codigo}",
+            "nome": vendedor.nome or str(vendedor.codigo),
+            "empresa": vendedor.empresa.nome_fantasia,
+        }
+        for vendedor in vendedores
+    ]
+    tipos_faturamento_opcoes = [
+        {"valor": valor, "nome": rotulo, "empresa": ""}
+        for valor, rotulo in TIPOS_FATURAMENTO.items()
+    ]
 
     if "_filtrar" in request.GET:
         projetos_selecionados = _valores_validos(
@@ -400,6 +425,14 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             request.GET.getlist("departamento"),
             (item["valor"] for item in departamentos_opcoes),
         )
+        vendedores_selecionados = _valores_validos(
+            request.GET.getlist("vendedor"),
+            (item["valor"] for item in vendedores_opcoes),
+        )
+        tipos_faturamento_selecionados = _valores_validos(
+            request.GET.getlist("tipo_faturamento"),
+            TIPOS_FATURAMENTO.keys(),
+        ) or list(TIPOS_FATURAMENTO)
         periodo_selecionado = _valor_periodo_valido(
             request.GET.get("periodo", "")
         )
@@ -420,6 +453,8 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "data_fim": data_fim,
             "projetos": projetos_selecionados,
             "departamentos": departamentos_selecionados,
+            "vendedores": vendedores_selecionados,
+            "tipos_faturamento": tipos_faturamento_selecionados,
             "empresas": empresas_selecionadas,
         }
         request.session[chave_dashboard] = estado
@@ -432,6 +467,14 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             estado.get("departamentos", []),
             (item["valor"] for item in departamentos_opcoes),
         )
+        vendedores_selecionados = _valores_validos(
+            estado.get("vendedores", []),
+            (item["valor"] for item in vendedores_opcoes),
+        )
+        tipos_faturamento_selecionados = _valores_validos(
+            estado.get("tipos_faturamento", list(TIPOS_FATURAMENTO)),
+            TIPOS_FATURAMENTO.keys(),
+        ) or list(TIPOS_FATURAMENTO)
         fonte_periodo = estado if estado.get("periodo") else estado_modulo
         periodo_selecionado = _valor_periodo_valido(
             fonte_periodo.get("periodo") or periodo_compartilhado or ""
@@ -499,10 +542,54 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "projetos_selecionados": projetos_selecionados,
             "departamentos": departamentos_opcoes,
             "departamentos_selecionados": departamentos_selecionados,
+            "vendedores": vendedores_opcoes,
+            "vendedores_selecionados": vendedores_selecionados,
+            "tipos_faturamento": tipos_faturamento_opcoes,
+            "tipos_faturamento_selecionados": tipos_faturamento_selecionados,
             "empresas_filtro": empresas,
             "empresas_selecionadas": empresas_selecionadas,
         }
     )
+    if area_slug == "comercial" and dashboard_slug == "faturamento":
+        contexto["faturamento"] = faturamento_comercial(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_selecionados,
+            tipos_faturamento_selecionados,
+            vendedores_selecionados,
+        )
+    if area_slug == "comercial" and dashboard_slug == "desempenho-de-vendedores":
+        contexto["desempenho_vendedores"] = desempenho_vendedores(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_selecionados,
+            vendedores_selecionados,
+            tipos_faturamento_selecionados,
+        )
+    if area_slug == "comercial" and dashboard_slug == "analise-de-clientes":
+        contexto["analise_clientes"] = analise_clientes_comercial(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_selecionados,
+        )
+    if area_slug == "comercial" and dashboard_slug == "margem-e-rentabilidade":
+        contexto["margem_rentabilidade"] = margem_rentabilidade_comercial(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_selecionados,
+        )
     if area_slug == "financeiro" and dashboard_slug == "dre-gerencial":
         contexto["dre_gerencial"] = dre_gerencial(
             empresa,

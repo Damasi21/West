@@ -1,0 +1,93 @@
+<section class="margin-dashboard" data-margin-dashboard>
+    <div class="margin-kpis">
+        {% for indicador in dados.indicadores %}
+            <article class="margin-kpi margin-kpi-{{ indicador.tom }}">
+                <span>{{ indicador.titulo }}</span>
+                <strong>{{ indicador.valor }}</strong>
+                <small>{{ indicador.subvalor }}</small>
+            </article>
+        {% endfor %}
+    </div>
+
+    <article class="dre-chart-card margin-bubble-card">
+        <div class="dre-chart-header">
+            <div>
+                <small>MAPA DE RENTABILIDADE</small>
+                <h2>Receita x margem</h2>
+            </div>
+        </div>
+        <div class="margin-legend">
+            <span><i class="margin-dot-high"></i>Margem alta (&gt;=35%)</span>
+            <span><i class="margin-dot-medium"></i>Margem media (15-34%)</span>
+            <span><i class="margin-dot-low"></i>Margem baixa (&lt;15%)</span>
+            <span><i class="margin-dot-negative"></i>Margem negativa</span>
+        </div>
+        <div class="margin-bubble-canvas">
+            <canvas data-margin-bubble-chart></canvas>
+        </div>
+    </article>
+
+    <div class="margin-ranking-grid">
+        <article class="margin-ranking-card">
+            <div class="margin-ranking-header">
+                <small>TOP 5</small>
+                <h2>Top 5 mais rentaveis</h2>
+            </div>
+            <div class="margin-ranking-table">
+                <div class="margin-ranking-row margin-ranking-head">
+                    <span>#</span>
+                    <span>Codigo</span>
+                    <span>Produto</span>
+                    <span>Receita</span>
+                    <span>Margem</span>
+                </div>
+                {% for item in dados.top_rentaveis %}
+                    <div class="margin-ranking-row">
+                        <span>{{ forloop.counter }}</span>
+                        <span>{{ item.codigo }}</span>
+                        <strong>{{ item.produto }}</strong>
+                        <span class="margin-revenue">{{ item.receita_fmt }}</span>
+                        <span>
+                            <b class="margin-pill margin-pill-{{ item.faixa.tom }}">{{ item.margem_fmt }}</b>
+                            <small class="margin-bar margin-bar-{{ item.faixa.tom }}"><i style="width: {{ item.margem_barra }}%"></i></small>
+                        </span>
+                    </div>
+                {% empty %}
+                    <div class="margin-ranking-empty">Sem produtos faturados no periodo.</div>
+                {% endfor %}
+            </div>
+        </article>
+
+        <article class="margin-ranking-card">
+            <div class="margin-ranking-header">
+                <small>ATENCAO</small>
+                <h2>Bottom 5 - Atencao urgente</h2>
+            </div>
+            <div class="margin-ranking-table">
+                <div class="margin-ranking-row margin-ranking-head">
+                    <span>#</span>
+                    <span>Codigo</span>
+                    <span>Produto</span>
+                    <span>Receita</span>
+                    <span>Margem</span>
+                </div>
+                {% for item in dados.bottom_urgente %}
+                    <div class="margin-ranking-row">
+                        <span>{{ forloop.counter }}</span>
+                        <span>{{ item.codigo }}</span>
+                        <strong>{{ item.produto }}</strong>
+                        <span class="margin-revenue">{{ item.receita_fmt }}</span>
+                        <span>
+                            <b class="margin-pill margin-pill-{{ item.faixa.tom }}">{{ item.margem_fmt }}</b>
+                            <small class="margin-bar margin-bar-{{ item.faixa.tom }}"><i style="width: {{ item.margem_barra }}%"></i></small>
+                        </span>
+                    </div>
+                {% empty %}
+                    <div class="margin-ranking-empty">Sem produtos criticos no periodo.</div>
+                {% endfor %}
+            </div>
+        </article>
+    </div>
+
+    {{ dados.bubble_data|json_script:"margin-bubble-data" }}
+</section>
