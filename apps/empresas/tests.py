@@ -3,10 +3,11 @@ from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
 from unittest.mock import patch
+from urllib.error import URLError
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook, load_workbook
@@ -38,14 +39,17 @@ from .models import (
     VendedorOmie,
 )
 from .omie import (
+    consultar_clientes,
     consultar_contratos,
     consultar_contas_correntes,
     consultar_contas_pagar,
     consultar_contas_receber,
+    consultar_extrato_conta_corrente,
     consultar_lancamentos_conta_corrente,
     consultar_ordens_servico,
     consultar_pedidos,
     consultar_produtos,
+    consultar_resumo_financas,
     consultar_servicos,
     consultar_tipos_conta_corrente,
     consultar_vendedores,
@@ -110,6 +114,89 @@ class ListaEmpresasTests(TestCase):
         self.assertContains(response, "/media/md21_bi.png")
 
 
+class UsuariosEmpresaTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin_cliente = User.objects.create_user(
+            username="admin_cliente",
+            password="senha-segura",
+        )
+        self.gerente = User.objects.create_user(
+            username="gerente_cliente",
+            password="senha-segura",
+        )
+        self.empresa = Empresa.objects.create(
+            nome="Empresa Usuarios Ltda",
+            nome_fantasia="Empresa Usuarios",
+            cnpj="00.000.000/0001-99",
+        )
+        EmpresaUsuario.objects.create(
+            empresa=self.empresa,
+            usuario=self.admin_cliente,
+            papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+        )
+        EmpresaUsuario.objects.create(
+            empresa=self.empresa,
+            usuario=self.gerente,
+            papel=EmpresaUsuario.Papel.GESTOR,
+            areas_permitidas=["financeiro"],
+        )
+
+    def test_card_usuarios_aparece_em_parametros(self):
+        self.client.force_login(self.admin_cliente)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:parametros",
+                kwargs={"empresa_slug": self.empresa.slug},
+            )
+        )
+
+        self.assertContains(response, "Usuários")
+        self.assertContains(
+            response,
+            reverse("dashboards:usuarios", kwargs={"empresa_slug": self.empresa.slug}),
+        )
+
+    def test_administrador_cadastra_usuario_com_permissoes(self):
+        self.client.force_login(self.admin_cliente)
+
+        response = self.client.post(
+            reverse("dashboards:usuarios", kwargs={"empresa_slug": self.empresa.slug}),
+            {
+                "username": "analista_financeiro",
+                "first_name": "Ana",
+                "email": "ana@empresa.com.br",
+                "password": "senha-segura",
+                "papel": EmpresaUsuario.Papel.VISUALIZADOR,
+                "areas_permitidas": ["financeiro"],
+                "dashboards_permitidos": ["financeiro:visao-geral"],
+                "ativo": "on",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("dashboards:usuarios", kwargs={"empresa_slug": self.empresa.slug}),
+        )
+        vinculo = EmpresaUsuario.objects.get(usuario__username="analista_financeiro")
+        self.assertEqual(vinculo.empresa, self.empresa)
+        self.assertEqual(vinculo.papel, EmpresaUsuario.Papel.VISUALIZADOR)
+        self.assertEqual(vinculo.areas_permitidas, ["financeiro"])
+        self.assertEqual(vinculo.dashboards_permitidos, ["financeiro:visao-geral"])
+
+    def test_gerente_nao_edita_administrador(self):
+        vinculo_admin = EmpresaUsuario.objects.get(usuario=self.admin_cliente)
+        self.client.force_login(self.gerente)
+
+        response = self.client.get(
+            reverse("dashboards:usuarios", kwargs={"empresa_slug": self.empresa.slug}),
+            {"editar": vinculo_admin.pk},
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
 class ConfiguracoesEmpresasTests(TestCase):
     def setUp(self):
         User = get_user_model()
@@ -148,6 +235,7 @@ class ConfiguracoesEmpresasTests(TestCase):
                 "nome_fantasia": "Cliente Oeste",
                 "nome": "Cliente Oeste Comércio Ltda",
                 "cnpj": "12.345.678/0001-90",
+                "grupo": "Grupo Oeste",
                 "ativa": "on",
             },
         )
@@ -155,6 +243,7 @@ class ConfiguracoesEmpresasTests(TestCase):
         self.assertRedirects(response, reverse("empresas:configuracoes"))
         empresa = Empresa.objects.get(cnpj="12.345.678/0001-90")
         self.assertEqual(empresa.nome_fantasia, "Cliente Oeste")
+        self.assertEqual(empresa.grupo, "Grupo Oeste")
         self.assertTrue(empresa.ativa)
 
     def test_cadastro_rejeita_cnpj_incompleto(self):
@@ -329,11 +418,66 @@ class EstruturaDRETests(TestCase):
         self.assertContains(response, "Ana Comercial")
         self.assertNotContains(response, "Vendedor inativo")
 
-        response = self.client.post(url, {f"meta_{vendedor.pk}": "12.500,50"})
+        response = self.client.post(
+            url,
+            {
+                "ano": "2026",
+                "mes": "4",
+                f"meta_{vendedor.pk}": "12.500,50",
+                "acao": "salvar",
+            },
+        )
 
-        self.assertRedirects(response, url)
+        self.assertRedirects(response, f"{url}?ano=2026&mes=4")
         meta = MetaVendedorComercial.objects.get(vendedor=vendedor)
         self.assertEqual(meta.valor_mensal, Decimal("12500.50"))
+        self.assertEqual(meta.ano, 2026)
+        self.assertEqual(meta.mes, 4)
+
+    def test_metas_replica_valores_do_mes_ate_dezembro(self):
+        vendedor = VendedorOmie.objects.create(
+            empresa=self.empresa,
+            codigo=101,
+            nome="Ana Comercial",
+        )
+        MetaVendedorComercial.objects.create(
+            empresa=self.empresa,
+            vendedor=vendedor,
+            ano=2026,
+            mes=3,
+            valor_mensal=Decimal("3000"),
+        )
+        url = reverse("dashboards:metas", kwargs={"empresa_slug": self.empresa.slug})
+        self.client.force_login(self.administrador)
+
+        response = self.client.post(
+            url,
+            {
+                "ano": "2026",
+                "mes": "4",
+                f"meta_{vendedor.pk}": "12.500,50",
+                "acao": "replicar",
+            },
+        )
+
+        self.assertRedirects(response, f"{url}?ano=2026&mes=4")
+        self.assertEqual(
+            MetaVendedorComercial.objects.get(
+                vendedor=vendedor,
+                ano=2026,
+                mes=3,
+            ).valor_mensal,
+            Decimal("3000"),
+        )
+        for mes in range(4, 13):
+            self.assertEqual(
+                MetaVendedorComercial.objects.get(
+                    vendedor=vendedor,
+                    ano=2026,
+                    mes=mes,
+                ).valor_mensal,
+                Decimal("12500.50"),
+            )
 
     def test_usuario_comum_nao_acessa_metas(self):
         self.client.force_login(self.cliente)
@@ -984,6 +1128,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_ordens_servico(self.integracao, 10)
         consultar_contratos(self.integracao, 11)
         consultar_vendedores(self.integracao, 12)
+        consultar_resumo_financas(self.integracao)
 
         requisicao_tipos = urlopen_mock.call_args_list[0].args[0]
         payload_tipos = json.loads(requisicao_tipos.data)
@@ -1137,7 +1282,33 @@ class SincronizacaoClientesOmieTests(TestCase):
                 "apenas_importado_api": "N",
             },
         )
+        requisicao_resumo = urlopen_mock.call_args_list[11].args[0]
+        payload_resumo = json.loads(requisicao_resumo.data)
+        self.assertTrue(requisicao_resumo.full_url.endswith("/financas/resumo/"))
+        self.assertEqual(payload_resumo["call"], "ObterResumoFinancas")
+        self.assertTrue(payload_resumo["param"][0].pop("dDia"))
+        self.assertEqual(
+            payload_resumo["param"][0],
+            {
+                "lApenasResumo": True,
+            },
+        )
 
+    @override_settings(OMIE_API_RETRIES=2, OMIE_API_RETRY_DELAY=0)
+    @patch("apps.empresas.omie.urlopen")
+    def test_consulta_omie_tenta_novamente_quando_a_leitura_expira(self, urlopen_mock):
+        resposta = urlopen_mock.return_value
+        resposta.__enter__.return_value.read.return_value = (
+            b'{"pagina": 1, "total_de_paginas": 1, "total_de_registros": 0}'
+        )
+        urlopen_mock.side_effect = [URLError("The read operation timed out"), resposta]
+
+        dados = consultar_clientes(self.integracao, 1)
+
+        self.assertEqual(dados["pagina"], 1)
+        self.assertEqual(urlopen_mock.call_count, 2)
+
+    @patch("apps.empresas.omie.consultar_resumo_financas")
     @patch("apps.empresas.omie.consultar_contratos")
     @patch("apps.empresas.omie.consultar_ordens_servico")
     @patch("apps.empresas.omie.consultar_servicos")
@@ -1170,6 +1341,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_servicos_mock,
         consultar_ordens_servico_mock,
         consultar_contratos_mock,
+        consultar_resumo_financas_mock,
     ):
         consultar_clientes_mock.side_effect = [
             {
@@ -1605,6 +1777,15 @@ class SincronizacaoClientesOmieTests(TestCase):
                 }
             ],
         }
+        consultar_resumo_financas_mock.return_value = {
+            "dDia": "22/07/2026",
+            "contaCorrente": {
+                "cCor": "808080",
+                "cIcone": "f472",
+                "vLimiteCredito": 0,
+                "vTotal": 219720.53,
+            },
+        }
         consultar_contas_pagar_mock.return_value = {
             "pagina": 1,
             "total_de_paginas": 1,
@@ -1853,7 +2034,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA)
         self.assertEqual(sincronizacao.pagina_atual, 16)
-        self.assertEqual(sincronizacao.registros_processados, 16)
+        self.assertEqual(sincronizacao.registros_processados, 17)
         self.assertEqual(CadastroOmie.objects.count(), 2)
         self.assertEqual(
             CadastroOmie.objects.get(codigo_cliente_omie=101).tipo,
@@ -1914,6 +2095,13 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertTrue(conta.emite_pix)
         self.assertFalse(conta.inativo)
         self.assertEqual(conta.dados_originais["codigo_banco"], "999")
+        self.empresa.refresh_from_db()
+        self.assertEqual(str(self.empresa.saldo_contas_omie), "219720.53")
+        self.assertIsNotNone(self.empresa.saldo_contas_atualizado_em)
+        self.assertEqual(
+            self.empresa.resumo_financeiro_omie["contaCorrente"]["vTotal"],
+            219720.53,
+        )
         contrato = ContratoOmie.objects.get(codigo_contrato=4362684823)
         self.assertEqual(contrato.numero_contrato, "2026/00001")
         self.assertEqual(contrato.cliente.codigo_cliente_omie, 101)

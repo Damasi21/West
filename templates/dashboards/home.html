@@ -10,12 +10,42 @@
         <p>Acompanhe as principais áreas da {{ empresa.nome_fantasia }}.</p>
     </div>
     <div class="page-heading-actions">
-        {% if user.is_staff %}
+        {% if pode_administrar_empresa %}
             <a class="btn btn-primary" href="{% url 'dashboards:parametros' empresa.slug %}">
                 <i class="bi bi-sliders2 me-2"></i>Parâmetros
             </a>
         {% endif %}
-        <div class="data-status"><span></span> Estrutura pronta para integração OMIE</div>
+        <form class="filters dashboard-filters home-filters" method="get" data-dashboard-filters>
+            <input type="hidden" name="_filtrar_empresas" value="1">
+            <div class="dashboard-filter" data-filter-dropdown>
+                <button class="filter-trigger" type="button" aria-expanded="false">
+                    <i class="bi bi-building"></i>
+                    <span data-filter-summary data-empty-label="Todas as empresas">
+                        {% if empresas_selecionadas|length == 1 %}1 empresa{% elif empresas_selecionadas %}{{ empresas_selecionadas|length }} empresas{% else %}Todas as empresas{% endif %}
+                    </span>
+                    <i class="bi bi-chevron-down filter-chevron"></i>
+                </button>
+                <div class="filter-popover">
+                    <strong class="filter-title">Empresas</strong>
+                    <p class="filter-hint">Escolha as empresas usadas nos dashboards.</p>
+                    <div class="filter-options">
+                        {% for empresa_filtro in empresas_filtro %}
+                            <label class="filter-option">
+                                <input type="checkbox" name="empresa" value="{{ empresa_filtro.pk }}" {% if empresa_filtro.pk|stringformat:"s" in empresas_selecionadas %}checked{% endif %}>
+                                <span>{{ empresa_filtro.nome_fantasia }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                    <div class="filter-actions">
+                        <button type="button" data-select-all>Marcar todas</button>
+                        <button type="button" data-clear-all>Limpar</button>
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-arrow-repeat me-2"></i>Atualizar
+            </button>
+        </form>
     </div>
 </div>
 

@@ -192,6 +192,10 @@
     flex-wrap: wrap;
     justify-content: flex-end;
 }
+.home-filters {
+    align-items: center;
+    justify-content: flex-end;
+}
 .dashboard-filter {
     position: relative;
 }
@@ -340,6 +344,17 @@
     background: #eef9f1;
     border-color: #b8ddc4;
 }
+.btn-filter-clear {
+    color: #155e9f;
+    background: #e8f5ff;
+    border-color: #b7dcf6;
+}
+.btn-filter-clear:hover,
+.btn-filter-clear:focus {
+    color: #0f4e85;
+    background: #d9eeff;
+    border-color: #8ec7ef;
+}
 .regime-filter {
     display: inline-flex;
     align-items: center;
@@ -381,6 +396,10 @@
     border-radius: 16px;
 }
 .metric-card { padding: 1.25rem; min-height: 130px; }
+.metric-value-with-tooltip {
+    cursor: help;
+    white-space: nowrap;
+}
 .skeleton { position: relative; overflow: hidden; border-radius: 5px; background: #edf0f6; }
 .skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent); animation: shimmer 1.8s infinite; }
 .skeleton-label { width: 45%; height: 10px; }

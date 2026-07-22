@@ -14,22 +14,51 @@
     </a>
 </div>
 
+<form method="get" class="sales-goals-period-form">
+    <label>
+        <span>Mes</span>
+        <select name="mes" class="form-select">
+            {% for valor, rotulo in meses %}
+                <option value="{{ valor }}" {% if valor == mes_selecionado %}selected{% endif %}>{{ rotulo }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <label>
+        <span>Ano</span>
+        <select name="ano" class="form-select">
+            {% for ano in anos %}
+                <option value="{{ ano }}" {% if ano == ano_selecionado %}selected{% endif %}>{{ ano }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <button class="btn btn-white" type="submit">
+        <i class="bi bi-calendar-check me-2"></i>Carregar
+    </button>
+</form>
+
 <form method="post" class="sales-goals-form">
     {% csrf_token %}
+    <input type="hidden" name="mes" value="{{ mes_selecionado }}">
+    <input type="hidden" name="ano" value="{{ ano_selecionado }}">
     <section class="sales-goals-card">
         <div class="sales-goals-header">
             <div>
                 <span class="eyebrow">COMERCIAL</span>
                 <h2>Metas por vendedor</h2>
-                <p>A meta mensal informada aqui alimenta o indicador e a linha de meta do dashboard Faturamento.</p>
+                <p>Valores de {{ mes_selecionado }}/{{ ano_selecionado }} para os dashboards comerciais.</p>
             </div>
-            <button class="btn btn-primary" type="submit">
-                <i class="bi bi-check2-circle me-2"></i>Salvar metas
-            </button>
+            <div class="sales-goals-header-actions">
+                <button class="btn btn-white" type="submit" name="acao" value="replicar">
+                    <i class="bi bi-copy me-2"></i>Replicar ate dezembro
+                </button>
+                <button class="btn btn-primary" type="submit" name="acao" value="salvar">
+                    <i class="bi bi-check2-circle me-2"></i>Salvar metas
+                </button>
+            </div>
         </div>
 
         <div class="sales-goals-summary">
-            <span>Total mensal configurado</span>
+            <span>Total configurado no mes</span>
             <strong>R$ {{ total_mensal|floatformat:2 }}</strong>
         </div>
 
@@ -69,7 +98,10 @@
 
         <div class="sales-goals-actions">
             <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">Cancelar</a>
-            <button class="btn btn-primary" type="submit">
+            <button class="btn btn-white" type="submit" name="acao" value="replicar">
+                <i class="bi bi-copy me-2"></i>Replicar ate dezembro
+            </button>
+            <button class="btn btn-primary" type="submit" name="acao" value="salvar">
                 <i class="bi bi-check2-circle me-2"></i>Salvar metas
             </button>
         </div>

@@ -8,6 +8,7 @@ from decimal import Decimal
 from django.db.models import Sum
 from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
+from apps.dashboards.finance_filters import registros_com_conta_visivel_financeiro
 from apps.empresas.models import (
     ContaDRE,
     ContaPagarOmie,
@@ -41,6 +42,18 @@ def _formatar_moeda(valor):
     texto = f"{valor:,.2f}"
     texto = texto.replace(",", "X").replace(".", ",").replace("X", ".")
     return f"R$ {texto}"
+
+
+def _formatar_moeda_curta(valor):
+    valor = _decimal(valor)
+    absoluto = abs(valor)
+    if absoluto >= Decimal("1000000"):
+        texto = f"{valor / Decimal('1000000'):.2f}".replace(".", ",")
+        return f"R$ {texto} Mi"
+    if absoluto >= Decimal("1000"):
+        texto = f"{valor / Decimal('1000'):.2f}".replace(".", ",")
+        return f"R$ {texto} Mil"
+    return _formatar_moeda(valor)
 
 
 def _formatar_percentual(valor):
@@ -149,6 +162,10 @@ def _mapa_lancamentos_caixa(fim, meses, empresas_ids, projetos):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = registros_com_conta_visivel_financeiro(
+        queryset,
+        "codigo_conta_corrente",
+    )
     queryset = queryset.values(
         "categoria_principal__conta_dre_id",
         "data_lancamento__year",
@@ -189,6 +206,8 @@ def _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos):
     if projetos:
         receber = receber.filter(codigo_projeto__in=projetos)
         pagar = pagar.filter(codigo_projeto__in=projetos)
+    receber = registros_com_conta_visivel_financeiro(receber, "id_conta_corrente")
+    pagar = registros_com_conta_visivel_financeiro(pagar, "id_conta_corrente")
 
     for queryset in (receber, pagar):
         linhas = (
@@ -286,27 +305,32 @@ def _classificar_indicadores(linhas_pai):
     return [
         {
             "titulo": "Receita bruta",
-            "valor": _formatar_moeda(receita),
+            "valor": _formatar_moeda_curta(receita),
+            "valor_completo": _formatar_moeda(receita),
             "tom": "positive" if receita >= 0 else "negative",
         },
         {
             "titulo": "Deducoes e gastos variaveis",
-            "valor": _formatar_moeda(variaveis),
+            "valor": _formatar_moeda_curta(variaveis),
+            "valor_completo": _formatar_moeda(variaveis),
             "tom": "negative" if variaveis < 0 else "neutral",
         },
         {
             "titulo": "Margem de contribuicao",
             "valor": _formatar_percentual(margem_percentual),
+            "valor_completo": _formatar_percentual(margem_percentual),
             "tom": "positive" if margem_percentual >= 0 else "negative",
         },
         {
             "titulo": "Gastos fixos",
-            "valor": _formatar_moeda(fixos),
+            "valor": _formatar_moeda_curta(fixos),
+            "valor_completo": _formatar_moeda(fixos),
             "tom": "negative" if fixos < 0 else "neutral",
         },
         {
             "titulo": "EBIT",
-            "valor": _formatar_moeda(ebit),
+            "valor": _formatar_moeda_curta(ebit),
+            "valor_completo": _formatar_moeda(ebit),
             "tom": "positive" if ebit >= 0 else "negative",
         },
     ]
@@ -319,6 +343,7 @@ def _fornecedores_caixa(conta, inicio, fim, empresas_ids, receitas_mes, meses):
         data_lancamento__lte=fim,
         categoria_principal__conta_dre=conta,
     )
+    base = registros_com_conta_visivel_financeiro(base, "codigo_conta_corrente")
     fornecedores = (
         base
         .values(
@@ -422,6 +447,7 @@ def _pessoas_competencia(
     for base, prefixo, padrao in bases:
         if projetos:
             base = base.filter(codigo_projeto__in=projetos)
+        base = registros_com_conta_visivel_financeiro(base, "id_conta_corrente")
         pessoas = (
             base.values(f"{prefixo}__razao_social", f"{prefixo}__nome_fantasia")
             .annotate(total=Sum("valor_documento"))

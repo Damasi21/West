@@ -6,6 +6,7 @@ from decimal import Decimal
 from django.db.models import Sum
 from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
+from apps.dashboards.finance_filters import registros_com_conta_visivel_financeiro
 from apps.dashboards.dre_services import (
     _formatar_moeda,
     _intervalo_periodo,
@@ -51,7 +52,7 @@ def _query_receber(inicio, fim, empresas_ids, projetos):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
-    return queryset
+    return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
 def _query_pagar(inicio, fim, empresas_ids, projetos):
@@ -64,7 +65,7 @@ def _query_pagar(inicio, fim, empresas_ids, projetos):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
-    return queryset
+    return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
 def _query_caixa(inicio, fim, empresas_ids, projetos, natureza):
@@ -76,7 +77,7 @@ def _query_caixa(inicio, fim, empresas_ids, projetos, natureza):
     ).annotate(data_referencia=Coalesce("data_lancamento", "data_conciliacao"))
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
-    return queryset
+    return registros_com_conta_visivel_financeiro(queryset, "codigo_conta_corrente")
 
 
 def _totais_por_mes(queryset, campo_valor):
@@ -220,30 +221,35 @@ def visao_geral_financeira(
             {
                 "titulo": "Recebimentos",
                 "valor": _formatar_moeda_curta(recebimentos),
+                "valor_completo": _formatar_moeda(recebimentos),
                 "icone": "bi-cash-stack",
                 "tom": "positive",
             },
             {
                 "titulo": "Pagamentos",
                 "valor": _formatar_moeda_curta(pagamentos),
+                "valor_completo": _formatar_moeda(pagamentos),
                 "icone": "bi-arrow-down",
                 "tom": "negative",
             },
             {
                 "titulo": "Resultado",
                 "valor": _formatar_moeda_curta(resultado),
+                "valor_completo": _formatar_moeda(resultado),
                 "icone": "bi-graph-up-arrow",
                 "tom": "positive" if resultado >= 0 else "negative",
             },
             {
                 "titulo": "Media de recebimento mensal",
                 "valor": _formatar_moeda_curta(media_recebimento),
+                "valor_completo": _formatar_moeda(media_recebimento),
                 "icone": "bi-calendar2-check",
                 "tom": "positive",
             },
             {
                 "titulo": "Media de resultado mensal",
                 "valor": _formatar_moeda_curta(media_resultado),
+                "valor_completo": _formatar_moeda(media_resultado),
                 "icone": "bi-speedometer2",
                 "tom": "positive" if media_resultado >= 0 else "negative",
             },

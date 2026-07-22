@@ -69,16 +69,6 @@
                 </div>
             </div>
         </div>
-        <button
-            class="btn btn-white share-filter-button{% if periodo_compartilhado %} is-active{% endif %}"
-            type="submit"
-            name="compartilhar_periodo"
-            value="1"
-            title="Usar este período em todos os dashboards de {{ area_atual.titulo }}"
-        >
-            <i class="bi bi-link-45deg"></i>
-            <span>Usar no módulo</span>
-        </button>
 
         {% include "dashboards/partials/multiselect_filter.html" with nome="projeto" titulo="Projetos" icone="bi-kanban" opcoes=projetos selecionados=projetos_selecionados vazio="Todos os projetos" %}
         {% include "dashboards/partials/multiselect_filter.html" with nome="departamento" titulo="Departamentos" icone="bi-diagram-3" opcoes=departamentos selecionados=departamentos_selecionados vazio="Todos os departamentos" %}
@@ -103,31 +93,19 @@
             {% endif %}
         {% endif %}
 
-        <div class="dashboard-filter" data-filter-dropdown>
-            <button class="filter-trigger" type="button" aria-expanded="false">
-                <i class="bi bi-building"></i>
-                <span data-filter-summary data-empty-label="Todas as empresas">
-                    {% if empresas_selecionadas|length == 1 %}1 empresa{% elif empresas_selecionadas %}{{ empresas_selecionadas|length }} empresas{% else %}Todas as empresas{% endif %}
-                </span>
-                <i class="bi bi-chevron-down filter-chevron"></i>
-            </button>
-            <div class="filter-popover">
-                <strong class="filter-title">Empresas</strong>
-                <p class="filter-hint">Você pode marcar mais de uma.</p>
-                <div class="filter-options">
-                    {% for empresa_filtro in empresas_filtro %}
-                        <label class="filter-option">
-                            <input type="checkbox" name="empresa" value="{{ empresa_filtro.pk }}" {% if empresa_filtro.pk|stringformat:"s" in empresas_selecionadas %}checked{% endif %}>
-                            <span>{{ empresa_filtro.nome_fantasia }}</span>
-                        </label>
-                    {% endfor %}
-                </div>
-                <div class="filter-actions">
-                    <button type="button" data-select-all>Marcar todas</button>
-                    <button type="button" data-clear-all>Limpar</button>
-                </div>
-            </div>
-        </div>
+        <button
+            class="btn btn-white share-filter-button{% if periodo_compartilhado %} is-active{% endif %}"
+            type="submit"
+            name="compartilhar_periodo"
+            value="1"
+            title="Usar este período em todos os dashboards de {{ area_atual.titulo }}"
+        >
+            <i class="bi bi-link-45deg"></i>
+            <span>Usar no módulo</span>
+        </button>
+        <button class="btn btn-filter-clear" type="submit" name="limpar_filtros" value="1">
+            <i class="bi bi-eraser me-2"></i>Limpar filtros
+        </button>
         <button class="btn btn-primary" type="submit">
             <i class="bi bi-arrow-repeat me-2"></i>Atualizar
         </button>

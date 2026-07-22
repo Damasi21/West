@@ -26,6 +26,11 @@ urlpatterns = [
         name="metas",
     ),
     path(
+        "parametros/usuarios/",
+        empresas_views.usuarios,
+        name="usuarios",
+    ),
+    path(
         "parametros/dre-categorias/planilha/exportar/",
         empresas_views.exportar_planilha_dre,
         name="exportar_planilha_dre",

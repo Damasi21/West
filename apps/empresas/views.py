@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 
-from .forms import ContaDREForm, EmpresaForm, IntegracaoOmieForm
+from .forms import ContaDREForm, EmpresaForm, EmpresaUsuarioForm, IntegracaoOmieForm
 from .models import (
     CadastroOmie,
     CategoriaOmie,
@@ -23,6 +23,7 @@ from .models import (
     MetaVendedorComercial,
     SincronizacaoOmie,
     VendedorOmie,
+    EmpresaUsuario,
 )
 from .omie import iniciar_sincronizacao_omie
 from .planilhas import (
@@ -32,7 +33,28 @@ from .planilhas import (
     importar_categorias,
     importar_dre,
 )
-from .services import empresas_permitidas, obter_empresa_permitida
+from .services import (
+    empresas_permitidas,
+    obter_empresa_permitida,
+    usuario_admin_empresa,
+    usuario_pode_gerenciar_vinculo,
+)
+
+
+MESES_METAS = [
+    (1, "Janeiro"),
+    (2, "Fevereiro"),
+    (3, "Marco"),
+    (4, "Abril"),
+    (5, "Maio"),
+    (6, "Junho"),
+    (7, "Julho"),
+    (8, "Agosto"),
+    (9, "Setembro"),
+    (10, "Outubro"),
+    (11, "Novembro"),
+    (12, "Dezembro"),
+]
 
 
 SINCRONIZACAO_OMIE_EXPIRA_APOS = timedelta(minutes=30)
@@ -52,8 +74,17 @@ def lista_empresas(request):
 
 
 def _exigir_administrador(request):
-    if not request.user.is_staff:
+    if not (request.user.is_superuser or request.user.is_staff):
         raise PermissionDenied
+
+
+def _exigir_administrador_empresa(request, empresa):
+    if not usuario_admin_empresa(request.user, empresa):
+        raise PermissionDenied
+
+
+def _obter_empresa_administravel(empresa_slug):
+    return get_object_or_404(Empresa, slug=empresa_slug, ativa=True)
 
 
 @login_required
@@ -73,8 +104,8 @@ def configuracoes_empresas(request):
 
 @login_required
 def parametros(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     form_omie = IntegracaoOmieForm(
         request.POST or None,
         empresa=empresa,
@@ -143,6 +174,7 @@ def parametros(request, empresa_slug):
         {
             "topicos": topicos,
             "empresa": empresa,
+            "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
             "form_omie": form_omie,
             "ultima_sincronizacao": empresa.sincronizacoes_omie.first(),
             "total_cadastros_omie": empresa.cadastros_omie.count(),
@@ -181,8 +213,19 @@ def parametros(request, empresa_slug):
 
 @login_required
 def metas(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
+    hoje = timezone.localdate()
+    try:
+        ano_selecionado = int(request.POST.get("ano") or request.GET.get("ano") or hoje.year)
+    except (TypeError, ValueError):
+        ano_selecionado = hoje.year
+    try:
+        mes_selecionado = int(request.POST.get("mes") or request.GET.get("mes") or hoje.month)
+    except (TypeError, ValueError):
+        mes_selecionado = hoje.month
+    mes_selecionado = min(max(mes_selecionado, 1), 12)
+    ano_selecionado = min(max(ano_selecionado, hoje.year - 5), hoje.year + 5)
     vendedores = list(
         VendedorOmie.objects.filter(empresa=empresa, inativo=False).order_by(
             "nome",
@@ -194,12 +237,13 @@ def metas(request, empresa_slug):
         for meta in MetaVendedorComercial.objects.filter(
             empresa=empresa,
             vendedor__in=vendedores,
+            ano=ano_selecionado,
+            mes=mes_selecionado,
         )
     }
 
     if request.method == "POST":
-        alteradas = []
-        criadas = []
+        valores_por_vendedor = {}
         for vendedor in vendedores:
             valor_bruto = request.POST.get(f"meta_{vendedor.pk}", "")
             valor_normalizado = valor_bruto.replace(".", "").replace(",", ".").strip()
@@ -208,28 +252,35 @@ def metas(request, empresa_slug):
             except Exception:
                 messages.error(request, "Informe metas com valores numericos validos.")
                 return redirect("dashboards:metas", empresa_slug=empresa.slug)
+            valores_por_vendedor[vendedor.pk] = valor
 
-            meta = metas_atuais.get(vendedor.pk)
-            if meta:
-                if meta.valor_mensal != valor:
-                    meta.valor_mensal = valor
-                    alteradas.append(meta)
-            elif valor:
-                criadas.append(
-                    MetaVendedorComercial(
+        acao = request.POST.get("acao", "salvar")
+        meses_destino = (
+            range(mes_selecionado, 13)
+            if acao == "replicar"
+            else (mes_selecionado,)
+        )
+        with transaction.atomic():
+            for mes_destino in meses_destino:
+                for vendedor in vendedores:
+                    MetaVendedorComercial.objects.update_or_create(
                         empresa=empresa,
                         vendedor=vendedor,
-                        valor_mensal=valor,
+                        ano=ano_selecionado,
+                        mes=mes_destino,
+                        defaults={"valor_mensal": valores_por_vendedor[vendedor.pk]},
                     )
-                )
-
-        with transaction.atomic():
-            if criadas:
-                MetaVendedorComercial.objects.bulk_create(criadas)
-            if alteradas:
-                MetaVendedorComercial.objects.bulk_update(alteradas, ["valor_mensal"])
-        messages.success(request, "Metas comerciais salvas.")
-        return redirect("dashboards:metas", empresa_slug=empresa.slug)
+        if acao == "replicar":
+            messages.success(
+                request,
+                "Metas replicadas do mes selecionado ate dezembro.",
+            )
+        else:
+            messages.success(request, "Metas comerciais salvas.")
+        return redirect(
+            f"{reverse('dashboards:metas', kwargs={'empresa_slug': empresa.slug})}"
+            f"?ano={ano_selecionado}&mes={mes_selecionado}"
+        )
 
     linhas = []
     total_mensal = Decimal("0")
@@ -251,14 +302,80 @@ def metas(request, empresa_slug):
             "empresa": empresa,
             "linhas": linhas,
             "total_mensal": total_mensal,
+            "ano_selecionado": ano_selecionado,
+            "mes_selecionado": mes_selecionado,
+            "meses": MESES_METAS,
+            "anos": range(hoje.year - 1, hoje.year + 3),
+        },
+    )
+
+
+@login_required
+def usuarios(request, empresa_slug):
+    from apps.dashboards.views import AREAS
+
+    empresa = _obter_empresa_administravel(empresa_slug)
+    if not usuario_pode_gerenciar_vinculo(request.user, empresa):
+        raise PermissionDenied
+
+    vinculos = (
+        EmpresaUsuario.objects.filter(empresa=empresa)
+        .select_related("usuario")
+        .order_by("usuario__first_name", "usuario__username")
+    )
+    if not (request.user.is_superuser or request.user.is_staff):
+        operador = EmpresaUsuario.objects.filter(
+            empresa=empresa,
+            usuario=request.user,
+            ativo=True,
+        ).first()
+        if operador and operador.papel == EmpresaUsuario.Papel.GESTOR:
+            vinculos = vinculos.exclude(papel=EmpresaUsuario.Papel.ADMINISTRADOR)
+
+    vinculo_edicao = None
+    editar_id = request.GET.get("editar")
+    if editar_id:
+        vinculo_edicao = get_object_or_404(
+            EmpresaUsuario.objects.select_related("usuario"),
+            pk=editar_id,
+            empresa=empresa,
+        )
+        if not usuario_pode_gerenciar_vinculo(request.user, empresa, vinculo_edicao):
+            raise PermissionDenied
+
+    form = EmpresaUsuarioForm(
+        request.POST or None,
+        empresa=empresa,
+        operador=request.user,
+        areas=AREAS,
+        vinculo=vinculo_edicao,
+    )
+    if request.method == "POST" and form.is_valid():
+        vinculo = form.save()
+        messages.success(
+            request,
+            f"Acesso de {vinculo.usuario.get_full_name() or vinculo.usuario.username} salvo com sucesso.",
+        )
+        return redirect("dashboards:usuarios", empresa_slug=empresa.slug)
+
+    return render(
+        request,
+        "empresas/usuarios.html",
+        {
+            "empresa": empresa,
+            "form": form,
+            "vinculos": vinculos,
+            "vinculo_edicao": vinculo_edicao,
+            "areas": AREAS,
+            "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
         },
     )
 
 
 @login_required
 def dre_categorias(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     conta_edicao = None
     if request.GET.get("editar"):
         conta_edicao = get_object_or_404(
@@ -298,8 +415,8 @@ def dre_categorias(request, empresa_slug):
 
 @login_required
 def categorias(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     categorias_ativas = list(
         CategoriaOmie.objects.filter(
             empresa=empresa,
@@ -390,8 +507,8 @@ def _obter_planilha_enviada(request):
 @login_required
 @require_GET
 def exportar_planilha_dre(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     return _resposta_planilha(
         exportar_dre(empresa),
         f"dre-{slugify(empresa.nome_fantasia)}",
@@ -401,8 +518,8 @@ def exportar_planilha_dre(request, empresa_slug):
 @login_required
 @require_POST
 def importar_planilha_dre(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     destino = "dashboards:dre_categorias"
     try:
         arquivo = _obter_planilha_enviada(request)
@@ -444,8 +561,8 @@ def importar_planilha_dre(request, empresa_slug):
 @login_required
 @require_GET
 def exportar_planilha_categorias(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     return _resposta_planilha(
         exportar_categorias(empresa),
         f"categorias-{slugify(empresa.nome_fantasia)}",
@@ -455,8 +572,8 @@ def exportar_planilha_categorias(request, empresa_slug):
 @login_required
 @require_POST
 def importar_planilha_categorias(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     destino = "dashboards:categorias"
     try:
         arquivo = _obter_planilha_enviada(request)
@@ -489,8 +606,8 @@ def importar_planilha_categorias(request, empresa_slug):
 @login_required
 @require_POST
 def excluir_conta_dre(request, empresa_slug, conta_id):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     conta = get_object_or_404(ContaDRE, pk=conta_id, empresa=empresa)
     if conta.contas_filhas.exists():
         messages.error(
@@ -507,8 +624,8 @@ def excluir_conta_dre(request, empresa_slug, conta_id):
 @login_required
 @require_POST
 def reordenar_contas_dre(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     try:
         dados = json.loads(request.body)
         ids = [int(item) for item in dados.get("ids", [])]
@@ -577,8 +694,8 @@ def _encerrar_sincronizacoes_omie_obsoletas(empresa):
 @login_required
 @require_POST
 def sincronizar_clientes_omie(request, empresa_slug):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     integracao = IntegracaoOmie.objects.filter(empresa=empresa, ativa=True).first()
     if not integracao:
         return JsonResponse(
@@ -608,8 +725,8 @@ def sincronizar_clientes_omie(request, empresa_slug):
 @login_required
 @require_GET
 def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
-    _exigir_administrador(request)
-    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
     sincronizacao = get_object_or_404(
         SincronizacaoOmie,
         pk=sincronizacao_id,

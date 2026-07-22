@@ -5,8 +5,12 @@ from datetime import date
 from decimal import Decimal
 
 from django.db.models import Sum
-from django.db.models.functions import ExtractMonth, ExtractYear
+from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
+from apps.dashboards.finance_filters import (
+    contas_correntes_visiveis_financeiro,
+    registros_com_conta_visivel_financeiro,
+)
 from apps.dashboards.dre_services import (
     _formatar_moeda,
     _intervalo_periodo,
@@ -18,6 +22,7 @@ from apps.empresas.models import (
     ContaCorrenteOmie,
     ContaPagarOmie,
     ContaReceberOmie,
+    Empresa,
     LancamentoContaCorrenteOmie,
 )
 
@@ -38,7 +43,7 @@ def _query_receber_aberto(inicio, fim, empresas_ids, projetos):
     ).exclude(status_titulo__in=STATUS_FECHADOS_RECEBER)
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
-    return queryset
+    return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
 def _query_pagar_aberto(inicio, fim, empresas_ids, projetos):
@@ -49,7 +54,7 @@ def _query_pagar_aberto(inicio, fim, empresas_ids, projetos):
     ).exclude(status_titulo__in=STATUS_FECHADOS_PAGAR)
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
-    return queryset
+    return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
 def _query_lancamentos(inicio, fim, empresas_ids, projetos, natureza):
@@ -61,7 +66,37 @@ def _query_lancamentos(inicio, fim, empresas_ids, projetos, natureza):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
-    return queryset
+    return registros_com_conta_visivel_financeiro(queryset, "codigo_conta_corrente")
+
+
+def _saldo_contas_correntes(empresas_ids):
+    empresas_com_resumo = Empresa.objects.filter(
+        pk__in=empresas_ids,
+        saldo_contas_omie__isnull=False,
+    )
+    saldo = _decimal(
+        empresas_com_resumo.aggregate(total=Sum("saldo_contas_omie"))["total"]
+    )
+    ids_com_resumo = set(empresas_com_resumo.values_list("pk", flat=True))
+    ids_sem_resumo = [
+        empresa_id for empresa_id in empresas_ids if empresa_id not in ids_com_resumo
+    ]
+    if ids_sem_resumo:
+        saldo += _decimal(
+            contas_correntes_visiveis_financeiro(
+                ContaCorrenteOmie.objects.filter(
+                    empresa_id__in=ids_sem_resumo,
+                    inativo=False,
+                )
+            ).aggregate(total=Sum(Coalesce("saldo_atual", "saldo_inicial")))["total"]
+        )
+    return saldo
+
+
+def _movimento_lancamentos(lancamentos):
+    return abs(
+        _decimal(lancamentos.aggregate(total=Sum("valor_lancamento"))["total"])
+    )
 
 
 def _totais_por_mes(queryset, data_field, valor_field):
@@ -172,12 +207,8 @@ def fluxo_de_caixa(
     meses = _meses_do_intervalo(inicio, fim)
     projetos = _normalizar_filtro_composto(projetos_selecionados or [])
 
-    saldo_atual = _decimal(
-        ContaCorrenteOmie.objects.filter(
-            empresa_id__in=empresas_ids,
-            inativo=False,
-        ).aggregate(total=Sum("saldo_inicial"))["total"]
-    )
+    hoje = date.today()
+    saldo_atual = _saldo_contas_correntes(empresas_ids)
     receber_aberto = _query_receber_aberto(inicio, fim, empresas_ids, projetos)
     pagar_aberto = _query_pagar_aberto(inicio, fim, empresas_ids, projetos)
     lanc_recebidos = _query_lancamentos(inicio, fim, empresas_ids, projetos, "R")
@@ -195,13 +226,23 @@ def fluxo_de_caixa(
     saidas_realizadas = abs(
         _decimal(lanc_pagos.aggregate(total=Sum("valor_lancamento"))["total"])
     )
+    saldo_abertura_periodo = saldo_atual
+    if inicio <= hoje <= fim:
+        fim_realizado = min(hoje, fim)
+        entradas_ate_hoje = _movimento_lancamentos(
+            _query_lancamentos(inicio, fim_realizado, empresas_ids, projetos, "R")
+        )
+        saidas_ate_hoje = _movimento_lancamentos(
+            _query_lancamentos(inicio, fim_realizado, empresas_ids, projetos, "P")
+        )
+        saldo_abertura_periodo = saldo_atual - entradas_ate_hoje + saidas_ate_hoje
     saldo_periodo = (
         entradas_previstas
         + entradas_realizadas
         - saidas_previstas
         - saidas_realizadas
     )
-    saldo_projetado = saldo_atual + saldo_periodo
+    saldo_projetado = saldo_abertura_periodo + saldo_periodo
 
     entradas_previstas_mes = _totais_por_mes(
         receber_aberto,
@@ -227,7 +268,7 @@ def fluxo_de_caixa(
     entradas = []
     saidas = []
     saldo_acumulado = []
-    saldo_corrente = saldo_atual
+    saldo_corrente = saldo_abertura_periodo
     for item in meses:
         chave = item["chave"]
         entrada = entradas_previstas_mes[chave] + entradas_realizadas_mes[chave]
@@ -242,30 +283,35 @@ def fluxo_de_caixa(
             {
                 "titulo": "Saldo atual",
                 "valor": _formatar_moeda_curta(saldo_atual),
+                "valor_completo": _formatar_moeda(saldo_atual),
                 "icone": "bi-bank",
                 "tom": "positive" if saldo_atual >= 0 else "negative",
             },
             {
                 "titulo": "Entradas previstas",
                 "valor": _formatar_moeda_curta(entradas_previstas),
+                "valor_completo": _formatar_moeda(entradas_previstas),
                 "icone": "bi-arrow-down-left-circle",
                 "tom": "positive",
             },
             {
                 "titulo": "Saidas previstas",
                 "valor": _formatar_moeda_curta(saidas_previstas),
+                "valor_completo": _formatar_moeda(saidas_previstas),
                 "icone": "bi-arrow-up-right-circle",
                 "tom": "negative",
             },
             {
                 "titulo": "Saldo projetado",
                 "valor": _formatar_moeda_curta(saldo_projetado),
+                "valor_completo": _formatar_moeda(saldo_projetado),
                 "icone": "bi-graph-up",
                 "tom": "positive" if saldo_projetado >= 0 else "negative",
             },
             {
                 "titulo": "Prazo medio de pagamento",
                 "valor": _prazo_medio_pagamento(pagar_aberto),
+                "valor_completo": _prazo_medio_pagamento(pagar_aberto),
                 "icone": "bi-clock-history",
                 "tom": "neutral",
             },

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Usuários | {{ empresa.nome_fantasia }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">PARAMETROS</span>
+        <h1>Usuários</h1>
+        <p>Gerencie acessos, papéis e permissões da {{ empresa.nome_fantasia }}.</p>
+    </div>
+    <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">
+        <i class="bi bi-arrow-left me-2"></i>Voltar
+    </a>
+</div>
+
+<section class="users-admin-layout">
+    <form method="post" class="users-admin-card" novalidate>
+        {% csrf_token %}
+        {{ form.vinculo_id }}
+        <div class="users-admin-header">
+            <div>
+                <span class="eyebrow">{% if vinculo_edicao %}EDITAR ACESSO{% else %}NOVO ACESSO{% endif %}</span>
+                <h2>{% if vinculo_edicao %}{{ vinculo_edicao.usuario.get_full_name|default:vinculo_edicao.usuario.username }}{% else %}Cadastrar usuário{% endif %}</h2>
+            </div>
+            {% if vinculo_edicao %}
+                <a class="btn btn-white btn-sm" href="{% url 'dashboards:usuarios' empresa.slug %}">Novo</a>
+            {% endif %}
+        </div>
+
+        {% for error in form.non_field_errors %}
+            <div class="alert alert-danger">{{ error }}</div>
+        {% endfor %}
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+                {{ form.username }}
+                {% for error in form.username.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+                {{ form.email }}
+                {% for error in form.email.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
+                {{ form.first_name }}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
+                {{ form.last_name }}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+                {{ form.password }}
+                {% if form.password.help_text %}<div class="form-text">{{ form.password.help_text }}</div>{% endif %}
+                {% for error in form.password.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="{{ form.papel.id_for_label }}">{{ form.papel.label }}</label>
+                {{ form.papel }}
+                {% for error in form.papel.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+        </div>
+
+        <div class="users-permission-grid">
+            <div>
+                <h3>Módulos</h3>
+                <p>Sem seleção significa acesso a todos os módulos disponíveis.</p>
+                <div class="users-check-list">
+                    {{ form.areas_permitidas }}
+                </div>
+            </div>
+            <div>
+                <h3>Dashboards</h3>
+                <p>Para usuários, limite dashboards específicos quando necessário.</p>
+                <div class="users-check-list users-check-list-long">
+                    {{ form.dashboards_permitidos }}
+                </div>
+            </div>
+        </div>
+
+        <div class="users-admin-actions">
+            <label class="form-check">
+                {{ form.ativo }}
+                <span class="form-check-label">{{ form.ativo.label }}</span>
+            </label>
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-check2-circle me-2"></i>Salvar usuário
+            </button>
+        </div>
+    </form>
+
+    <article class="users-admin-card">
+        <div class="users-admin-header">
+            <div>
+                <span class="eyebrow">ACESSOS</span>
+                <h2>Usuários vinculados</h2>
+            </div>
+            <strong>{{ vinculos|length }}</strong>
+        </div>
+        <div class="users-table">
+            {% for vinculo in vinculos %}
+                <div class="users-row">
+                    <div>
+                        <strong>{{ vinculo.usuario.get_full_name|default:vinculo.usuario.username }}</strong>
+                        <small>{{ vinculo.usuario.email|default:vinculo.usuario.username }}</small>
+                    </div>
+                    <span>{{ vinculo.get_papel_display }}</span>
+                    <span>{% if vinculo.ativo %}Ativo{% else %}Inativo{% endif %}</span>
+                    <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboards:usuarios' empresa.slug %}?editar={{ vinculo.pk }}">
+                        Editar
+                    </a>
+                </div>
+            {% empty %}
+                <div class="users-empty">
+                    <i class="bi bi-people"></i>
+                    <strong>Nenhum usuário vinculado</strong>
+                    <p>Cadastre o primeiro acesso desta empresa.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </article>
+</section>
+{% endblock %}

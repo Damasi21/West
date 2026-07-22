@@ -4,7 +4,7 @@
             <article class="finance-kpi finance-kpi-{{ indicador.tom }}">
                 <div>
                     <span>{{ indicador.titulo }}</span>
-                    <strong>{{ indicador.valor }}</strong>
+                    <strong class="metric-value-with-tooltip" title="{{ indicador.valor_completo|default:indicador.valor }}">{{ indicador.valor }}</strong>
                 </div>
                 <i class="bi {{ indicador.icone }}"></i>
             </article>

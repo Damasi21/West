@@ -62,14 +62,24 @@ def _periodo_anterior(inicio, fim):
     return inicio_anterior, fim_anterior
 
 
-def _meta_mensal(empresas_ids, vendedores):
+def _metas_por_mes(empresas_ids, vendedores, meses):
     queryset = MetaVendedorComercial.objects.filter(
         empresa_id__in=empresas_ids,
         vendedor__inativo=False,
     )
     if vendedores:
         queryset = queryset.filter(vendedor__codigo__in=vendedores)
-    return _decimal(queryset.aggregate(total=Sum("valor_mensal"))["total"])
+    filtros_periodo = [(item["ano"], item["mes"]) for item in meses]
+    queryset = queryset.filter(
+        ano__in={ano for ano, _ in filtros_periodo},
+        mes__in={mes for _, mes in filtros_periodo},
+    )
+    totais = defaultdict(Decimal)
+    for meta in queryset:
+        chave = f"{meta.ano}-{meta.mes:02d}"
+        if (meta.ano, meta.mes) in filtros_periodo:
+            totais[chave] += _decimal(meta.valor_mensal)
+    return totais
 
 
 def _query_pedidos_emitidos(inicio, fim, empresas_ids, projetos, vendedores):
@@ -313,8 +323,8 @@ def faturamento_comercial(
     if "servicos" in tipos:
         total_anterior += servicos_anterior
     media_anterior = total_anterior / Decimal(len(meses) or 1)
-    meta_mensal = _meta_mensal(empresas_ids, vendedores)
-    meta_periodo = meta_mensal * Decimal(len(meses) or 1)
+    metas_mes = _metas_por_mes(empresas_ids, vendedores, meses)
+    meta_periodo = sum((metas_mes[item["chave"]] for item in meses), Decimal("0"))
 
     acumulado = []
     soma = Decimal("0")
@@ -390,7 +400,7 @@ def faturamento_comercial(
         ],
         "media_anterior": [float(media_anterior) for _ in meses],
         "acumulado": acumulado,
-        "meta": [float(meta_mensal) for _ in meses],
+        "meta": [float(metas_mes[item["chave"]]) for item in meses],
         "ranking": ranking,
         "tipos": tipos,
     }

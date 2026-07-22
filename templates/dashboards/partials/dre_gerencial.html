@@ -5,7 +5,7 @@
         {% for indicador in dre.indicadores %}
             <article class="dre-metric dre-metric-{{ indicador.tom }}">
                 <span>{{ indicador.titulo }}</span>
-                <strong>{{ indicador.valor }}</strong>
+                <strong class="metric-value-with-tooltip" title="{{ indicador.valor_completo|default:indicador.valor }}">{{ indicador.valor }}</strong>
             </article>
         {% endfor %}
     </div>

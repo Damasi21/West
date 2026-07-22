@@ -58,18 +58,24 @@ def _dias_atras(data):
     return f"{dias}d atras"
 
 
-def _meta_por_vendedor(empresas_ids, vendedores, meses_quantidade):
+def _meta_por_vendedor(empresas_ids, vendedores, meses):
     queryset = MetaVendedorComercial.objects.filter(
         empresa_id__in=empresas_ids,
         vendedor__inativo=False,
     ).select_related("vendedor")
     if vendedores:
         queryset = queryset.filter(vendedor__codigo__in=vendedores)
+    filtros_periodo = {(item["ano"], item["mes"]) for item in meses}
+    queryset = queryset.filter(
+        ano__in={ano for ano, _ in filtros_periodo},
+        mes__in={mes for _, mes in filtros_periodo},
+    )
     metas = {}
     for meta in queryset:
-        metas[str(meta.vendedor.codigo)] = _decimal(meta.valor_mensal) * Decimal(
-            meses_quantidade or 1
-        )
+        if (meta.ano, meta.mes) not in filtros_periodo:
+            continue
+        codigo = str(meta.vendedor.codigo)
+        metas[codigo] = metas.get(codigo, Decimal("0")) + _decimal(meta.valor_mensal)
     return metas
 
 
@@ -194,7 +200,7 @@ def desempenho_vendedores(
     tipos = _tipos_validos(tipos_selecionados or [])
     vendedores = _vendedores_ativos(empresas_ids, vendedores_filtro)
     vendedores_por_codigo = {str(vendedor.codigo): vendedor for vendedor in vendedores}
-    metas = _meta_por_vendedor(empresas_ids, vendedores_filtro, len(meses))
+    metas = _meta_por_vendedor(empresas_ids, vendedores_filtro, meses)
 
     faturados = PedidoOmie.objects.none()
     abertos = PedidoOmie.objects.none()

@@ -1,9 +1,13 @@
 from datetime import date
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from apps.dashboards.dre_services import dre_gerencial
+from apps.dashboards.fluxo_caixa_services import fluxo_de_caixa
+from apps.dashboards.visao_geral_services import visao_geral_financeira
 from apps.empresas.models import (
     CadastroOmie,
     CategoriaOmie,
@@ -36,6 +40,7 @@ class DashboardPermissaoTests(TestCase):
             nome="Oeste Cliente Ltda",
             nome_fantasia="Oeste Cliente",
             cnpj="11.111.111/0001-11",
+            grupo="Grupo Oeste",
         )
 
     def test_usuario_sem_vinculo_nao_acessa_dashboard(self):
@@ -92,11 +97,7 @@ class DashboardPermissaoTests(TestCase):
             kwargs={"empresa_slug": self.empresa.slug},
         )
         self.assertContains(response, url_parametros)
-        conteudo = response.content.decode()
-        self.assertLess(
-            conteudo.index("Parâmetros"),
-            conteudo.index("Estrutura pronta para integração OMIE"),
-        )
+        self.assertNotContains(response, "Estrutura pronta para integra")
 
     def test_parametros_nao_aparecem_para_usuario_comum(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
@@ -112,6 +113,88 @@ class DashboardPermissaoTests(TestCase):
                 "dashboards:parametros",
                 kwargs={"empresa_slug": self.empresa.slug},
             ),
+        )
+
+    def test_administrador_da_empresa_ve_parametros_sem_ser_staff(self):
+        EmpresaUsuario.objects.create(
+            empresa=self.empresa,
+            usuario=self.usuario,
+            papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse("dashboards:home", kwargs={"empresa_slug": self.empresa.slug})
+        )
+
+        self.assertContains(
+            response,
+            reverse(
+                "dashboards:parametros",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+        )
+
+    def test_gestor_acessa_apenas_modulos_liberados(self):
+        EmpresaUsuario.objects.create(
+            empresa=self.empresa,
+            usuario=self.usuario,
+            papel=EmpresaUsuario.Papel.GESTOR,
+            areas_permitidas=["financeiro"],
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse("dashboards:home", kwargs={"empresa_slug": self.empresa.slug})
+        )
+        self.assertContains(response, "Financeiro")
+        self.assertNotContains(response, "Comercial")
+        self.assertEqual(
+            self.client.get(
+                reverse(
+                    "dashboards:area",
+                    kwargs={
+                        "empresa_slug": self.empresa.slug,
+                        "area_slug": "comercial",
+                    },
+                )
+            ).status_code,
+            404,
+        )
+
+    def test_usuario_visualiza_apenas_dashboard_liberado(self):
+        EmpresaUsuario.objects.create(
+            empresa=self.empresa,
+            usuario=self.usuario,
+            papel=EmpresaUsuario.Papel.VISUALIZADOR,
+            areas_permitidas=["comercial"],
+            dashboards_permitidos=["comercial:faturamento"],
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:area",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "comercial",
+                },
+            )
+        )
+        self.assertContains(response, "Faturamento")
+        self.assertNotContains(response, "Desempenho de vendedores")
+        self.assertEqual(
+            self.client.get(
+                reverse(
+                    "dashboards:dashboard",
+                    kwargs={
+                        "empresa_slug": self.empresa.slug,
+                        "area_slug": "comercial",
+                        "dashboard_slug": "desempenho-de-vendedores",
+                    },
+                )
+            ).status_code,
+            404,
         )
 
     def test_area_inexistente_retorna_404(self):
@@ -226,6 +309,8 @@ class DashboardPermissaoTests(TestCase):
         MetaVendedorComercial.objects.create(
             empresa=self.empresa,
             vendedor=vendedor,
+            ano=ano_atual,
+            mes=1,
             valor_mensal=10000,
         )
         produto = ProdutoOmie.objects.create(
@@ -342,6 +427,8 @@ class DashboardPermissaoTests(TestCase):
             MetaVendedorComercial.objects.create(
                 empresa=self.empresa,
                 vendedor=vendedor,
+                ano=ano_atual,
+                mes=1,
                 valor_mensal=meta,
             )
         PedidoOmie.objects.create(
@@ -627,6 +714,7 @@ class DashboardPermissaoTests(TestCase):
             nome="Filial Oeste Ltda",
             nome_fantasia="Filial Oeste",
             cnpj="22.222.222/0001-22",
+            grupo="Grupo Oeste",
         )
         EmpresaUsuario.objects.create(empresa=outra_empresa, usuario=self.usuario)
         projeto_principal = ProjetoOmie.objects.create(
@@ -650,6 +738,13 @@ class DashboardPermissaoTests(TestCase):
             descricao="Comercial filial",
         )
         self.client.force_login(self.usuario)
+        self.client.get(
+            reverse("dashboards:home", kwargs={"empresa_slug": self.empresa.slug}),
+            {
+                "_filtrar_empresas": "1",
+                "empresa": [str(self.empresa.pk), str(outra_empresa.pk)],
+            },
+        )
         url = reverse(
             "dashboards:dashboard",
             kwargs={
@@ -663,7 +758,6 @@ class DashboardPermissaoTests(TestCase):
             url,
             {
                 "_filtrar": "1",
-                "empresa": [str(self.empresa.pk), str(outra_empresa.pk)],
                 "projeto": [
                     f"{self.empresa.pk}:{projeto_principal.codigo}",
                     f"{outra_empresa.pk}:{projeto_filial.codigo}",
@@ -684,6 +778,158 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Projeto filial")
         self.assertContains(response, "Comercial matriz")
         self.assertContains(response, "Comercial filial")
+        self.assertNotContains(response, "Todas as empresas")
+
+    def test_select_de_empresas_exibe_apenas_empresas_do_mesmo_grupo(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        mesma_rede = Empresa.objects.create(
+            nome="Filial Mesmo Grupo Ltda",
+            nome_fantasia="Filial Mesmo Grupo",
+            cnpj="22.222.222/0001-22",
+            grupo="grupo oeste",
+        )
+        outro_grupo = Empresa.objects.create(
+            nome="Cliente Outro Grupo Ltda",
+            nome_fantasia="Cliente Outro Grupo",
+            cnpj="33.333.333/0001-33",
+            grupo="Grupo Leste",
+        )
+        EmpresaUsuario.objects.create(empresa=mesma_rede, usuario=self.usuario)
+        EmpresaUsuario.objects.create(empresa=outro_grupo, usuario=self.usuario)
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse("dashboards:home", kwargs={"empresa_slug": self.empresa.slug}),
+            {
+                "_filtrar_empresas": "1",
+                "empresa": [
+                    str(self.empresa.pk),
+                    str(mesma_rede.pk),
+                    str(outro_grupo.pk),
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["empresas_selecionadas"],
+            [str(self.empresa.pk), str(mesma_rede.pk)],
+        )
+        self.assertContains(response, "Filial Mesmo Grupo")
+        self.assertNotContains(response, "Cliente Outro Grupo")
+
+    def test_empresa_sem_grupo_exibe_apenas_ela_no_select(self):
+        self.empresa.grupo = ""
+        self.empresa.save(update_fields=["grupo"])
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        outra_empresa = Empresa.objects.create(
+            nome="Outra Empresa Sem Grupo Ltda",
+            nome_fantasia="Outra Empresa Sem Grupo",
+            cnpj="44.444.444/0001-44",
+        )
+        EmpresaUsuario.objects.create(empresa=outra_empresa, usuario=self.usuario)
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse("dashboards:home", kwargs={"empresa_slug": self.empresa.slug}),
+            {
+                "_filtrar_empresas": "1",
+                "empresa": [str(self.empresa.pk), str(outra_empresa.pk)],
+            },
+        )
+
+        self.assertEqual(response.context["empresas_selecionadas"], [str(self.empresa.pk)])
+        self.assertContains(response, self.empresa.nome_fantasia)
+        self.assertNotContains(response, outra_empresa.nome_fantasia)
+
+    def test_limpar_filtros_marca_todas_as_opcoes_do_dashboard(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        projeto_a = ProjetoOmie.objects.create(
+            empresa=self.empresa,
+            codigo=101,
+            nome="Projeto A",
+        )
+        projeto_b = ProjetoOmie.objects.create(
+            empresa=self.empresa,
+            codigo=202,
+            nome="Projeto B",
+        )
+        departamento_a = DepartamentoOmie.objects.create(
+            empresa=self.empresa,
+            codigo="DEP-A",
+            descricao="Departamento A",
+        )
+        departamento_b = DepartamentoOmie.objects.create(
+            empresa=self.empresa,
+            codigo="DEP-B",
+            descricao="Departamento B",
+        )
+        produto_sem_projeto = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=909,
+            codigo="SEM-PROJ",
+            descricao="Produto sem projeto",
+        )
+        pedido_sem_projeto = PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=909,
+            numero_pedido="PV-SEM-PROJ",
+            data_inclusao=date.today(),
+            data_faturamento=date.today(),
+            faturado=True,
+            valor_total_pedido=1000,
+        )
+        PedidoItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido_sem_projeto,
+            codigo_item=909,
+            produto=produto_sem_projeto,
+            codigo_produto=produto_sem_projeto.codigo_produto,
+            descricao=produto_sem_projeto.descricao,
+            quantidade=1,
+            valor_unitario=1000,
+            valor_total=1000,
+        )
+        self.client.force_login(self.usuario)
+        url = reverse(
+            "dashboards:dashboard",
+            kwargs={
+                "empresa_slug": self.empresa.slug,
+                "area_slug": "comercial",
+                "dashboard_slug": "faturamento",
+            },
+        )
+
+        response = self.client.get(
+            url,
+            {
+                "_filtrar": "1",
+                "projeto": [f"{self.empresa.pk}:{projeto_a.codigo}"],
+                "departamento": [f"{self.empresa.pk}:{departamento_a.codigo}"],
+            },
+        )
+        self.assertEqual(response.context["projetos_selecionados"], [f"{self.empresa.pk}:{projeto_a.codigo}"])
+        self.assertEqual(response.context["departamentos_selecionados"], [f"{self.empresa.pk}:{departamento_a.codigo}"])
+        self.assertNotContains(response, "Produto sem projeto")
+
+        response = self.client.get(url, {"_filtrar": "1", "limpar_filtros": "1"})
+
+        self.assertContains(response, "Limpar filtros")
+        self.assertContains(response, "Produto sem projeto")
+        self.assertEqual(
+            set(response.context["projetos_selecionados"]),
+            {
+                f"{self.empresa.pk}:{projeto_a.codigo}",
+                f"{self.empresa.pk}:{projeto_b.codigo}",
+            },
+        )
+        self.assertEqual(
+            set(response.context["departamentos_selecionados"]),
+            {
+                f"{self.empresa.pk}:{departamento_a.codigo}",
+                f"{self.empresa.pk}:{departamento_b.codigo}",
+            },
+        )
 
     def test_periodo_pode_ser_compartilhado_no_modulo(self):
         ano_atual = date.today().year
@@ -861,7 +1107,7 @@ class DashboardPermissaoTests(TestCase):
             empresa=self.empresa,
             codigo_lancamento_omie=1001,
             data_lancamento=date(ano_atual, 1, 10),
-            valor_lancamento=1200,
+            valor_lancamento=1200000,
             categoria_principal=categoria,
         )
         self.client.force_login(self.usuario)
@@ -887,6 +1133,8 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Deducoes e gastos variaveis")
         self.assertContains(response, "DRE Gerencial")
         self.assertContains(response, "Custos Variaveis")
+        self.assertContains(response, "R$ -1,20 Mi")
+        self.assertContains(response, 'title="R$ -1.200.000,00"')
         self.assertContains(response, "data-dre-expand-all")
         self.assertContains(response, "data-dre-values-chart")
         self.assertContains(response, "data-dre-ah-chart")
@@ -957,6 +1205,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Recebimentos")
         self.assertContains(response, "Pagamentos")
         self.assertContains(response, "Resultado")
+        self.assertContains(response, 'title="R$ 5.000,00"')
         self.assertContains(response, "Margem mensal")
         self.assertContains(response, "Cliente Forte")
         self.assertContains(response, "Fornecedor Chave")
@@ -1125,6 +1374,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Saldo atual")
         self.assertContains(response, "Entradas previstas")
         self.assertContains(response, "Saidas previstas")
+        self.assertContains(response, 'title="R$ 15.000,00"')
         self.assertContains(response, "Saldo projetado")
         self.assertContains(response, "Prazo medio de pagamento")
         self.assertContains(response, "Cliente Critico")
@@ -1134,6 +1384,317 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "data-cashflow-chart")
         self.assertContains(response, "data-cashflow-in-pie")
         self.assertContains(response, "data-cashflow-out-pie")
+
+    def test_fluxo_de_caixa_ignora_contas_marcadas_fora_do_fluxo_e_resumo(self):
+        ano_atual = date.today().year
+        conta_visivel = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=301,
+            descricao="Conta visivel",
+            saldo_inicial=1000,
+        )
+        conta_omitida = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=302,
+            descricao="Conta omitida",
+            saldo_inicial=9000,
+            nao_fluxo=True,
+            nao_resumo=True,
+        )
+        categoria_transferencia = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="9.99.01",
+            descricao="Entrada de Transferencia",
+            transferencia=True,
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=31001,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_vencimento=date(ano_atual, 1, 10),
+            valor_documento=100,
+            valor_a_receber=100,
+            status_titulo="ATRASADO",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=31002,
+            id_conta_corrente=conta_omitida.codigo_omie,
+            conta_corrente=conta_omitida,
+            data_vencimento=date(ano_atual, 1, 11),
+            valor_documento=900,
+            valor_a_receber=900,
+            status_titulo="ATRASADO",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=32001,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_entrada=date(ano_atual, 1, 1),
+            data_vencimento=date(ano_atual, 1, 15),
+            valor_documento=40,
+            valor_a_pagar=40,
+            status_titulo="ATRASADO",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=32002,
+            id_conta_corrente=conta_omitida.codigo_omie,
+            conta_corrente=conta_omitida,
+            data_entrada=date(ano_atual, 1, 1),
+            data_vencimento=date(ano_atual, 1, 16),
+            valor_documento=400,
+            valor_a_pagar=400,
+            status_titulo="ATRASADO",
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=33001,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_lancamento=date(ano_atual, 1, 20),
+            natureza="R",
+            valor_lancamento=25,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=33002,
+            codigo_conta_corrente=conta_omitida.codigo_omie,
+            conta_corrente=conta_omitida,
+            data_lancamento=date(ano_atual, 1, 21),
+            natureza="P",
+            valor_lancamento=250,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=33003,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            codigo_categoria=categoria_transferencia.codigo,
+            categoria_principal=categoria_transferencia,
+            data_lancamento=date(ano_atual, 1, 22),
+            natureza="R",
+            valor_lancamento=700,
+        )
+
+        contexto = fluxo_de_caixa(
+            self.empresa,
+            f"mes-{ano_atual}-01",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(contexto["entradas"], [125.0])
+        self.assertEqual(contexto["saidas"], [40.0])
+        self.assertEqual(contexto["saldo_acumulado"], [1085.0])
+
+    def test_fluxo_de_caixa_usa_saldo_atual_do_resumo_omie(self):
+        ano_atual = date.today().year
+        self.empresa.saldo_contas_omie = Decimal("219720.53")
+        self.empresa.save(update_fields=["saldo_contas_omie"])
+        conta_visivel = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=601,
+            descricao="Conta visivel",
+            saldo_inicial=900,
+        )
+        conta_omitida = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=602,
+            descricao="Conta omitida",
+            saldo_inicial=5000,
+            nao_fluxo=True,
+            nao_resumo=True,
+        )
+        categoria_transferencia = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="9.99.04",
+            descricao="Entrada de Transferencia",
+            transferencia=True,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61001,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_lancamento=date(ano_atual, 1, 10),
+            natureza="R",
+            valor_lancamento=100,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61002,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_lancamento=date(ano_atual, 1, 11),
+            natureza="P",
+            valor_lancamento=50,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61003,
+            codigo_conta_corrente=conta_omitida.codigo_omie,
+            conta_corrente=conta_omitida,
+            data_lancamento=date(ano_atual, 1, 12),
+            natureza="R",
+            valor_lancamento=900,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61004,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            codigo_categoria=categoria_transferencia.codigo,
+            categoria_principal=categoria_transferencia,
+            data_lancamento=date(ano_atual, 1, 13),
+            natureza="R",
+            valor_lancamento=800,
+        )
+
+        contexto = fluxo_de_caixa(
+            self.empresa,
+            f"mes-{ano_atual}-01",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(contexto["indicadores"][0]["valor"], "R$ 219,72 Mil")
+
+    def test_visao_geral_ignora_lancamentos_de_contas_fora_do_fluxo_e_resumo(self):
+        ano_atual = date.today().year
+        conta_visivel = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=401,
+            descricao="Conta visivel",
+        )
+        conta_omitida = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=402,
+            descricao="Conta omitida",
+            nao_fluxo=True,
+            nao_resumo=True,
+        )
+        categoria_transferencia = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="9.99.02",
+            descricao="Saida de Transferencia",
+            transferencia=True,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=41001,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_lancamento=date(ano_atual, 1, 10),
+            natureza="R",
+            valor_lancamento=100,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=41002,
+            codigo_conta_corrente=conta_omitida.codigo_omie,
+            conta_corrente=conta_omitida,
+            data_lancamento=date(ano_atual, 1, 10),
+            natureza="R",
+            valor_lancamento=900,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=41003,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            codigo_categoria=categoria_transferencia.codigo,
+            categoria_principal=categoria_transferencia,
+            data_lancamento=date(ano_atual, 1, 10),
+            natureza="R",
+            valor_lancamento=800,
+        )
+
+        contexto = visao_geral_financeira(
+            self.empresa,
+            f"mes-{ano_atual}-01",
+            empresas_ids=[self.empresa.pk],
+            regime_financeiro="caixa",
+        )
+
+        self.assertEqual(contexto["recebimentos"], [100.0])
+
+    def test_dre_gerencial_ignora_titulos_de_contas_fora_do_fluxo_e_resumo(self):
+        ano_atual = date.today().year
+        conta_dre = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Receita Bruta",
+            ordem=1,
+        )
+        vendas = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Vendas",
+            conta_pai=conta_dre,
+            ordem=1,
+        )
+        categoria = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.05.01",
+            descricao="Vendas",
+            conta_dre=vendas,
+        )
+        categoria_transferencia = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="9.99.03",
+            descricao="Entrada de Transferencia",
+            transferencia=True,
+            conta_dre=vendas,
+        )
+        conta_visivel = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=501,
+            descricao="Conta visivel",
+        )
+        conta_omitida = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=502,
+            descricao="Conta omitida",
+            nao_fluxo=True,
+            nao_resumo=True,
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=51001,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            categoria_principal=categoria,
+            data_registro=date(ano_atual, 1, 10),
+            valor_documento=100,
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=51002,
+            id_conta_corrente=conta_omitida.codigo_omie,
+            conta_corrente=conta_omitida,
+            categoria_principal=categoria,
+            data_registro=date(ano_atual, 1, 11),
+            valor_documento=900,
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=51003,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            codigo_categoria=categoria_transferencia.codigo,
+            categoria_principal=categoria_transferencia,
+            data_registro=date(ano_atual, 1, 12),
+            valor_documento=800,
+        )
+
+        contexto = dre_gerencial(
+            self.empresa,
+            f"mes-{ano_atual}-01",
+            empresas_ids=[self.empresa.pk],
+            regime_financeiro="competencia",
+        )
+        linha_vendas = next(linha for linha in contexto["linhas"] if linha["nome"] == "Vendas")
+
+        self.assertEqual(linha_vendas["total"], Decimal("100"))
 
     def test_inadimplencia_exibe_indicadores_graficos_e_top_devedores(self):
         ano_atual = date.today().year

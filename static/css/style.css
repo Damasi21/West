@@ -16,6 +16,15 @@ body {
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     min-height: 100vh;
 }
+
+@supports (zoom: 1) {
+    @media (min-width: 992px) {
+        body {
+            zoom: .9;
+        }
+    }
+}
+
 a { text-decoration: none; }
 .app-navbar {
     min-height: 68px;
@@ -280,6 +289,96 @@ a { text-decoration: none; }
     margin-top: 2rem;
     padding-top: 1.25rem;
     border-top: 1px solid var(--border);
+}
+.users-admin-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
+    gap: 1rem;
+    align-items: start;
+    padding-bottom: 3rem;
+}
+.users-admin-card {
+    padding: 1.25rem;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+}
+.users-admin-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.users-admin-header h2,
+.users-permission-grid h3 {
+    margin: 0;
+    color: var(--navy);
+    font-size: 1rem;
+}
+.users-permission-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1.25rem;
+}
+.users-permission-grid p {
+    margin: .2rem 0 .65rem;
+    color: var(--muted);
+    font-size: .78rem;
+}
+.users-check-list {
+    max-height: 220px;
+    overflow: auto;
+    padding: .75rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+.users-check-list-long { max-height: 300px; }
+.users-check-list ul {
+    display: grid;
+    gap: .4rem;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+.users-check-list label {
+    display: flex;
+    gap: .5rem;
+    color: #35415d;
+    font-size: .82rem;
+}
+.users-admin-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1.25rem;
+}
+.users-table { display: grid; gap: .65rem; }
+.users-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: .75rem;
+    align-items: center;
+    padding: .75rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+.users-row small {
+    display: block;
+    color: var(--muted);
+}
+.users-empty {
+    padding: 2rem 1rem;
+    color: var(--muted);
+    text-align: center;
+}
+.users-empty i {
+    display: block;
+    margin-bottom: .5rem;
+    color: var(--primary);
+    font-size: 1.6rem;
 }
 .omie-sync-panel {
     margin-top: 1.5rem;
@@ -632,6 +731,29 @@ a { text-decoration: none; }
 .category-empty-state i { font-size: 2rem; }
 .category-empty-state strong { margin-top: .75rem; color: #3f4a63; }
 .category-empty-state p { margin: .35rem 0 0; font-size: .8rem; }
+.sales-goals-period-form {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: .75rem;
+    margin: -1rem 0 1rem;
+    padding: 1rem;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+.sales-goals-period-form label {
+    display: grid;
+    gap: .25rem;
+    min-width: 150px;
+    margin: 0;
+}
+.sales-goals-period-form span {
+    color: var(--muted);
+    font-size: .72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
 .sales-goals-form { padding-bottom: 5rem; }
 .sales-goals-card {
     overflow: hidden;
@@ -650,6 +772,12 @@ a { text-decoration: none; }
 }
 .sales-goals-header h2 { margin: .2rem 0; font-size: 1.25rem; }
 .sales-goals-header p { max-width: 620px; margin: 0; color: var(--muted); font-size: .82rem; }
+.sales-goals-header-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
 .sales-goals-summary {
     display: flex;
     align-items: center;

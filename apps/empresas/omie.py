@@ -1,5 +1,6 @@
 import json
 import ssl
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -44,6 +45,8 @@ TIPOS_CONTA_CORRENTE_URL = "https://app.omie.com.br/api/v1/geral/tipocc/"
 CONTAS_CORRENTES_URL = "https://app.omie.com.br/api/v1/geral/contacorrente/"
 CONTAS_PAGAR_URL = "https://app.omie.com.br/api/v1/financas/contapagar/"
 CONTAS_RECEBER_URL = "https://app.omie.com.br/api/v1/financas/contareceber/"
+EXTRATO_CONTA_CORRENTE_URL = "https://app.omie.com.br/api/v1/financas/extrato/"
+RESUMO_FINANCAS_URL = "https://app.omie.com.br/api/v1/financas/resumo/"
 LANCAMENTOS_CONTA_CORRENTE_URL = (
     "https://app.omie.com.br/api/v1/financas/contacorrentelancamentos/"
 )
@@ -57,6 +60,21 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="omie-sync")
 
 class OmieAPIError(Exception):
     pass
+
+
+def _abrir_requisicao_omie(request, timeout):
+    tentativas = getattr(settings, "OMIE_API_RETRIES", 3)
+    espera = getattr(settings, "OMIE_API_RETRY_DELAY", 2)
+    ultimo_erro = None
+    for tentativa in range(1, tentativas + 1):
+        try:
+            return urlopen(request, timeout=timeout, context=SSL_CONTEXT)
+        except (URLError, TimeoutError) as exc:
+            ultimo_erro = exc
+            if tentativa == tentativas:
+                raise
+            time.sleep(espera * tentativa)
+    raise ultimo_erro
 
 
 def _sim_nao(valor):
@@ -124,7 +142,7 @@ def consultar_clientes(integracao, pagina, registros_por_pagina=50):
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -164,7 +182,7 @@ def consultar_projetos(integracao, pagina, registros_por_pagina=50):
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -203,7 +221,7 @@ def consultar_departamentos(integracao, pagina, registros_por_pagina=50):
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -243,7 +261,7 @@ def consultar_vendedores(integracao, pagina, registros_por_pagina=100):
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -284,7 +302,7 @@ def consultar_produtos(integracao, pagina, registros_por_pagina=50):
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -324,7 +342,7 @@ def consultar_categorias(integracao, pagina, registros_por_pagina=50):
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -367,7 +385,7 @@ def consultar_tipos_conta_corrente(
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -411,7 +429,7 @@ def consultar_contas_correntes(
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -455,7 +473,7 @@ def consultar_contas_pagar(
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -499,7 +517,7 @@ def consultar_contas_receber(
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -542,7 +560,93 @@ def consultar_lancamentos_conta_corrente(
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Não foi possível conectar à OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta inválida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_extrato_conta_corrente(
+    integracao,
+    conta_corrente,
+    data_inicial="",
+    data_final="",
+):
+    payload = {
+        "call": "ListarExtrato",
+        "param": [
+            {
+                "nCodCC": conta_corrente.codigo_omie,
+                "cCodIntCC": conta_corrente.codigo_integracao,
+                "dPeriodoInicial": data_inicial,
+                "dPeriodoFinal": data_final,
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        EXTRATO_CONTA_CORRENTE_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Não foi possível conectar à OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta inválida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_resumo_financas(integracao, dia=None):
+    dia = dia or timezone.localdate()
+    payload = {
+        "call": "ObterResumoFinancas",
+        "param": [
+            {
+                "dDia": dia.strftime("%d/%m/%Y"),
+                "lApenasResumo": True,
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        RESUMO_FINANCAS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -586,7 +690,7 @@ def consultar_pedidos(
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -629,7 +733,7 @@ def consultar_servicos(
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -673,7 +777,7 @@ def consultar_ordens_servico(
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -717,7 +821,7 @@ def consultar_contratos(
     )
     timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
     try:
-        with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
+        with _abrir_requisicao_omie(request, timeout) as response:
             dados = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         corpo = exc.read().decode("utf-8", errors="replace")
@@ -1463,6 +1567,71 @@ def _salvar_contas_correntes(empresa, itens):
         )
         processados += 1
     return processados
+
+
+def _saldo_provisorio_extrato(dados):
+    if "nSaldoProvisorio" in dados:
+        return dados.get("nSaldoProvisorio")
+    for chave in ("listaMovimentos", "movimentos", "extrato"):
+        itens = dados.get(chave)
+        if isinstance(itens, list):
+            for item in reversed(itens):
+                if isinstance(item, dict) and "nSaldoProvisorio" in item:
+                    return item.get("nSaldoProvisorio")
+    return None
+
+
+def _atualizar_saldos_extrato_contas_correntes(empresa, integracao):
+    contas = ContaCorrenteOmie.objects.filter(
+        empresa=empresa,
+        inativo=False,
+    )
+    processados = 0
+    for conta in contas:
+        dados = consultar_extrato_conta_corrente(integracao, conta)
+        saldo = _saldo_provisorio_extrato(dados)
+        if saldo is None:
+            continue
+        conta.saldo_atual = _decimal(saldo)
+        conta.saldo_atualizado_em = timezone.now()
+        conta.dados_originais = {
+            **(conta.dados_originais or {}),
+            "extrato": dados,
+        }
+        conta.save(
+            update_fields=[
+                "saldo_atual",
+                "saldo_atualizado_em",
+                "dados_originais",
+                "sincronizado_em",
+            ]
+        )
+        processados += 1
+    return processados
+
+
+def _saldo_contas_resumo_financeiro(dados):
+    conta_corrente = dados.get("contaCorrente") or {}
+    return conta_corrente.get("vTotal")
+
+
+def _atualizar_resumo_financeiro_empresa(empresa, integracao):
+    dados = consultar_resumo_financas(integracao)
+    saldo = _saldo_contas_resumo_financeiro(dados)
+    if saldo is None:
+        return 0
+    empresa.saldo_contas_omie = _decimal(saldo)
+    empresa.saldo_contas_atualizado_em = timezone.now()
+    empresa.resumo_financeiro_omie = dados
+    empresa.save(
+        update_fields=[
+            "saldo_contas_omie",
+            "saldo_contas_atualizado_em",
+            "resumo_financeiro_omie",
+            "atualizada_em",
+        ]
+    )
+    return 1
 
 
 def _salvar_contas_pagar(empresa, itens):
@@ -2284,6 +2453,20 @@ def executar_sincronizacao_omie(sincronizacao_id):
                             "atualizada_em",
                         ]
                     )
+
+        processados = _atualizar_resumo_financeiro_empresa(
+            sincronizacao.empresa,
+            integracao,
+        )
+        sincronizacao.registros_processados += processados
+        sincronizacao.mensagem = "Resumo financeiro atualizado."
+        sincronizacao.save(
+            update_fields=[
+                "registros_processados",
+                "mensagem",
+                "atualizada_em",
+            ]
+        )
 
         sincronizacao.status = SincronizacaoOmie.Status.CONCLUIDA
         sincronizacao.finalizada_em = timezone.now()

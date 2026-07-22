@@ -14,6 +14,7 @@ from .models import (
     EmpresaUsuario,
     IntegracaoOmie,
     LancamentoContaCorrenteOmie,
+    MetaVendedorComercial,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoItemOmie,
@@ -34,18 +35,31 @@ class EmpresaUsuarioInline(admin.TabularInline):
 
 @admin.register(Empresa)
 class EmpresaAdmin(admin.ModelAdmin):
-    list_display = ("nome_fantasia", "cnpj", "ativa", "atualizada_em")
-    list_filter = ("ativa",)
-    search_fields = ("nome_fantasia", "nome", "cnpj")
+    list_display = (
+        "nome_fantasia",
+        "grupo",
+        "cnpj",
+        "saldo_contas_omie",
+        "saldo_contas_atualizado_em",
+        "ativa",
+        "atualizada_em",
+    )
+    list_filter = ("ativa", "grupo")
+    search_fields = ("nome_fantasia", "nome", "cnpj", "grupo")
     prepopulated_fields = {"slug": ("nome_fantasia",)}
     inlines = [EmpresaUsuarioInline]
 
 
 @admin.register(EmpresaUsuario)
 class EmpresaUsuarioAdmin(admin.ModelAdmin):
-    list_display = ("usuario", "empresa", "papel", "ativo")
+    list_display = ("usuario", "empresa", "papel", "areas_resumo", "ativo")
     list_filter = ("papel", "ativo")
     search_fields = ("usuario__username", "empresa__nome_fantasia")
+
+    def areas_resumo(self, obj):
+        return ", ".join(obj.areas_permitidas) if obj.areas_permitidas else "Todas"
+
+    areas_resumo.short_description = "areas"
 
 
 @admin.register(IntegracaoOmie)
@@ -479,6 +493,8 @@ class ContaCorrenteOmieAdmin(admin.ModelAdmin):
         "codigo_omie",
         "tipo_codigo",
         "codigo_banco",
+        "saldo_atual",
+        "saldo_atualizado_em",
         "empresa",
         "inativo",
     )
@@ -595,6 +611,13 @@ class ContaDREAdmin(admin.ModelAdmin):
     list_filter = ("empresa", "sinal")
     search_fields = ("nome",)
     ordering = ("empresa", "conta_pai_id", "ordem")
+
+
+@admin.register(MetaVendedorComercial)
+class MetaVendedorComercialAdmin(admin.ModelAdmin):
+    list_display = ("vendedor", "empresa", "mes", "ano", "valor_mensal", "atualizada_em")
+    list_filter = ("empresa", "ano", "mes")
+    search_fields = ("vendedor__nome", "vendedor__codigo", "empresa__nome_fantasia")
 
 
 @admin.register(SincronizacaoOmie)

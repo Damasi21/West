@@ -3,16 +3,34 @@ import re
 from django.conf import settings
 from django.db import models
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.text import slugify
+
+
+def ano_atual():
+    return timezone.localdate().year
+
+
+def mes_atual():
+    return timezone.localdate().month
 
 
 class Empresa(models.Model):
     nome = models.CharField("razão social", max_length=180)
     nome_fantasia = models.CharField(max_length=120)
     cnpj = models.CharField(max_length=18, unique=True)
+    grupo = models.CharField(max_length=120, blank=True, db_index=True)
     slug = models.SlugField(max_length=140, unique=True, blank=True)
     logo = models.ImageField(upload_to="clientes/", blank=True, null=True)
     ativa = models.BooleanField(default=True)
+    saldo_contas_omie = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    saldo_contas_atualizado_em = models.DateTimeField(null=True, blank=True)
+    resumo_financeiro_omie = models.JSONField(default=dict, blank=True)
     usuarios = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         through="EmpresaUsuario",
@@ -61,6 +79,8 @@ class EmpresaUsuario(models.Model):
     papel = models.CharField(
         max_length=10, choices=Papel.choices, default=Papel.VISUALIZADOR
     )
+    areas_permitidas = models.JSONField(default=list, blank=True)
+    dashboards_permitidos = models.JSONField(default=list, blank=True)
     ativo = models.BooleanField(default=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -1087,6 +1107,8 @@ class ContaCorrenteOmie(models.Model):
     numero_conta_corrente = models.CharField(max_length=25, blank=True)
     saldo_inicial = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     saldo_data = models.CharField(max_length=10, blank=True)
+    saldo_atual = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    saldo_atualizado_em = models.DateTimeField(null=True, blank=True)
     valor_limite = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     nao_fluxo = models.BooleanField(default=False)
     nao_resumo = models.BooleanField(default=False)
@@ -1495,16 +1517,18 @@ class MetaVendedorComercial(models.Model):
         on_delete=models.CASCADE,
         related_name="metas_comerciais",
     )
+    ano = models.PositiveSmallIntegerField(default=ano_atual)
+    mes = models.PositiveSmallIntegerField(default=mes_atual)
     valor_mensal = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     atualizada_em = models.DateTimeField(auto_now=True)
     criada_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["vendedor__nome", "vendedor__codigo"]
+        ordering = ["ano", "mes", "vendedor__nome", "vendedor__codigo"]
         constraints = [
             models.UniqueConstraint(
-                fields=["empresa", "vendedor"],
-                name="meta_vendedor_empresa_vendedor_unico",
+                fields=["empresa", "vendedor", "ano", "mes"],
+                name="meta_vendedor_empresa_vendedor_periodo_unico",
             )
         ]
         verbose_name = "meta comercial por vendedor"

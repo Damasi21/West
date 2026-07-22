@@ -18,7 +18,15 @@ from apps.dashboards.margem_rentabilidade_services import (
     margem_rentabilidade_comercial,
 )
 from apps.dashboards.visao_geral_services import visao_geral_financeira
-from apps.empresas.services import empresas_permitidas, obter_empresa_permitida
+from apps.empresas.services import (
+    areas_permitidas_usuario,
+    dashboards_permitidos_usuario,
+    empresas_permitidas_no_grupo,
+    obter_empresa_permitida,
+    usuario_admin_empresa,
+    usuario_pode_acessar_area,
+    usuario_pode_acessar_dashboard,
+)
 
 
 AREAS = {
@@ -299,36 +307,97 @@ def _valores_validos(selecionados, permitidos):
     return [valor for valor in selecionados if valor in permitidos]
 
 
+def _valores_para_consulta(selecionados, opcoes):
+    todos = [item["valor"] for item in opcoes]
+    if not selecionados or set(selecionados) == set(todos):
+        return []
+    return selecionados
+
+
 def _regime_financeiro_valido(valor):
     return valor if valor in REGIMES_FINANCEIROS else "caixa"
 
 
+def _chave_empresas_inicio(empresa):
+    return f"filtros_inicio:{empresa.pk}:empresas"
+
+
+def _empresas_inicio_selecionadas(request, empresa, empresas):
+    return _valores_validos(
+        request.session.get(_chave_empresas_inicio(empresa), [str(empresa.pk)]),
+        (str(item.pk) for item in empresas),
+    )
+
+
 def _contexto_base(request, empresa_slug):
+    empresa = obter_empresa_permitida(request.user, empresa_slug)
     return {
-        "empresa": obter_empresa_permitida(request.user, empresa_slug),
-        "areas": AREAS,
+        "empresa": empresa,
+        "areas": areas_permitidas_usuario(request.user, empresa, AREAS),
+        "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
     }
 
 
 @login_required
 def home(request, empresa_slug):
+    contexto = _contexto_base(request, empresa_slug)
+    empresa = contexto["empresa"]
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+
+    if "limpar_filtros" in request.GET:
+        empresas_selecionadas = [str(item.pk) for item in empresas]
+        request.session[_chave_empresas_inicio(empresa)] = empresas_selecionadas
+    elif "_filtrar_empresas" in request.GET:
+        empresas_selecionadas = _valores_validos(
+            request.GET.getlist("empresa"),
+            (str(item.pk) for item in empresas),
+        )
+        request.session[_chave_empresas_inicio(empresa)] = empresas_selecionadas
+    else:
+        empresas_selecionadas = _empresas_inicio_selecionadas(
+            request,
+            empresa,
+            empresas,
+        )
+
+    contexto.update(
+        {
+            "empresas_filtro": empresas,
+            "empresas_selecionadas": empresas_selecionadas,
+        }
+    )
     return render(
         request,
         "dashboards/home.html",
-        _contexto_base(request, empresa_slug),
+        contexto,
     )
-
 
 @login_required
 def area(request, empresa_slug, area_slug):
     area_atual = AREAS.get(area_slug)
-    if area_atual is None:
-        raise Http404("Área de dashboards não encontrada.")
-
     contexto = _contexto_base(request, empresa_slug)
-    contexto.update({"area_slug": area_slug, "area_atual": area_atual})
+    empresa = contexto["empresa"]
+    if area_atual is None or not usuario_pode_acessar_area(
+        request.user,
+        empresa,
+        area_slug,
+    ):
+        raise Http404("Area de dashboards nao encontrada.")
+    contexto.update(
+        {
+            "area_slug": area_slug,
+            "area_atual": {
+                **area_atual,
+                "dashboards": dashboards_permitidos_usuario(
+                    request.user,
+                    empresa,
+                    area_slug,
+                    area_atual["dashboards"],
+                ),
+            },
+        }
+    )
     return render(request, "dashboards/area.html", contexto)
-
 
 @login_required
 def dashboard(request, empresa_slug, area_slug, dashboard_slug):
@@ -344,12 +413,17 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         ),
         None,
     )
-    if dashboard_atual is None:
-        raise Http404("Dashboard não encontrado.")
-
     contexto = _contexto_base(request, empresa_slug)
     empresa = contexto["empresa"]
-    empresas = list(empresas_permitidas(request.user))
+    if dashboard_atual is None or not usuario_pode_acessar_dashboard(
+        request.user,
+        empresa,
+        area_slug,
+        dashboard_slug,
+    ):
+        raise Http404("Dashboard nao encontrado.")
+
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
     chave_dashboard = (
         f"filtros_dashboard:{empresa.pk}:{area_slug}:{dashboard_slug}"
     )
@@ -358,16 +432,11 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
     estado_modulo = request.session.get(chave_modulo, {})
     periodo_compartilhado = estado_modulo.get("periodo")
 
-    if "_filtrar" in request.GET:
-        empresas_selecionadas = _valores_validos(
-            request.GET.getlist("empresa"),
-            (str(item.pk) for item in empresas),
-        )
-    else:
-        empresas_selecionadas = _valores_validos(
-            estado.get("empresas", [str(empresa.pk)]),
-            (str(item.pk) for item in empresas),
-        )
+    empresas_selecionadas = _empresas_inicio_selecionadas(
+        request,
+        empresa,
+        empresas,
+    )
 
     empresas_consulta_ids = empresas_selecionadas or [
         str(item.pk) for item in empresas
@@ -416,7 +485,38 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         for valor, rotulo in TIPOS_FATURAMENTO.items()
     ]
 
-    if "_filtrar" in request.GET:
+    if "limpar_filtros" in request.GET:
+        projetos_selecionados = [item["valor"] for item in projetos_opcoes]
+        departamentos_selecionados = [
+            item["valor"] for item in departamentos_opcoes
+        ]
+        vendedores_selecionados = [item["valor"] for item in vendedores_opcoes]
+        tipos_faturamento_selecionados = list(TIPOS_FATURAMENTO)
+        periodo_selecionado = _valor_periodo_valido(
+            request.GET.get("periodo") or estado.get("periodo") or ""
+        )
+        regime_financeiro = _regime_financeiro_valido(
+            request.GET.get("regime_financeiro") or estado.get("regime_financeiro", "")
+        )
+        data_inicio, data_fim = _datas_periodo_especifico(
+            periodo_selecionado,
+            request.GET.get("data_inicio") or estado.get("data_inicio"),
+            request.GET.get("data_fim") or estado.get("data_fim"),
+        )
+        if periodo_selecionado == "personalizado" and not data_inicio:
+            periodo_selecionado = _valor_periodo_valido("")
+        estado = {
+            "periodo": periodo_selecionado,
+            "regime_financeiro": regime_financeiro,
+            "data_inicio": data_inicio,
+            "data_fim": data_fim,
+            "projetos": projetos_selecionados,
+            "departamentos": departamentos_selecionados,
+            "vendedores": vendedores_selecionados,
+            "tipos_faturamento": tipos_faturamento_selecionados,
+        }
+        request.session[chave_dashboard] = estado
+    elif "_filtrar" in request.GET:
         projetos_selecionados = _valores_validos(
             request.GET.getlist("projeto"),
             (item["valor"] for item in projetos_opcoes),
@@ -455,7 +555,6 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "departamentos": departamentos_selecionados,
             "vendedores": vendedores_selecionados,
             "tipos_faturamento": tipos_faturamento_selecionados,
-            "empresas": empresas_selecionadas,
         }
         request.session[chave_dashboard] = estado
     else:
@@ -489,6 +588,19 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         )
         if periodo_selecionado == "personalizado" and not data_inicio:
             periodo_selecionado = _valor_periodo_valido("")
+
+    projetos_consulta = _valores_para_consulta(
+        projetos_selecionados,
+        projetos_opcoes,
+    )
+    vendedores_consulta = _valores_para_consulta(
+        vendedores_selecionados,
+        vendedores_opcoes,
+    )
+    tipos_faturamento_consulta = _valores_para_consulta(
+        tipos_faturamento_selecionados,
+        tipos_faturamento_opcoes,
+    ) or list(TIPOS_FATURAMENTO)
 
     periodo_foi_compartilhado = "compartilhar_periodo" in request.GET
     if periodo_foi_compartilhado:
@@ -557,9 +669,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_inicio,
             data_fim,
             empresas_consulta_ids,
-            projetos_selecionados,
-            tipos_faturamento_selecionados,
-            vendedores_selecionados,
+            projetos_consulta,
+            tipos_faturamento_consulta,
+            vendedores_consulta,
         )
     if area_slug == "comercial" and dashboard_slug == "desempenho-de-vendedores":
         contexto["desempenho_vendedores"] = desempenho_vendedores(
@@ -568,9 +680,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_inicio,
             data_fim,
             empresas_consulta_ids,
-            projetos_selecionados,
-            vendedores_selecionados,
-            tipos_faturamento_selecionados,
+            projetos_consulta,
+            vendedores_consulta,
+            tipos_faturamento_consulta,
         )
     if area_slug == "comercial" and dashboard_slug == "analise-de-clientes":
         contexto["analise_clientes"] = analise_clientes_comercial(
@@ -579,7 +691,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_inicio,
             data_fim,
             empresas_consulta_ids,
-            projetos_selecionados,
+            projetos_consulta,
         )
     if area_slug == "comercial" and dashboard_slug == "margem-e-rentabilidade":
         contexto["margem_rentabilidade"] = margem_rentabilidade_comercial(
@@ -588,7 +700,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_inicio,
             data_fim,
             empresas_consulta_ids,
-            projetos_selecionados,
+            projetos_consulta,
         )
     if area_slug == "financeiro" and dashboard_slug == "dre-gerencial":
         contexto["dre_gerencial"] = dre_gerencial(
@@ -597,7 +709,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_inicio,
             data_fim,
             empresas_consulta_ids,
-            projetos_selecionados,
+            projetos_consulta,
             regime_financeiro,
         )
     if area_slug == "financeiro" and dashboard_slug == "visao-geral":
@@ -607,7 +719,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_inicio,
             data_fim,
             empresas_consulta_ids,
-            projetos_selecionados,
+            projetos_consulta,
             regime_financeiro,
         )
     if area_slug == "financeiro" and dashboard_slug == "fluxo-de-caixa":
@@ -617,7 +729,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_inicio,
             data_fim,
             empresas_consulta_ids,
-            projetos_selecionados,
+            projetos_consulta,
         )
     if area_slug == "financeiro" and dashboard_slug == "inadimplencia":
         contexto["inadimplencia"] = inadimplencia(
@@ -626,6 +738,6 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_inicio,
             data_fim,
             empresas_consulta_ids,
-            projetos_selecionados,
+            projetos_consulta,
         )
     return render(request, "dashboards/dashboard.html", contexto)
