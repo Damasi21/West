@@ -2,7 +2,7 @@ import json
 import ssl
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -585,6 +585,9 @@ def consultar_extrato_conta_corrente(
     data_inicial="",
     data_final="",
 ):
+    hoje = timezone.localdate()
+    data_inicial = data_inicial or date(hoje.year, 1, 1).strftime("%d/%m/%Y")
+    data_final = data_final or hoje.strftime("%d/%m/%Y")
     payload = {
         "call": "ListarExtrato",
         "param": [
@@ -593,6 +596,7 @@ def consultar_extrato_conta_corrente(
                 "cCodIntCC": conta_corrente.codigo_integracao,
                 "dPeriodoInicial": data_inicial,
                 "dPeriodoFinal": data_final,
+                "cExibirApenasSaldo": "S",
             }
         ],
         "app_key": integracao.app_key,
@@ -2460,6 +2464,20 @@ def executar_sincronizacao_omie(sincronizacao_id):
         )
         sincronizacao.registros_processados += processados
         sincronizacao.mensagem = "Resumo financeiro atualizado."
+        sincronizacao.save(
+            update_fields=[
+                "registros_processados",
+                "mensagem",
+                "atualizada_em",
+            ]
+        )
+
+        processados = _atualizar_saldos_extrato_contas_correntes(
+            sincronizacao.empresa,
+            integracao,
+        )
+        sincronizacao.registros_processados += processados
+        sincronizacao.mensagem = "Saldos provisorios das contas correntes atualizados."
         sincronizacao.save(
             update_fields=[
                 "registros_processados",

@@ -1129,6 +1129,18 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_contratos(self.integracao, 11)
         consultar_vendedores(self.integracao, 12)
         consultar_resumo_financas(self.integracao)
+        conta_extrato = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=7090178721,
+            codigo_integracao="",
+            descricao="Conta extrato",
+        )
+        consultar_extrato_conta_corrente(
+            self.integracao,
+            conta_extrato,
+            "01/01/2026",
+            "23/07/2026",
+        )
 
         requisicao_tipos = urlopen_mock.call_args_list[0].args[0]
         payload_tipos = json.loads(requisicao_tipos.data)
@@ -1293,6 +1305,20 @@ class SincronizacaoClientesOmieTests(TestCase):
                 "lApenasResumo": True,
             },
         )
+        requisicao_extrato = urlopen_mock.call_args_list[12].args[0]
+        payload_extrato = json.loads(requisicao_extrato.data)
+        self.assertTrue(requisicao_extrato.full_url.endswith("/financas/extrato/"))
+        self.assertEqual(payload_extrato["call"], "ListarExtrato")
+        self.assertEqual(
+            payload_extrato["param"][0],
+            {
+                "nCodCC": 7090178721,
+                "cCodIntCC": "",
+                "dPeriodoInicial": "01/01/2026",
+                "dPeriodoFinal": "23/07/2026",
+                "cExibirApenasSaldo": "S",
+            },
+        )
 
     @override_settings(OMIE_API_RETRIES=2, OMIE_API_RETRY_DELAY=0)
     @patch("apps.empresas.omie.urlopen")
@@ -1308,6 +1334,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(dados["pagina"], 1)
         self.assertEqual(urlopen_mock.call_count, 2)
 
+    @patch("apps.empresas.omie.consultar_extrato_conta_corrente")
     @patch("apps.empresas.omie.consultar_resumo_financas")
     @patch("apps.empresas.omie.consultar_contratos")
     @patch("apps.empresas.omie.consultar_ordens_servico")
@@ -1342,6 +1369,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_ordens_servico_mock,
         consultar_contratos_mock,
         consultar_resumo_financas_mock,
+        consultar_extrato_conta_corrente_mock,
     ):
         consultar_clientes_mock.side_effect = [
             {
@@ -1786,6 +1814,10 @@ class SincronizacaoClientesOmieTests(TestCase):
                 "vTotal": 219720.53,
             },
         }
+        consultar_extrato_conta_corrente_mock.return_value = {
+            "nCodCC": 3036783065,
+            "nSaldoProvisorio": 9876.54,
+        }
         consultar_contas_pagar_mock.return_value = {
             "pagina": 1,
             "total_de_paginas": 1,
@@ -2034,7 +2066,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA)
         self.assertEqual(sincronizacao.pagina_atual, 16)
-        self.assertEqual(sincronizacao.registros_processados, 17)
+        self.assertEqual(sincronizacao.registros_processados, 18)
         self.assertEqual(CadastroOmie.objects.count(), 2)
         self.assertEqual(
             CadastroOmie.objects.get(codigo_cliente_omie=101).tipo,
@@ -2094,6 +2126,11 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertTrue(conta.nao_resumo)
         self.assertTrue(conta.emite_pix)
         self.assertFalse(conta.inativo)
+        self.assertEqual(str(conta.saldo_atual), "9876.54")
+        self.assertIsNotNone(conta.saldo_atualizado_em)
+        self.assertEqual(conta.dados_originais["extrato"]["nSaldoProvisorio"], 9876.54)
+        consultar_extrato_conta_corrente_mock.assert_called_once()
+        self.assertEqual(consultar_extrato_conta_corrente_mock.call_args.args[1], conta)
         self.assertEqual(conta.dados_originais["codigo_banco"], "999")
         self.empresa.refresh_from_db()
         self.assertEqual(str(self.empresa.saldo_contas_omie), "219720.53")

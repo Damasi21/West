@@ -28,8 +28,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const updateSummary = () => {
             if (!summary || !summary.dataset.emptyLabel) return;
+            const checkboxes = filter.querySelectorAll("input[type='checkbox']");
             const checked = filter.querySelectorAll("input[type='checkbox']:checked").length;
-            summary.textContent = checked === 0
+            summary.textContent = checked === 0 || checked === checkboxes.length
                 ? summary.dataset.emptyLabel
                 : checked === 1
                     ? "1 selecionado"

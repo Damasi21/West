@@ -843,6 +843,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertNotContains(response, outra_empresa.nome_fantasia)
 
     def test_limpar_filtros_marca_todas_as_opcoes_do_dashboard(self):
+        ano_atual = date.today().year
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
         projeto_a = ProjetoOmie.objects.create(
             empresa=self.empresa,
@@ -904,6 +905,8 @@ class DashboardPermissaoTests(TestCase):
             url,
             {
                 "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-02",
+                "regime_financeiro": "competencia",
                 "projeto": [f"{self.empresa.pk}:{projeto_a.codigo}"],
                 "departamento": [f"{self.empresa.pk}:{departamento_a.codigo}"],
             },
@@ -912,10 +915,23 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(response.context["departamentos_selecionados"], [f"{self.empresa.pk}:{departamento_a.codigo}"])
         self.assertNotContains(response, "Produto sem projeto")
 
-        response = self.client.get(url, {"_filtrar": "1", "limpar_filtros": "1"})
+        response = self.client.get(
+            url,
+            {
+                "_filtrar": "1",
+                "limpar_filtros": "1",
+                "periodo": f"mes-{ano_atual}-02",
+                "regime_financeiro": "competencia",
+            },
+        )
 
         self.assertContains(response, "Limpar filtros")
         self.assertContains(response, "Produto sem projeto")
+        self.assertEqual(response.context["periodo_selecionado"], f"ano-{ano_atual}")
+        self.assertEqual(response.context["periodo_rotulo"], str(ano_atual))
+        self.assertEqual(response.context["regime_financeiro"], "caixa")
+        self.assertContains(response, "Todos os projetos")
+        self.assertContains(response, "Todos os departamentos")
         self.assertEqual(
             set(response.context["projetos_selecionados"]),
             {
@@ -1317,6 +1333,7 @@ class DashboardPermissaoTests(TestCase):
             codigo_omie=101,
             descricao="Conta principal",
             saldo_inicial=15000,
+            saldo_atual=15000,
         )
         ContaReceberOmie.objects.create(
             empresa=self.empresa,
@@ -1487,9 +1504,9 @@ class DashboardPermissaoTests(TestCase):
 
         self.assertEqual(contexto["entradas"], [125.0])
         self.assertEqual(contexto["saidas"], [40.0])
-        self.assertEqual(contexto["saldo_acumulado"], [1085.0])
+        self.assertEqual(contexto["saldo_acumulado"], [0.0])
 
-    def test_fluxo_de_caixa_usa_saldo_atual_do_resumo_omie(self):
+    def test_fluxo_de_caixa_usa_saldo_atual_provisorio_das_contas_correntes(self):
         ano_atual = date.today().year
         self.empresa.saldo_contas_omie = Decimal("219720.53")
         self.empresa.save(update_fields=["saldo_contas_omie"])
@@ -1498,14 +1515,34 @@ class DashboardPermissaoTests(TestCase):
             codigo_omie=601,
             descricao="Conta visivel",
             saldo_inicial=900,
+            saldo_atual=Decimal("1234.56"),
+            dados_originais={
+                "extrato": {
+                    "dPeriodoInicial": f"01/01/{ano_atual}",
+                    "nSaldoAnterior": 16501.12,
+                }
+            },
         )
         conta_omitida = ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
             codigo_omie=602,
             descricao="Conta omitida",
             saldo_inicial=5000,
+            saldo_atual=Decimal("5000"),
             nao_fluxo=True,
             nao_resumo=True,
+        )
+        ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=603,
+            descricao="Conta sem saldo provisorio",
+            saldo_inicial=8000,
+            dados_originais={
+                "extrato": {
+                    "dPeriodoInicial": f"01/01/{ano_atual}",
+                    "nSaldoAnterior": 0,
+                }
+            },
         )
         categoria_transferencia = CategoriaOmie.objects.create(
             empresa=self.empresa,
@@ -1558,7 +1595,8 @@ class DashboardPermissaoTests(TestCase):
             empresas_ids=[self.empresa.pk],
         )
 
-        self.assertEqual(contexto["indicadores"][0]["valor"], "R$ 219,72 Mil")
+        self.assertEqual(contexto["indicadores"][0]["valor_completo"], "R$ 1.234,56")
+        self.assertEqual(contexto["saldo_acumulado"][0], 16501.12)
 
     def test_visao_geral_ignora_lancamentos_de_contas_fora_do_fluxo_e_resumo(self):
         ano_atual = date.today().year

@@ -492,19 +492,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         ]
         vendedores_selecionados = [item["valor"] for item in vendedores_opcoes]
         tipos_faturamento_selecionados = list(TIPOS_FATURAMENTO)
-        periodo_selecionado = _valor_periodo_valido(
-            request.GET.get("periodo") or estado.get("periodo") or ""
-        )
-        regime_financeiro = _regime_financeiro_valido(
-            request.GET.get("regime_financeiro") or estado.get("regime_financeiro", "")
-        )
-        data_inicio, data_fim = _datas_periodo_especifico(
-            periodo_selecionado,
-            request.GET.get("data_inicio") or estado.get("data_inicio"),
-            request.GET.get("data_fim") or estado.get("data_fim"),
-        )
-        if periodo_selecionado == "personalizado" and not data_inicio:
-            periodo_selecionado = _valor_periodo_valido("")
+        periodo_selecionado = f"ano-{date.today().year}"
+        regime_financeiro = _regime_financeiro_valido("")
+        data_inicio, data_fim = "", ""
         estado = {
             "periodo": periodo_selecionado,
             "regime_financeiro": regime_financeiro,

@@ -2,7 +2,7 @@
     <button class="filter-trigger" type="button" aria-expanded="false">
         <i class="bi {{ icone }}"></i>
         <span data-filter-summary data-empty-label="{{ vazio }}">
-            {% if selecionados|length == 1 %}1 selecionado{% elif selecionados %}{{ selecionados|length }} selecionados{% else %}{{ vazio }}{% endif %}
+            {% if not selecionados or selecionados|length == opcoes|length %}{{ vazio }}{% elif selecionados|length == 1 %}1 selecionado{% else %}{{ selecionados|length }} selecionados{% endif %}
         </span>
         <i class="bi bi-chevron-down filter-chevron"></i>
     </button>

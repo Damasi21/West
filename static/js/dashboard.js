@@ -155,7 +155,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             pointRadius: 3,
                             pointHoverRadius: 5,
                             tension: .35,
-                            yAxisID: "y1",
+                            yAxisID: "y",
                         },
                     ],
                 },
@@ -179,14 +179,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             },
                         },
                     },
-                    scales: {
-                        ...chartBaseOptions.scales,
-                        y1: {
-                            position: "right",
-                            grid: { drawOnChartArea: false },
-                            ticks: { color: "#1d4ed8", font: { size: 11 } },
-                        },
-                    },
+                    scales: chartBaseOptions.scales,
                 },
             });
         }
@@ -366,6 +359,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 },
                 options: {
                     ...chartBaseOptions,
+                    interaction: {
+                        mode: "nearest",
+                        intersect: true,
+                    },
                     plugins: {
                         legend: {
                             display: true,
