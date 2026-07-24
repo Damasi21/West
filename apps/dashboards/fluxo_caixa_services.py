@@ -28,6 +28,15 @@ from apps.empresas.models import (
 
 STATUS_FECHADOS_RECEBER = {"RECEBIDO", "LIQUIDADO", "BAIXADO", "CANCELADO"}
 STATUS_FECHADOS_PAGAR = {"PAGO", "LIQUIDADO", "BAIXADO", "CANCELADO"}
+CHAVES_RETENCOES_RECEBER = (
+    "valor_iss",
+    "valor_pis",
+    "valor_cofins",
+    "valor_csll",
+    "valor_ir",
+    "valor_inss",
+    "valor_outras_retencoes",
+)
 
 
 def _decimal(valor):
@@ -50,8 +59,8 @@ def _query_receber_aberto(inicio, fim, empresas_ids, projetos):
 def _query_pagar_aberto(inicio, fim, empresas_ids, projetos):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
-        data_vencimento__gte=inicio,
-        data_vencimento__lte=fim,
+        data_previsao__gte=inicio,
+        data_previsao__lte=fim,
     ).exclude(status_titulo__in=STATUS_FECHADOS_PAGAR)
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
@@ -111,6 +120,29 @@ def _movimento_lancamentos(lancamentos):
     )
 
 
+def _saldo_abertura_por_movimentos(saldo_atual, inicio, hoje, empresas_ids, projetos):
+    if inicio > hoje:
+        return saldo_atual
+    entradas_ate_hoje = _movimento_lancamentos(
+        _query_lancamentos(inicio, hoje, empresas_ids, projetos, "R")
+    )
+    saidas_ate_hoje = _movimento_lancamentos(
+        _query_lancamentos(inicio, hoje, empresas_ids, projetos, "P")
+    )
+    return saldo_atual - entradas_ate_hoje + saidas_ate_hoje
+
+
+def _valor_liquido_receber(conta):
+    valor = _decimal(conta.valor_a_receber or conta.valor_documento)
+    dados = conta.dados_originais or {}
+    retencoes = sum(_decimal(dados.get(chave)) for chave in CHAVES_RETENCOES_RECEBER)
+    return max(valor - retencoes, Decimal("0"))
+
+
+def _total_liquido_receber(queryset):
+    return sum((_valor_liquido_receber(conta) for conta in queryset), Decimal("0"))
+
+
 def _totais_por_mes(queryset, data_field, valor_field):
     totais = defaultdict(Decimal)
     linhas = (
@@ -152,13 +184,75 @@ def _composicao(queryset, valor_field):
     return principais
 
 
+def _nome_cliente_fornecedor(lancamento):
+    cadastro = lancamento.cliente_fornecedor
+    return (
+        getattr(cadastro, "nome_fantasia", "")
+        or getattr(cadastro, "razao_social", "")
+        or lancamento.observacao
+        or "Nao informado"
+    )
+
+
+def _categoria_lancamento(lancamento):
+    return (
+        getattr(lancamento.categoria_principal, "descricao", "")
+        or lancamento.codigo_categoria
+        or "Sem categoria"
+    )
+
+
+def _detalhes_lancamentos_por_mes(lancamentos, meses):
+    detalhes = {
+        item["chave"]: {
+            "rotulo": item["rotulo"],
+            "entradas": [],
+            "saidas": [],
+        }
+        for item in meses
+    }
+    for lancamento in lancamentos.select_related(
+        "cliente_fornecedor",
+        "categoria_principal",
+    ).order_by("data_lancamento", "codigo_lancamento_omie"):
+        if not lancamento.data_lancamento:
+            continue
+        chave = f"{lancamento.data_lancamento.year}-{lancamento.data_lancamento.month:02d}"
+        if chave not in detalhes:
+            continue
+        tipo = "entradas" if lancamento.natureza == "R" else "saidas"
+        valor = abs(_decimal(lancamento.valor_lancamento))
+        detalhes[chave][tipo].append(
+            {
+                "data": lancamento.data_lancamento.strftime("%d/%m/%Y"),
+                "nome": _nome_cliente_fornecedor(lancamento),
+                "categoria": _categoria_lancamento(lancamento),
+                "valor": float(valor),
+                "valor_fmt": _formatar_moeda(valor),
+            }
+        )
+    return detalhes
+
+
+def _prazo_medio_pagamento(pagar):
+    prazos = []
+    for conta in pagar.exclude(data_entrada__isnull=True).exclude(
+        data_vencimento__isnull=True
+    ):
+        prazos.append((conta.data_vencimento - conta.data_entrada).days)
+    if not prazos:
+        return "0 dias"
+    media = round(sum(prazos) / len(prazos))
+    return f"{media} dias"
+
+
 def _criticos(receber, pagar):
     hoje = date.today()
     itens = []
     for conta in receber.filter(data_vencimento__lt=hoje).select_related(
         "cliente", "categoria_principal"
     ):
-        valor = abs(_decimal(conta.valor_a_receber or conta.valor_documento))
+        valor = abs(_valor_liquido_receber(conta))
         itens.append(
             {
                 "nome": (
@@ -194,18 +288,6 @@ def _criticos(receber, pagar):
     return sorted(itens, key=lambda item: (item["dias"], item["valor"]), reverse=True)[:5]
 
 
-def _prazo_medio_pagamento(pagar):
-    prazos = []
-    for conta in pagar.exclude(data_entrada__isnull=True).exclude(
-        data_vencimento__isnull=True
-    ):
-        prazos.append((conta.data_vencimento - conta.data_entrada).days)
-    if not prazos:
-        return "0 dias"
-    media = round(sum(prazos) / len(prazos))
-    return f"{media} dias"
-
-
 def fluxo_de_caixa(
     empresa,
     periodo,
@@ -225,53 +307,38 @@ def fluxo_de_caixa(
         empresas_ids,
         inicio,
     )
-    receber_aberto = _query_receber_aberto(inicio, fim, empresas_ids, projetos)
-    pagar_aberto = _query_pagar_aberto(inicio, fim, empresas_ids, projetos)
     lanc_recebidos = _query_lancamentos(inicio, fim, empresas_ids, projetos, "R")
     lanc_pagos = _query_lancamentos(inicio, fim, empresas_ids, projetos, "P")
+    receber_aberto = _query_receber_aberto(inicio, fim, empresas_ids, projetos)
+    pagar_aberto = _query_pagar_aberto(inicio, fim, empresas_ids, projetos)
 
-    entradas_previstas = abs(
-        _decimal(receber_aberto.aggregate(total=Sum("valor_a_receber"))["total"])
-    )
-    saidas_previstas = abs(
-        _decimal(pagar_aberto.aggregate(total=Sum("valor_a_pagar"))["total"])
-    )
     entradas_realizadas = abs(
         _decimal(lanc_recebidos.aggregate(total=Sum("valor_lancamento"))["total"])
     )
     saidas_realizadas = abs(
         _decimal(lanc_pagos.aggregate(total=Sum("valor_lancamento"))["total"])
     )
+    entradas_previstas = abs(_total_liquido_receber(receber_aberto))
+    saidas_previstas = abs(
+        _decimal(pagar_aberto.aggregate(total=Sum("valor_a_pagar"))["total"])
+    )
     saldo_abertura_periodo = saldo_abertura_extrato
     if saldo_abertura_periodo is None:
-        saldo_abertura_periodo = saldo_atual
-    if saldo_abertura_extrato is None and inicio <= hoje <= fim:
-        fim_realizado = min(hoje, fim)
-        entradas_ate_hoje = _movimento_lancamentos(
-            _query_lancamentos(inicio, fim_realizado, empresas_ids, projetos, "R")
+        saldo_abertura_periodo = _saldo_abertura_por_movimentos(
+            saldo_atual,
+            inicio,
+            hoje,
+            empresas_ids,
+            projetos,
         )
-        saidas_ate_hoje = _movimento_lancamentos(
-            _query_lancamentos(inicio, fim_realizado, empresas_ids, projetos, "P")
-        )
-        saldo_abertura_periodo = saldo_atual - entradas_ate_hoje + saidas_ate_hoje
-    saldo_periodo = (
-        entradas_previstas
-        + entradas_realizadas
+    saldo_periodo = entradas_realizadas - saidas_realizadas
+    saldo_projetado = (
+        saldo_abertura_periodo
+        + saldo_periodo
+        + entradas_previstas
         - saidas_previstas
-        - saidas_realizadas
     )
-    saldo_projetado = saldo_abertura_periodo + saldo_periodo
 
-    entradas_previstas_mes = _totais_por_mes(
-        receber_aberto,
-        "data_vencimento",
-        "valor_a_receber",
-    )
-    saidas_previstas_mes = _totais_por_mes(
-        pagar_aberto,
-        "data_vencimento",
-        "valor_a_pagar",
-    )
     entradas_realizadas_mes = _totais_por_mes(
         lanc_recebidos,
         "data_lancamento",
@@ -289,12 +356,17 @@ def fluxo_de_caixa(
     saldo_corrente = saldo_abertura_periodo
     for item in meses:
         chave = item["chave"]
-        entrada = entradas_previstas_mes[chave] + entradas_realizadas_mes[chave]
-        saida = saidas_previstas_mes[chave] + saidas_realizadas_mes[chave]
+        entrada = entradas_realizadas_mes[chave]
+        saida = saidas_realizadas_mes[chave]
         entradas.append(float(entrada))
         saidas.append(float(saida))
         saldo_acumulado.append(float(saldo_corrente))
         saldo_corrente += entrada - saida
+
+    detalhes_lancamentos = _detalhes_lancamentos_por_mes(
+        lanc_recebidos | lanc_pagos,
+        meses,
+    )
 
     return {
         "indicadores": [
@@ -338,7 +410,8 @@ def fluxo_de_caixa(
         "entradas": entradas,
         "saidas": saidas,
         "saldo_acumulado": saldo_acumulado,
+        "detalhes_lancamentos": detalhes_lancamentos,
         "criticos": _criticos(receber_aberto, pagar_aberto),
-        "composicao_entradas": _composicao(receber_aberto, "valor_a_receber"),
-        "composicao_saidas": _composicao(pagar_aberto, "valor_a_pagar"),
+        "composicao_entradas": _composicao(lanc_recebidos, "valor_lancamento"),
+        "composicao_saidas": _composicao(lanc_pagos, "valor_lancamento"),
     }

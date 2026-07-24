@@ -486,6 +486,45 @@
     color: #182230;
     font-size: 1.08rem;
 }
+.chart-zoom-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    border: 1px solid #d7deea;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #475467;
+    transition: background .2s ease, border-color .2s ease, color .2s ease;
+}
+.chart-zoom-button:hover {
+    border-color: #b9c3d3;
+    background: #f8fafc;
+    color: #182230;
+}
+.chart-card-fullscreen:fullscreen {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: #ffffff;
+}
+.chart-card-fullscreen:fullscreen .dre-chart-header,
+.chart-card-fullscreen:fullscreen .chart-header {
+    flex: 0 0 auto;
+    border-bottom: 1px solid #e6ebf2;
+}
+.chart-card-fullscreen:fullscreen .chart-zoom-canvas-region {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    padding: 1.25rem;
+}
 .dre-toolbar {
     display: flex;
     align-items: center;
@@ -771,6 +810,140 @@
 .cashflow-chart-canvas {
     height: 315px;
     padding: 0 1.25rem 1.2rem;
+}
+.cashflow-confirm,
+.cashflow-detail-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1080;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, .38);
+}
+.cashflow-confirm[hidden],
+.cashflow-detail-modal[hidden] {
+    display: none;
+}
+.cashflow-confirm-box,
+.cashflow-detail-dialog {
+    width: min(100%, 760px);
+    max-height: min(88vh, 760px);
+    overflow: hidden;
+    border: 1px solid #dfe5ee;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, .22);
+}
+.cashflow-confirm-box {
+    width: min(100%, 420px);
+    padding: 1.25rem;
+}
+.cashflow-confirm-box h2 {
+    margin: 0;
+    color: #182230;
+    font-size: 1.05rem;
+}
+.cashflow-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .6rem;
+    margin-top: 1.2rem;
+}
+.cashflow-detail-dialog {
+    display: flex;
+    flex-direction: column;
+}
+.cashflow-detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.1rem 1.25rem;
+    border-bottom: 1px solid #e6ebf2;
+}
+.cashflow-detail-header small {
+    color: #64748b;
+    font-size: .65rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+}
+.cashflow-detail-header h2 {
+    margin: .15rem 0 0;
+    color: #182230;
+    font-size: 1.08rem;
+}
+.cashflow-detail-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    border: 1px solid #d7deea;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #475467;
+}
+.cashflow-detail-table {
+    overflow: auto;
+}
+.cashflow-detail-row {
+    display: grid;
+    grid-template-columns: 120px minmax(170px, 1.2fr) minmax(150px, 1fr) 130px;
+    gap: .75rem;
+    align-items: center;
+    padding: .85rem 1.25rem;
+    border-bottom: 1px solid #edf1f6;
+    color: #182230;
+    font-size: .86rem;
+}
+.cashflow-detail-row:nth-child(even) {
+    background: #f8fbfa;
+}
+.cashflow-detail-row span,
+.cashflow-detail-row strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.cashflow-detail-row strong {
+    text-align: right;
+}
+.cashflow-detail-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #ffffff;
+    color: #475467;
+    font-size: .68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.cashflow-detail-head button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .15rem;
+    width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-transform: inherit;
+}
+.cashflow-detail-head button i {
+    color: #94a3b8;
+    font-size: 1rem;
+}
+.cashflow-detail-head button.is-active i {
+    color: #182230;
+}
+.cashflow-detail-empty {
+    padding: 1.3rem;
+    color: #667085;
+    font-size: .88rem;
+    text-align: center;
 }
 .cashflow-bottom-grid {
     display: grid;
@@ -1492,6 +1665,16 @@
     }
     .cashflow-bottom-grid {
         grid-template-columns: 1fr;
+    }
+    .cashflow-detail-row {
+        grid-template-columns: 1fr;
+        gap: .35rem;
+    }
+    .cashflow-detail-head {
+        display: none;
+    }
+    .cashflow-detail-row strong {
+        text-align: left;
     }
     .delinquency-kpis,
     .delinquency-chart-grid,

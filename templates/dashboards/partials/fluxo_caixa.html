@@ -14,7 +14,7 @@
     <article class="dre-chart-card cashflow-main-chart">
         <div class="dre-chart-header">
             <div>
-                <small>FLUXO PROJETADO</small>
+                <small>FLUXO REALIZADO</small>
                 <h2>Entradas, saidas e saldo acumulado</h2>
             </div>
         </div>
@@ -22,6 +22,45 @@
             <canvas data-cashflow-chart></canvas>
         </div>
     </article>
+
+    <div class="cashflow-confirm" data-cashflow-confirm hidden>
+        <div class="cashflow-confirm-box" role="dialog" aria-modal="true" aria-labelledby="cashflow-confirm-title">
+            <h2 id="cashflow-confirm-title">Quer detalhar as contas?</h2>
+            <div class="cashflow-confirm-actions">
+                <button type="button" class="btn btn-white" data-cashflow-confirm-cancel>Cancelar</button>
+                <button type="button" class="btn btn-primary" data-cashflow-confirm-ok>Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cashflow-detail-modal" data-cashflow-detail-modal hidden>
+        <div class="cashflow-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="cashflow-detail-title">
+            <div class="cashflow-detail-header">
+                <div>
+                    <small data-cashflow-detail-kind>DETALHAMENTO</small>
+                    <h2 id="cashflow-detail-title" data-cashflow-detail-title>Contas detalhadas</h2>
+                </div>
+                <button type="button" class="cashflow-detail-close" data-cashflow-detail-close aria-label="Fechar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="cashflow-detail-table">
+                <div class="cashflow-detail-row cashflow-detail-head">
+                    <button type="button" data-cashflow-sort-date aria-label="Ordenar por data">
+                        <span>Data</span>
+                        <i class="bi bi-arrow-down-short"></i>
+                    </button>
+                    <span>Cliente / fornecedor</span>
+                    <span>Categoria</span>
+                    <button type="button" data-cashflow-sort-value aria-label="Ordenar por valor">
+                        <span>Valor</span>
+                        <i class="bi bi-arrow-down-short"></i>
+                    </button>
+                </div>
+                <div data-cashflow-detail-rows></div>
+            </div>
+        </div>
+    </div>
 
     <div class="cashflow-bottom-grid">
         <article class="finance-ranking-card cashflow-critical-card">
@@ -54,7 +93,7 @@
             <div class="dre-chart-header">
                 <div>
                     <small>ENTRADAS</small>
-                    <h2>Composicao das entradas previstas</h2>
+                    <h2>Composicao das entradas realizadas</h2>
                 </div>
             </div>
             <div class="cashflow-pie-canvas">
@@ -66,7 +105,7 @@
             <div class="dre-chart-header">
                 <div>
                     <small>SAIDAS</small>
-                    <h2>Composicao das saidas previstas</h2>
+                    <h2>Composicao das saidas realizadas</h2>
                 </div>
             </div>
             <div class="cashflow-pie-canvas">
@@ -79,6 +118,7 @@
     {{ fluxo.entradas|json_script:"cashflow-chart-in" }}
     {{ fluxo.saidas|json_script:"cashflow-chart-out" }}
     {{ fluxo.saldo_acumulado|json_script:"cashflow-chart-balance" }}
+    {{ fluxo.detalhes_lancamentos|json_script:"cashflow-chart-details" }}
     {{ fluxo.composicao_entradas|json_script:"cashflow-pie-in" }}
     {{ fluxo.composicao_saidas|json_script:"cashflow-pie-out" }}
 </section>

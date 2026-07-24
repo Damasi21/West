@@ -29,6 +29,63 @@ document.addEventListener("DOMContentLoaded", () => {
         currency: "BRL",
     });
 
+    const resizeChartIn = (element) => {
+        window.setTimeout(() => {
+            if (typeof Chart === "undefined") return;
+            element?.querySelectorAll("canvas").forEach((canvas) => {
+                Chart.getChart(canvas)?.resize();
+            });
+        }, 80);
+    };
+
+    const setupChartZoom = () => {
+        if (!document.fullscreenEnabled) return;
+        document.querySelectorAll(".dre-chart-card, .chart-card").forEach((card) => {
+            if (!card.querySelector("canvas") || card.querySelector("[data-chart-zoom]")) return;
+            card.querySelectorAll("canvas").forEach((canvas) => {
+                canvas.parentElement?.classList.add("chart-zoom-canvas-region");
+            });
+            const header = card.querySelector(".dre-chart-header, .chart-header");
+            if (!header) return;
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "chart-zoom-button";
+            button.dataset.chartZoom = "true";
+            button.title = "Abrir grafico em tela cheia";
+            button.setAttribute("aria-label", "Abrir grafico em tela cheia");
+            button.innerHTML = '<i class="bi bi-arrows-fullscreen"></i>';
+            button.addEventListener("click", () => {
+                if (document.fullscreenElement === card) {
+                    document.exitFullscreen?.();
+                    return;
+                }
+                card.classList.add("chart-card-fullscreen");
+                card.requestFullscreen?.().then(() => resizeChartIn(card)).catch(() => {
+                    card.classList.remove("chart-card-fullscreen");
+                });
+            });
+            header.appendChild(button);
+        });
+
+        document.addEventListener("fullscreenchange", () => {
+            const activeCard = document.fullscreenElement?.classList?.contains("chart-card-fullscreen")
+                ? document.fullscreenElement
+                : null;
+            document.querySelectorAll(".chart-card-fullscreen").forEach((card) => {
+                const buttonIcon = card.querySelector("[data-chart-zoom] i");
+                if (card !== activeCard) {
+                    card.classList.remove("chart-card-fullscreen");
+                    if (buttonIcon) buttonIcon.className = "bi bi-arrows-fullscreen";
+                } else if (buttonIcon) {
+                    buttonIcon.className = "bi bi-fullscreen-exit";
+                }
+            });
+            resizeChartIn(activeCard || document);
+        });
+    };
+
+    setupChartZoom();
+
     const overview = document.querySelector("[data-finance-overview]");
     if (overview && typeof Chart !== "undefined") {
         const labels = JSON.parse(document.getElementById("overview-chart-labels").textContent);
@@ -117,9 +174,160 @@ document.addEventListener("DOMContentLoaded", () => {
         const entradas = JSON.parse(document.getElementById("cashflow-chart-in").textContent);
         const saidas = JSON.parse(document.getElementById("cashflow-chart-out").textContent);
         const saldo = JSON.parse(document.getElementById("cashflow-chart-balance").textContent);
+        const details = JSON.parse(document.getElementById("cashflow-chart-details").textContent);
         const pieIn = JSON.parse(document.getElementById("cashflow-pie-in").textContent);
         const pieOut = JSON.parse(document.getElementById("cashflow-pie-out").textContent);
         const palette = ["#0f766e", "#14b8a6", "#38bdf8", "#64748b", "#cbd5e1"];
+        const confirmModal = cashflow.querySelector("[data-cashflow-confirm]");
+        const confirmOk = cashflow.querySelector("[data-cashflow-confirm-ok]");
+        const confirmCancel = cashflow.querySelector("[data-cashflow-confirm-cancel]");
+        const detailModal = cashflow.querySelector("[data-cashflow-detail-modal]");
+        const detailTitle = cashflow.querySelector("[data-cashflow-detail-title]");
+        const detailKind = cashflow.querySelector("[data-cashflow-detail-kind]");
+        const detailRows = cashflow.querySelector("[data-cashflow-detail-rows]");
+        const detailClose = cashflow.querySelector("[data-cashflow-detail-close]");
+        const detailSortDate = cashflow.querySelector("[data-cashflow-sort-date]");
+        const detailSortValue = cashflow.querySelector("[data-cashflow-sort-value]");
+        let pendingDetail = null;
+        let currentDetailRows = [];
+        let currentDetailSortField = "valor";
+        let currentDetailSort = "desc";
+
+        const closeCashflowConfirm = () => {
+            if (confirmModal) confirmModal.hidden = true;
+        };
+
+        const closeCashflowDetails = () => {
+            if (detailModal) detailModal.hidden = true;
+        };
+
+        const openCashflowDetails = (detail) => {
+            if (!detailModal || !detailRows || !detailTitle || !detailKind) return;
+            const month = details[detail.chave] || {};
+            const rows = month[detail.tipo] || [];
+            detailKind.textContent = detail.tipo === "entradas" ? "ENTRADAS" : "SAIDAS";
+            detailTitle.textContent = `${detail.rotulo} - ${detail.label}`;
+            currentDetailRows = [...rows];
+            currentDetailSortField = "valor";
+            currentDetailSort = "desc";
+            renderCashflowDetailRows();
+            detailModal.hidden = false;
+        };
+
+        const renderCashflowDetailRows = () => {
+            if (!detailRows) return;
+            detailRows.innerHTML = "";
+            const updateSortButton = (button, field, descLabel, ascLabel) => {
+                if (!button) return;
+                const active = currentDetailSortField === field;
+                const icon = button.querySelector("i");
+                button.classList.toggle("is-active", active);
+                button.setAttribute(
+                    "aria-label",
+                    active && currentDetailSort === "desc" ? ascLabel : descLabel,
+                );
+                if (icon) {
+                    icon.className = active
+                        ? (currentDetailSort === "desc" ? "bi bi-arrow-down-short" : "bi bi-arrow-up-short")
+                        : "bi bi-arrow-down-up";
+                }
+            };
+            updateSortButton(
+                detailSortDate,
+                "data",
+                "Ordenar da data mais recente para a mais antiga",
+                "Ordenar da data mais antiga para a mais recente",
+            );
+            updateSortButton(
+                detailSortValue,
+                "valor",
+                "Ordenar do maior para o menor valor",
+                "Ordenar do menor para o maior valor",
+            );
+            const rows = [...currentDetailRows].sort((a, b) => {
+                if (currentDetailSortField === "data") {
+                    const left = a.data?.split("/").reverse().join("-") || "";
+                    const right = b.data?.split("/").reverse().join("-") || "";
+                    return currentDetailSort === "desc"
+                        ? right.localeCompare(left)
+                        : left.localeCompare(right);
+                }
+                const left = Number(a.valor || 0);
+                const right = Number(b.valor || 0);
+                return currentDetailSort === "desc" ? right - left : left - right;
+            });
+            if (!rows.length) {
+                const empty = document.createElement("div");
+                empty.className = "cashflow-detail-empty";
+                empty.textContent = "Sem contas para detalhar nesta coluna.";
+                detailRows.appendChild(empty);
+            } else {
+                rows.forEach((item) => {
+                    const row = document.createElement("div");
+                    row.className = "cashflow-detail-row";
+                    ["data", "nome", "categoria", "valor_fmt"].forEach((key) => {
+                        const cell = document.createElement(key === "valor_fmt" ? "strong" : "span");
+                        cell.textContent = item[key] || "";
+                        row.appendChild(cell);
+                    });
+                    detailRows.appendChild(row);
+                });
+            }
+        };
+
+        const requestCashflowDetail = (detail) => {
+            pendingDetail = detail;
+            if (confirmModal) {
+                confirmModal.hidden = false;
+            }
+        };
+
+        confirmOk?.addEventListener("click", () => {
+            closeCashflowConfirm();
+            const detail = pendingDetail;
+            pendingDetail = null;
+            const openDetail = () => {
+                if (detail) {
+                    openCashflowDetails(detail);
+                }
+            };
+            if (document.fullscreenElement) {
+                document.exitFullscreen?.().then(openDetail).catch(openDetail);
+                return;
+            }
+            openDetail();
+        });
+        confirmCancel?.addEventListener("click", () => {
+            closeCashflowConfirm();
+            pendingDetail = null;
+        });
+        detailClose?.addEventListener("click", closeCashflowDetails);
+        detailSortDate?.addEventListener("click", () => {
+            currentDetailSort = currentDetailSortField === "data" && currentDetailSort === "desc" ? "asc" : "desc";
+            currentDetailSortField = "data";
+            renderCashflowDetailRows();
+        });
+        detailSortValue?.addEventListener("click", () => {
+            currentDetailSort = currentDetailSortField === "valor" && currentDetailSort === "desc" ? "asc" : "desc";
+            currentDetailSortField = "valor";
+            renderCashflowDetailRows();
+        });
+        confirmModal?.addEventListener("click", (event) => {
+            if (event.target === confirmModal) {
+                closeCashflowConfirm();
+                pendingDetail = null;
+            }
+        });
+        detailModal?.addEventListener("click", (event) => {
+            if (event.target === detailModal) {
+                closeCashflowDetails();
+            }
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            closeCashflowConfirm();
+            closeCashflowDetails();
+        });
 
         const mainCanvas = cashflow.querySelector("[data-cashflow-chart]");
         if (mainCanvas) {
@@ -180,6 +388,24 @@ document.addEventListener("DOMContentLoaded", () => {
                         },
                     },
                     scales: chartBaseOptions.scales,
+                    onClick: (event, elements, chart) => {
+                        const item = chart.getElementsAtEventForMode(
+                            event,
+                            "nearest",
+                            { intersect: true },
+                            true,
+                        )[0];
+                        if (!item || item.datasetIndex > 1) return;
+                        const dataset = chart.data.datasets[item.datasetIndex];
+                        const mes = labels[item.index];
+                        const chave = Object.keys(details)[item.index];
+                        requestCashflowDetail({
+                            chave,
+                            rotulo: mes,
+                            label: dataset.label,
+                            tipo: item.datasetIndex === 0 ? "entradas" : "saidas",
+                        });
+                    },
                 },
             });
         }

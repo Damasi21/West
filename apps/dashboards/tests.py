@@ -1303,7 +1303,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Fornecedor Caixa")
         self.assertNotContains(response, "R$ 9.900,00")
 
-    def test_fluxo_de_caixa_exibe_indicadores_grafico_criticos_e_composicoes(self):
+    def test_fluxo_de_caixa_exibe_indicadores_grafico_e_composicoes_realizadas(self):
         ano_atual = date.today().year
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
         cliente = CadastroOmie.objects.create(
@@ -1351,6 +1351,7 @@ class DashboardPermissaoTests(TestCase):
             fornecedor=fornecedor,
             categoria_principal=categoria_despesa,
             data_entrada=date(ano_atual, 1, 1),
+            data_previsao=date(ano_atual, 1, 15),
             data_vencimento=date(ano_atual, 1, 15),
             valor_documento=2500,
             valor_a_pagar=2500,
@@ -1359,6 +1360,8 @@ class DashboardPermissaoTests(TestCase):
         LancamentoContaCorrenteOmie.objects.create(
             empresa=self.empresa,
             codigo_lancamento_omie=13001,
+            cliente_fornecedor=cliente,
+            categoria_principal=categoria_receita,
             data_lancamento=date(ano_atual, 1, 20),
             natureza="R",
             valor_lancamento=900,
@@ -1366,6 +1369,8 @@ class DashboardPermissaoTests(TestCase):
         LancamentoContaCorrenteOmie.objects.create(
             empresa=self.empresa,
             codigo_lancamento_omie=13002,
+            cliente_fornecedor=fornecedor,
+            categoria_principal=categoria_despesa,
             data_lancamento=date(ano_atual, 1, 21),
             natureza="P",
             valor_lancamento=300,
@@ -1394,21 +1399,31 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, 'title="R$ 15.000,00"')
         self.assertContains(response, "Saldo projetado")
         self.assertContains(response, "Prazo medio de pagamento")
+        self.assertContains(response, "Recebimentos pendentes - criticos")
         self.assertContains(response, "Cliente Critico")
         self.assertContains(response, "Fornecedor Critico")
-        self.assertContains(response, "Composicao das entradas previstas")
-        self.assertContains(response, "Composicao das saidas previstas")
+        self.assertContains(response, "Composicao das entradas realizadas")
+        self.assertContains(response, "Composicao das saidas realizadas")
         self.assertContains(response, "data-cashflow-chart")
         self.assertContains(response, "data-cashflow-in-pie")
         self.assertContains(response, "data-cashflow-out-pie")
+        self.assertContains(response, "Quer detalhar as contas?")
+        self.assertContains(response, "data-cashflow-detail-modal")
+        detalhes = response.context["fluxo_caixa"]["detalhes_lancamentos"][f"{ano_atual}-01"]
+        self.assertEqual(detalhes["entradas"][0]["data"], f"20/01/{ano_atual}")
+        self.assertEqual(detalhes["entradas"][0]["nome"], "Cliente Critico")
+        self.assertEqual(detalhes["entradas"][0]["categoria"], "Assinaturas")
+        self.assertEqual(detalhes["entradas"][0]["valor_fmt"], "R$ 900,00")
+        self.assertEqual(detalhes["saidas"][0]["nome"], "Fornecedor Critico")
 
-    def test_fluxo_de_caixa_ignora_contas_marcadas_fora_do_fluxo_e_resumo(self):
+    def test_fluxo_de_caixa_usa_apenas_lancamentos_realizados(self):
         ano_atual = date.today().year
         conta_visivel = ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
             codigo_omie=301,
             descricao="Conta visivel",
             saldo_inicial=1000,
+            saldo_atual=10,
         )
         conta_omitida = ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
@@ -1433,6 +1448,7 @@ class DashboardPermissaoTests(TestCase):
             valor_documento=100,
             valor_a_receber=100,
             status_titulo="ATRASADO",
+            dados_originais={"valor_iss": 10},
         )
         ContaReceberOmie.objects.create(
             empresa=self.empresa,
@@ -1450,6 +1466,7 @@ class DashboardPermissaoTests(TestCase):
             id_conta_corrente=conta_visivel.codigo_omie,
             conta_corrente=conta_visivel,
             data_entrada=date(ano_atual, 1, 1),
+            data_previsao=date(ano_atual, 1, 15),
             data_vencimento=date(ano_atual, 1, 15),
             valor_documento=40,
             valor_a_pagar=40,
@@ -1461,10 +1478,23 @@ class DashboardPermissaoTests(TestCase):
             id_conta_corrente=conta_omitida.codigo_omie,
             conta_corrente=conta_omitida,
             data_entrada=date(ano_atual, 1, 1),
+            data_previsao=date(ano_atual, 1, 16),
             data_vencimento=date(ano_atual, 1, 16),
             valor_documento=400,
             valor_a_pagar=400,
             status_titulo="ATRASADO",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=32003,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_entrada=date(ano_atual, 1, 1),
+            data_previsao=date(ano_atual, 2, 15),
+            data_vencimento=date(ano_atual, 1, 16),
+            valor_documento=70,
+            valor_a_pagar=70,
+            status_titulo="A VENCER",
         )
         LancamentoContaCorrenteOmie.objects.create(
             empresa=self.empresa,
@@ -1474,6 +1504,15 @@ class DashboardPermissaoTests(TestCase):
             data_lancamento=date(ano_atual, 1, 20),
             natureza="R",
             valor_lancamento=25,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=33004,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_lancamento=date(ano_atual, 1, 21),
+            natureza="P",
+            valor_lancamento=15,
         )
         LancamentoContaCorrenteOmie.objects.create(
             empresa=self.empresa,
@@ -1502,9 +1541,48 @@ class DashboardPermissaoTests(TestCase):
             empresas_ids=[self.empresa.pk],
         )
 
-        self.assertEqual(contexto["entradas"], [125.0])
-        self.assertEqual(contexto["saidas"], [40.0])
+        self.assertEqual(contexto["entradas"], [25.0])
+        self.assertEqual(contexto["saidas"], [15.0])
         self.assertEqual(contexto["saldo_acumulado"], [0.0])
+        self.assertEqual(
+            contexto["indicadores"][1]["valor_completo"],
+            "R$ 90,00",
+        )
+        self.assertEqual(
+            contexto["indicadores"][2]["valor_completo"],
+            "R$ 40,00",
+        )
+
+    def test_fluxo_de_caixa_reconstroi_saldo_inicial_por_movimentos_realizados(self):
+        ano_atual = date.today().year
+        ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=350,
+            descricao="Conta corrente",
+            saldo_atual=1000,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=35001,
+            data_lancamento=date(ano_atual, 1, 10),
+            natureza="R",
+            valor_lancamento=300,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=35002,
+            data_lancamento=date(ano_atual, 2, 10),
+            natureza="P",
+            valor_lancamento=120,
+        )
+
+        contexto = fluxo_de_caixa(
+            self.empresa,
+            f"mes-{ano_atual}-02",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(contexto["saldo_acumulado"], [1120.0])
 
     def test_fluxo_de_caixa_usa_saldo_atual_provisorio_das_contas_correntes(self):
         ano_atual = date.today().year
