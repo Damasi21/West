@@ -807,9 +807,37 @@
 .cashflow-main-chart {
     min-height: 405px;
 }
+.cashflow-chart-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 1.25rem 1.2rem;
+    scrollbar-width: thin;
+    scrollbar-color: #c9d3e1 transparent;
+}
+.cashflow-chart-scroll::-webkit-scrollbar {
+    height: 8px;
+}
+.cashflow-chart-scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: #c9d3e1;
+}
 .cashflow-chart-canvas {
     height: 315px;
-    padding: 0 1.25rem 1.2rem;
+    min-width: 720px;
+}
+.cashflow-chart-canvas canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+.chart-card-fullscreen:fullscreen .cashflow-chart-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 1.25rem;
+}
+.chart-card-fullscreen:fullscreen .cashflow-chart-canvas {
+    height: 100%;
+    min-width: 100%;
 }
 .cashflow-confirm,
 .cashflow-detail-modal {

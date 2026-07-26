@@ -331,7 +331,89 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const mainCanvas = cashflow.querySelector("[data-cashflow-chart]");
         if (mainCanvas) {
+            const mainCanvasRegion = cashflow.querySelector("[data-cashflow-chart-canvas]");
+            if (mainCanvasRegion) {
+                mainCanvasRegion.style.minWidth = `${Math.max(720, labels.length * 104)}px`;
+            }
+            const findCashflowHoverItem = (chart, event) => {
+                const sourceEvent = event.native || event;
+                if (sourceEvent.clientX == null || sourceEvent.clientY == null) return null;
+                const rect = chart.canvas.getBoundingClientRect();
+                const x = sourceEvent.clientX - rect.left;
+                const y = sourceEvent.clientY - rect.top;
+
+                for (const datasetIndex of [0, 1]) {
+                    const meta = chart.getDatasetMeta(datasetIndex);
+                    const item = meta.data.find((bar) => {
+                        const props = bar.getProps(["x", "y", "base", "width"], true);
+                        const left = props.x - props.width / 2;
+                        const right = props.x + props.width / 2;
+                        const top = Math.min(props.y, props.base);
+                        const bottom = Math.max(props.y, props.base);
+                        return x >= left && x <= right && y >= top && y <= bottom;
+                    });
+                    if (item) {
+                        return { datasetIndex, index: meta.data.indexOf(item) };
+                    }
+                }
+
+                const lineMeta = chart.getDatasetMeta(2);
+                const point = lineMeta.data.find((element) => {
+                    const props = element.getProps(["x", "y"], true);
+                    return Math.hypot(x - props.x, y - props.y) <= 12;
+                });
+                return point ? { datasetIndex: 2, index: lineMeta.data.indexOf(point) } : null;
+            };
+            const formatCashflowShortValue = (value) => {
+                const number = Number(value || 0);
+                const sign = number < 0 ? "-" : "";
+                const abs = Math.abs(number);
+                const formatShortDecimal = (shortValue) => (
+                    shortValue.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 1,
+                    })
+                );
+
+                if (abs >= 1000000) {
+                    return `${sign}${formatShortDecimal(abs / 1000000)}mi`;
+                }
+                if (abs >= 1000) {
+                    const thousands = abs / 1000;
+                    const display = thousands >= 100 ? Math.round(thousands).toLocaleString("pt-BR") : formatShortDecimal(thousands);
+                    return `${sign}${display}mil`;
+                }
+                return `${sign}${Math.round(abs).toLocaleString("pt-BR")}`;
+            };
+            const cashflowBarLabelsPlugin = {
+                id: "cashflowBarLabels",
+                afterDatasetsDraw(chart) {
+                    const { ctx, chartArea } = chart;
+                    ctx.save();
+                    ctx.font = "700 10px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+                    ctx.fillStyle = "#344054";
+                    ctx.textAlign = "center";
+
+                    [0, 1].forEach((datasetIndex) => {
+                        const meta = chart.getDatasetMeta(datasetIndex);
+                        const dataset = chart.data.datasets[datasetIndex];
+                        meta.data.forEach((bar, index) => {
+                            const value = Number(dataset.data[index] || 0);
+                            const props = bar.getProps(["x", "y", "base"], true);
+                            const isPositive = props.y <= props.base;
+                            const y = isPositive
+                                ? Math.max(chartArea.top + 10, props.y - 6)
+                                : Math.min(chartArea.bottom - 10, props.y + 14);
+                            ctx.textBaseline = isPositive ? "bottom" : "top";
+                            ctx.fillText(formatCashflowShortValue(value), props.x, y);
+                        });
+                    });
+
+                    ctx.restore();
+                },
+            };
             new Chart(mainCanvas, {
+                plugins: [cashflowBarLabelsPlugin],
                 data: {
                     labels,
                     datasets: [
@@ -341,7 +423,9 @@ document.addEventListener("DOMContentLoaded", () => {
                             data: entradas,
                             backgroundColor: "#0f766e",
                             borderRadius: 4,
-                            maxBarThickness: 34,
+                            barPercentage: .5,
+                            categoryPercentage: .68,
+                            maxBarThickness: 26,
                             yAxisID: "y",
                         },
                         {
@@ -350,7 +434,9 @@ document.addEventListener("DOMContentLoaded", () => {
                             data: saidas,
                             backgroundColor: "#f87171",
                             borderRadius: 4,
-                            maxBarThickness: 34,
+                            barPercentage: .5,
+                            categoryPercentage: .68,
+                            maxBarThickness: 26,
                             yAxisID: "y",
                         },
                         {
@@ -362,6 +448,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             borderWidth: 2,
                             pointRadius: 3,
                             pointHoverRadius: 5,
+                            pointHitRadius: 10,
                             tension: .35,
                             yAxisID: "y",
                         },
@@ -369,6 +456,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 },
                 options: {
                     ...chartBaseOptions,
+                    layout: {
+                        padding: { top: 20 },
+                    },
+                    interaction: {
+                        mode: "point",
+                        intersect: true,
+                    },
                     plugins: {
                         legend: {
                             display: true,
@@ -388,13 +482,18 @@ document.addEventListener("DOMContentLoaded", () => {
                         },
                     },
                     scales: chartBaseOptions.scales,
+                    onHover: (event, elements, chart) => {
+                        const item = findCashflowHoverItem(chart, event);
+                        chart.canvas.style.cursor = item && item.datasetIndex <= 1 ? "pointer" : "default";
+                        chart.setActiveElements(item ? [item] : []);
+                        chart.tooltip?.setActiveElements(item ? [item] : [], {
+                            x: event.x,
+                            y: event.y,
+                        });
+                        chart.update("none");
+                    },
                     onClick: (event, elements, chart) => {
-                        const item = chart.getElementsAtEventForMode(
-                            event,
-                            "nearest",
-                            { intersect: true },
-                            true,
-                        )[0];
+                        const item = findCashflowHoverItem(chart, event);
                         if (!item || item.datasetIndex > 1) return;
                         const dataset = chart.data.datasets[item.datasetIndex];
                         const mes = labels[item.index];
