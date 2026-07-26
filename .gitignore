@@ -7,6 +7,8 @@
 *.db-journal
 *.db-wal
 *.db-shm
+db.sqlite3.backup-*
+backup_sqlite_*.json
 __pycache__/
 *.py[cod]
 .venv/

@@ -23,6 +23,28 @@ No admin, cadastre uma empresa e vincule usuários na seção de acessos.
 Administradores (`is_staff`) visualizam todas as empresas ativas; clientes
 visualizam somente as empresas vinculadas ao seu usuário.
 
+## Banco de dados
+
+Por padrão, o projeto usa SQLite (`db.sqlite3`). Para usar PostgreSQL,
+configure o `.env`:
+
+```env
+DATABASE_ENGINE=postgres
+POSTGRES_DB=west_bi
+POSTGRES_USER=west_user
+POSTGRES_PASSWORD=sua-senha
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+```
+
+Para migrar os dados locais do SQLite para PostgreSQL:
+
+```powershell
+python manage.py dumpdata --natural-foreign --natural-primary -e contenttypes -e auth.Permission --indent 2 -o backup_sqlite_YYYYMMDD.json
+python manage.py migrate
+python manage.py loaddata backup_sqlite_YYYYMMDD.json
+```
+
 ## Organização
 
 - `apps/accounts`: login e autenticação.
