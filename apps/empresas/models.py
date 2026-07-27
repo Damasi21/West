@@ -1459,6 +1459,117 @@ class LancamentoContaCorrenteOmie(models.Model):
         return self.numero_documento or str(self.codigo_lancamento_omie)
 
 
+class MovimentoFinanceiroOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="movimentos_financeiros_omie",
+    )
+    codigo_titulo = models.BigIntegerField()
+    codigo_titulo_repeticao = models.BigIntegerField(null=True, blank=True)
+    codigo_cliente_fornecedor = models.BigIntegerField(null=True, blank=True)
+    cliente_fornecedor = models.ForeignKey(
+        CadastroOmie,
+        on_delete=models.SET_NULL,
+        related_name="movimentos_financeiros",
+        null=True,
+        blank=True,
+    )
+    codigo_conta_corrente = models.BigIntegerField(null=True, blank=True)
+    conta_corrente = models.ForeignKey(
+        ContaCorrenteOmie,
+        on_delete=models.SET_NULL,
+        related_name="movimentos_financeiros",
+        null=True,
+        blank=True,
+    )
+    codigo_categoria = models.CharField(max_length=20, blank=True)
+    categoria_principal = models.ForeignKey(
+        CategoriaOmie,
+        on_delete=models.SET_NULL,
+        related_name="movimentos_financeiros",
+        null=True,
+        blank=True,
+    )
+    codigo_projeto = models.BigIntegerField(null=True, blank=True)
+    projeto = models.ForeignKey(
+        ProjetoOmie,
+        on_delete=models.SET_NULL,
+        related_name="movimentos_financeiros",
+        null=True,
+        blank=True,
+    )
+    conta_pagar = models.ForeignKey(
+        ContaPagarOmie,
+        on_delete=models.SET_NULL,
+        related_name="movimentos_financeiros",
+        null=True,
+        blank=True,
+    )
+    conta_receber = models.ForeignKey(
+        ContaReceberOmie,
+        on_delete=models.SET_NULL,
+        related_name="movimentos_financeiros",
+        null=True,
+        blank=True,
+    )
+    grupo = models.CharField(max_length=30, blank=True)
+    natureza = models.CharField(max_length=1, blank=True)
+    origem = models.CharField(max_length=4, blank=True)
+    status = models.CharField(max_length=30, blank=True)
+    liquidado = models.BooleanField(default=False)
+    tipo_documento = models.CharField(max_length=5, blank=True)
+    numero_titulo = models.CharField(max_length=60, blank=True)
+    numero_boleto = models.CharField(max_length=60, blank=True)
+    numero_parcela = models.CharField(max_length=10, blank=True)
+    cpf_cnpj_cliente = models.CharField(max_length=20, blank=True)
+    data_emissao = models.DateField(null=True, blank=True)
+    data_pagamento = models.DateField(null=True, blank=True)
+    data_previsao = models.DateField(null=True, blank=True)
+    data_registro = models.DateField(null=True, blank=True)
+    data_vencimento = models.DateField(null=True, blank=True)
+    valor_titulo = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_aberto = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_liquido = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_pago = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    desconto = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    juros = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    multa = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    detalhes = models.JSONField(default=dict, blank=True)
+    resumo = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["data_vencimento", "codigo_titulo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_titulo"],
+                name="mov_fin_empresa_titulo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "data_vencimento"],
+                name="mov_fin_emp_venc_idx",
+            ),
+            models.Index(
+                fields=["empresa", "grupo", "natureza"],
+                name="mov_fin_emp_grupo_nat_idx",
+            ),
+            models.Index(
+                fields=["empresa", "liquidado"],
+                name="mov_fin_emp_liq_idx",
+            ),
+        ]
+        verbose_name = "movimento financeiro OMIE"
+        verbose_name_plural = "movimentos financeiros OMIE"
+
+    def __str__(self):
+        return self.numero_titulo or str(self.codigo_titulo)
+
+
 class ContaDRE(models.Model):
     class Sinal(models.TextChoices):
         SOMA = "+", "Somatória (+)"

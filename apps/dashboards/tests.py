@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -20,6 +20,7 @@ from apps.empresas.models import (
     EmpresaUsuario,
     LancamentoContaCorrenteOmie,
     MetaVendedorComercial,
+    MovimentoFinanceiroOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoItemOmie,
@@ -1444,6 +1445,7 @@ class DashboardPermissaoTests(TestCase):
             codigo_lancamento_omie=31001,
             id_conta_corrente=conta_visivel.codigo_omie,
             conta_corrente=conta_visivel,
+            data_previsao=date(ano_atual, 1, 10),
             data_vencimento=date(ano_atual, 1, 10),
             valor_documento=100,
             valor_a_receber=100,
@@ -1452,9 +1454,43 @@ class DashboardPermissaoTests(TestCase):
         )
         ContaReceberOmie.objects.create(
             empresa=self.empresa,
+            codigo_lancamento_omie=31003,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_previsao=date(ano_atual, 2, 10),
+            data_vencimento=date(ano_atual, 2, 10),
+            valor_documento=60,
+            valor_a_receber=60,
+            status_titulo="A VENCER",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=31004,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_previsao=date(ano_atual, 2, 11),
+            data_vencimento=date(ano_atual, 2, 11),
+            valor_documento=600,
+            valor_a_receber=600,
+            status_titulo="RECEBIDO",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=31005,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_previsao=date.today() + timedelta(days=10),
+            data_vencimento=date.today() + timedelta(days=10),
+            valor_documento=5000,
+            valor_a_receber=5000,
+            status_titulo="A VENCER",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
             codigo_lancamento_omie=31002,
             id_conta_corrente=conta_omitida.codigo_omie,
             conta_corrente=conta_omitida,
+            data_previsao=date(ano_atual, 1, 11),
             data_vencimento=date(ano_atual, 1, 11),
             valor_documento=900,
             valor_a_receber=900,
@@ -1494,6 +1530,30 @@ class DashboardPermissaoTests(TestCase):
             data_vencimento=date(ano_atual, 1, 16),
             valor_documento=70,
             valor_a_pagar=70,
+            status_titulo="A VENCER",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=32004,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_entrada=date.today(),
+            data_previsao=date.today() + timedelta(days=5),
+            data_vencimento=date.today(),
+            valor_documento=30,
+            valor_a_pagar=30,
+            status_titulo="A VENCER",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=32005,
+            id_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_entrada=date.today(),
+            data_previsao=date.today() + timedelta(days=10),
+            data_vencimento=date.today() + timedelta(days=10),
+            valor_documento=800,
+            valor_a_pagar=800,
             status_titulo="A VENCER",
         )
         LancamentoContaCorrenteOmie.objects.create(
@@ -1546,11 +1606,113 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(contexto["saldo_acumulado"], [0.0])
         self.assertEqual(
             contexto["indicadores"][1]["valor_completo"],
-            "R$ 90,00",
+            "R$ 1.050,00",
         )
         self.assertEqual(
             contexto["indicadores"][2]["valor_completo"],
-            "R$ 40,00",
+            "R$ 540,00",
+        )
+
+    def test_fluxo_de_caixa_usa_valor_aberto_dos_movimentos_financeiros(self):
+        ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=701,
+            descricao="Conta principal",
+            saldo_atual=1000,
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=71001,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_documento=10000,
+            valor_a_pagar=10000,
+            status_titulo="PAGO",
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=71001,
+            grupo="CONTA_A_PAGAR",
+            natureza="P",
+            status="PAGO",
+            liquidado=False,
+            data_vencimento=date.today(),
+            valor_titulo=10000,
+            valor_aberto=5000,
+            valor_liquido=5000,
+            valor_pago=5000,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=71002,
+            grupo="CONTA_A_PAGAR",
+            natureza="P",
+            status="PAGO",
+            liquidado=True,
+            data_vencimento=date.today(),
+            valor_titulo=900,
+            valor_aberto=900,
+            valor_liquido=900,
+            valor_pago=900,
+        )
+
+        contexto = fluxo_de_caixa(
+            self.empresa,
+            f"mes-{date.today().year}-{date.today().month:02d}",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(
+            contexto["indicadores"][2]["valor_completo"],
+            "R$ 5.000,00",
+        )
+
+    def test_fluxo_de_caixa_prefere_totais_do_resumo_financeiro_omie(self):
+        self.empresa.resumo_financeiro_omie = {
+            "contaReceber": {
+                "nTotal": 72,
+                "vAtraso": 17971.01,
+                "vTotal": 17971.01,
+            },
+            "contaPagar": {
+                "nTotal": 61,
+                "vAtraso": 741842.13,
+                "vTotal": 759831.78,
+            },
+        }
+        self.empresa.save(update_fields=["resumo_financeiro_omie"])
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=72001,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_documento=999999,
+            valor_a_receber=999999,
+            status_titulo="ABERTO",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=72002,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_documento=999999,
+            valor_a_pagar=999999,
+            status_titulo="ABERTO",
+        )
+
+        contexto = fluxo_de_caixa(
+            self.empresa,
+            f"mes-{date.today().year}-{date.today().month:02d}",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(
+            contexto["indicadores"][1]["valor_completo"],
+            "R$ 17.971,01",
+        )
+        self.assertEqual(
+            contexto["indicadores"][2]["valor_completo"],
+            "R$ 759.831,78",
         )
 
     def test_fluxo_de_caixa_reconstroi_saldo_inicial_por_movimentos_realizados(self):

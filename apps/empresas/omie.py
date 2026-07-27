@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 import truststore
 from django.conf import settings
-from django.db import close_old_connections, transaction
+from django.db import close_old_connections, connection, transaction
 from django.utils import timezone
 
 from .models import (
@@ -22,6 +22,7 @@ from .models import (
     ContaReceberOmie,
     DepartamentoOmie,
     LancamentoContaCorrenteOmie,
+    MovimentoFinanceiroOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoItemOmie,
@@ -47,6 +48,7 @@ CONTAS_PAGAR_URL = "https://app.omie.com.br/api/v1/financas/contapagar/"
 CONTAS_RECEBER_URL = "https://app.omie.com.br/api/v1/financas/contareceber/"
 EXTRATO_CONTA_CORRENTE_URL = "https://app.omie.com.br/api/v1/financas/extrato/"
 RESUMO_FINANCAS_URL = "https://app.omie.com.br/api/v1/financas/resumo/"
+MOVIMENTOS_FINANCEIROS_URL = "https://app.omie.com.br/api/v1/financas/mf/"
 LANCAMENTOS_CONTA_CORRENTE_URL = (
     "https://app.omie.com.br/api/v1/financas/contacorrentelancamentos/"
 )
@@ -60,6 +62,11 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="omie-sync")
 
 class OmieAPIError(Exception):
     pass
+
+
+def _fechar_conexoes_antigas_fora_de_transacao():
+    if not connection.in_atomic_block:
+        close_old_connections()
 
 
 def _abrir_requisicao_omie(request, timeout):
@@ -573,6 +580,49 @@ def consultar_lancamentos_conta_corrente(
         raise OmieAPIError(f"Não foi possível conectar à OMIE: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise OmieAPIError("A OMIE retornou uma resposta inválida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_movimentos_financeiros(
+    integracao,
+    pagina,
+    registros_por_pagina=500,
+):
+    payload = {
+        "call": "ListarMovimentos",
+        "param": [
+            {
+                "nPagina": pagina,
+                "nRegPorPagina": registros_por_pagina,
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        MOVIMENTOS_FINANCEIROS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
 
     if "faultstring" in dados:
         raise OmieAPIError(dados["faultstring"])
@@ -2057,6 +2107,141 @@ def _salvar_lancamentos_conta_corrente(empresa, itens):
     return processados
 
 
+def _salvar_movimentos_financeiros(empresa, itens):
+    codigos_clientes = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("detalhes") or {}).get("nCodCliente"))]
+        if codigo is not None
+    }
+    ids_contas_correntes = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("detalhes") or {}).get("nCodCC"))]
+        if codigo is not None
+    }
+    codigos_categorias = {
+        str((item.get("detalhes") or {}).get("cCodCateg") or "").strip()
+        for item in itens
+        if str((item.get("detalhes") or {}).get("cCodCateg") or "").strip()
+    }
+    codigos_projetos = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("detalhes") or {}).get("nCodProjeto"))]
+        if codigo is not None
+    }
+    codigos_titulos = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("detalhes") or {}).get("nCodTitulo"))]
+        if codigo is not None
+    }
+
+    clientes = {
+        cadastro.codigo_cliente_omie: cadastro
+        for cadastro in CadastroOmie.objects.filter(
+            empresa=empresa,
+            codigo_cliente_omie__in=codigos_clientes,
+        )
+    }
+    contas_correntes = {
+        conta.codigo_omie: conta
+        for conta in ContaCorrenteOmie.objects.filter(
+            empresa=empresa,
+            codigo_omie__in=ids_contas_correntes,
+        )
+    }
+    categorias = {
+        categoria.codigo: categoria
+        for categoria in CategoriaOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_categorias,
+        )
+    }
+    projetos = {
+        projeto.codigo: projeto
+        for projeto in ProjetoOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_projetos,
+        )
+    }
+    contas_pagar = {
+        conta.codigo_lancamento_omie: conta
+        for conta in ContaPagarOmie.objects.filter(
+            empresa=empresa,
+            codigo_lancamento_omie__in=codigos_titulos,
+        )
+    }
+    contas_receber = {
+        conta.codigo_lancamento_omie: conta
+        for conta in ContaReceberOmie.objects.filter(
+            empresa=empresa,
+            codigo_lancamento_omie__in=codigos_titulos,
+        )
+    }
+
+    processados = 0
+    for item in itens:
+        detalhes = item.get("detalhes") or {}
+        resumo = item.get("resumo") or {}
+        codigo_titulo = _inteiro_ou_none(detalhes.get("nCodTitulo"))
+        if codigo_titulo is None:
+            continue
+
+        codigo_cliente = _inteiro_ou_none(detalhes.get("nCodCliente"))
+        codigo_conta = _inteiro_ou_none(detalhes.get("nCodCC"))
+        codigo_projeto = _inteiro_ou_none(detalhes.get("nCodProjeto"))
+        codigo_categoria = str(detalhes.get("cCodCateg") or "").strip()
+
+        MovimentoFinanceiroOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_titulo=codigo_titulo,
+            defaults={
+                "codigo_titulo_repeticao": _inteiro_ou_none(
+                    detalhes.get("nCodTitRepet")
+                ),
+                "codigo_cliente_fornecedor": codigo_cliente,
+                "cliente_fornecedor": clientes.get(codigo_cliente),
+                "codigo_conta_corrente": codigo_conta,
+                "conta_corrente": contas_correntes.get(codigo_conta),
+                "codigo_categoria": codigo_categoria,
+                "categoria_principal": categorias.get(codigo_categoria),
+                "codigo_projeto": codigo_projeto,
+                "projeto": projetos.get(codigo_projeto),
+                "conta_pagar": contas_pagar.get(codigo_titulo),
+                "conta_receber": contas_receber.get(codigo_titulo),
+                "grupo": str(detalhes.get("cGrupo") or ""),
+                "natureza": str(detalhes.get("cNatureza") or ""),
+                "origem": str(detalhes.get("cOrigem") or ""),
+                "status": str(detalhes.get("cStatus") or ""),
+                "liquidado": _sim_nao(resumo.get("cLiquidado")),
+                "tipo_documento": str(detalhes.get("cTipo") or ""),
+                "numero_titulo": str(detalhes.get("cNumTitulo") or ""),
+                "numero_boleto": str(detalhes.get("cNumBoleto") or ""),
+                "numero_parcela": str(detalhes.get("cNumParcela") or ""),
+                "cpf_cnpj_cliente": str(detalhes.get("cCPFCNPJCliente") or ""),
+                "data_emissao": _data_omie(detalhes.get("dDtEmissao")),
+                "data_pagamento": _data_omie(detalhes.get("dDtPagamento")),
+                "data_previsao": _data_omie(detalhes.get("dDtPrevisao")),
+                "data_registro": _data_omie(detalhes.get("dDtRegistro")),
+                "data_vencimento": _data_omie(detalhes.get("dDtVenc")),
+                "valor_titulo": _decimal(detalhes.get("nValorTitulo")),
+                "valor_aberto": _decimal(resumo.get("nValAberto")),
+                "valor_liquido": _decimal(resumo.get("nValLiquido")),
+                "valor_pago": _decimal(resumo.get("nValPago")),
+                "desconto": _decimal(resumo.get("nDesconto")),
+                "juros": _decimal(resumo.get("nJuros")),
+                "multa": _decimal(resumo.get("nMulta")),
+                "detalhes": detalhes,
+                "resumo": resumo,
+                "dados_originais": item,
+            },
+        )
+        processados += 1
+    return processados
+
+
 def _salvar_pedidos(empresa, itens):
     codigos_clientes = {
         codigo
@@ -2287,7 +2472,7 @@ def _salvar_pedidos(empresa, itens):
 
 
 def executar_sincronizacao_omie(sincronizacao_id):
-    close_old_connections()
+    _fechar_conexoes_antigas_fora_de_transacao()
     sincronizacao = SincronizacaoOmie.objects.select_related(
         "empresa__integracao_omie"
     ).get(pk=sincronizacao_id)
@@ -2380,6 +2565,14 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "consultar": consultar_contas_receber,
                 "chave": "conta_receber_cadastro",
                 "salvar": _salvar_contas_receber,
+            },
+            {
+                "nome": "Movimentos financeiros",
+                "consultar": consultar_movimentos_financeiros,
+                "chave": "movimentos",
+                "chave_total_paginas": "nTotPaginas",
+                "chave_total_registros": "nTotRegistros",
+                "salvar": _salvar_movimentos_financeiros,
             },
             {
                 "nome": "Lançamentos de conta corrente",
@@ -2509,7 +2702,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
             ]
         )
     finally:
-        close_old_connections()
+        _fechar_conexoes_antigas_fora_de_transacao()
 
 
 def iniciar_sincronizacao_omie(sincronizacao_id):

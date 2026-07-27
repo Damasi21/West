@@ -15,6 +15,7 @@ from .models import (
     IntegracaoOmie,
     LancamentoContaCorrenteOmie,
     MetaVendedorComercial,
+    MovimentoFinanceiroOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoItemOmie,
@@ -599,6 +600,37 @@ class LancamentoContaCorrenteOmieAdmin(admin.ModelAdmin):
         "diversos",
         "transferencia",
         "info",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+@admin.register(MovimentoFinanceiroOmie)
+class MovimentoFinanceiroOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "numero_titulo",
+        "codigo_titulo",
+        "cliente_fornecedor",
+        "grupo",
+        "natureza",
+        "data_vencimento",
+        "valor_aberto",
+        "valor_pago",
+        "liquidado",
+        "empresa",
+    )
+    list_filter = ("empresa", "grupo", "natureza", "status", "liquidado", "data_vencimento")
+    search_fields = (
+        "numero_titulo",
+        "numero_boleto",
+        "codigo_titulo",
+        "cliente_fornecedor__razao_social",
+        "cliente_fornecedor__nome_fantasia",
+    )
+    readonly_fields = (
+        "detalhes",
+        "resumo",
         "dados_originais",
         "sincronizado_em",
         "criado_em",
