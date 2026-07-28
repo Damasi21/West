@@ -9,6 +9,7 @@
     padding: 1.25rem 1rem;
     background: white;
     border-right: 1px solid var(--border);
+    transition: flex-basis .22s ease, padding .22s ease;
 }
 .sidebar-company {
     display: flex;
@@ -32,6 +33,31 @@
 }
 .sidebar-company small { display: block; color: var(--muted); font-size: .65rem; }
 .sidebar-company strong { font-size: .84rem; }
+.sidebar-toggle {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    width: 100%;
+    margin-top: .85rem;
+    padding: .68rem .8rem;
+    color: #59627b;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: .82rem;
+    font-weight: 700;
+    transition: background .18s ease, border-color .18s ease, color .18s ease;
+}
+.sidebar-toggle:hover,
+.sidebar-toggle:focus {
+    color: var(--blue);
+    background: var(--blue-light);
+    border-color: #c6d3f7;
+}
+.sidebar-toggle i {
+    width: 20px;
+    font-size: 1.15rem;
+}
 .sidebar-nav { margin-top: 1.25rem; }
 .sidebar-label {
     display: block;
@@ -61,6 +87,36 @@
     object-fit: contain;
 }
 .sidebar-bottom { margin-top: auto; border-top: 1px solid var(--border); padding-top: .7rem; }
+.app-sidebar.is-collapsed {
+    flex-basis: 76px;
+    padding-inline: .65rem;
+}
+.app-sidebar.is-collapsed .sidebar-company {
+    justify-content: center;
+    padding: .55rem;
+}
+.app-sidebar.is-collapsed .sidebar-company > div,
+.app-sidebar.is-collapsed .sidebar-toggle span,
+.app-sidebar.is-collapsed .sidebar-nav span,
+.app-sidebar.is-collapsed .sidebar-bottom span,
+.app-sidebar.is-collapsed .sidebar-label {
+    display: none !important;
+}
+.app-sidebar.is-collapsed .sidebar-toggle,
+.app-sidebar.is-collapsed .sidebar-nav a,
+.app-sidebar.is-collapsed .sidebar-bottom a {
+    justify-content: center;
+}
+.app-sidebar.is-collapsed .sidebar-toggle i,
+.app-sidebar.is-collapsed .sidebar-nav i,
+.app-sidebar.is-collapsed .sidebar-bottom i {
+    width: auto;
+    font-size: 1.15rem;
+}
+.app-sidebar.is-collapsed .sidebar-menu-icon {
+    width: 27px;
+    height: 27px;
+}
 .app-content { flex: 1; min-width: 0; padding: 2rem; }
 .page-heading {
     display: flex;
@@ -1115,12 +1171,40 @@
 .billing-main-chart {
     min-height: 410px;
 }
+.billing-chart-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 1.25rem 1.2rem;
+    scrollbar-width: thin;
+    scrollbar-color: #c9d3e1 transparent;
+}
+.billing-chart-scroll::-webkit-scrollbar {
+    height: 8px;
+}
+.billing-chart-scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: #c9d3e1;
+}
 .billing-chart-canvas {
     height: 275px;
-    padding: 0 1.25rem 1.2rem;
 }
 .billing-chart-canvas-large {
     height: 315px;
+    min-width: 720px;
+}
+.billing-chart-canvas canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+.chart-card-fullscreen:fullscreen .billing-chart-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 1.25rem;
+}
+.chart-card-fullscreen:fullscreen .billing-chart-canvas-large {
+    height: 100%;
+    min-width: 100%;
 }
 .billing-bottom-grid {
     display: grid;
@@ -1129,6 +1213,9 @@
 }
 .billing-chart-card {
     min-height: 360px;
+}
+.billing-chart-card .billing-chart-canvas {
+    padding: 0 1.25rem 1.2rem;
 }
 .billing-ranking-card {
     overflow: hidden;
@@ -1657,7 +1744,7 @@
 }
 @media (max-width: 767.98px) {
     .app-sidebar { position: fixed; z-index: 1020; top: auto; bottom: 0; width: 100%; height: 65px; padding: .45rem; border: 0; border-top: 1px solid var(--border); }
-    .sidebar-company, .sidebar-label, .sidebar-bottom { display: none; }
+    .sidebar-company, .sidebar-toggle, .sidebar-label, .sidebar-bottom { display: none; }
     .sidebar-nav { display: flex; justify-content: space-around; margin: 0; }
     .sidebar-nav a { flex: 1; padding: .7rem .3rem; margin: 0; }
     .sidebar-nav a:first-of-type { display: none; }

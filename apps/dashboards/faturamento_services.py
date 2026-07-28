@@ -327,15 +327,13 @@ def faturamento_comercial(
     meta_periodo = sum((metas_mes[item["chave"]] for item in meses), Decimal("0"))
 
     acumulado = []
-    soma = Decimal("0")
     for item in meses:
         valor_mes = Decimal("0")
         if "produtos" in tipos:
             valor_mes += produtos_mes[item["chave"]]
         if "servicos" in tipos:
             valor_mes += servicos_mes[item["chave"]]
-        soma += valor_mes
-        acumulado.append(float(soma))
+        acumulado.append(float(valor_mes))
 
     ranking = []
     if "produtos" in tipos:
@@ -365,24 +363,30 @@ def faturamento_comercial(
             {
                 "titulo": "Faturado",
                 "valor": _formatar_moeda_curta(total_faturado),
+                "valor_completo": _formatar_moeda(total_faturado),
                 "icone": "bi-receipt-cutoff",
                 "tom": "positive",
             },
             {
                 "titulo": "Meta do periodo",
                 "valor": _formatar_moeda_curta(meta_periodo),
+                "valor_completo": _formatar_moeda(meta_periodo),
                 "icone": "bi-bullseye",
                 "tom": "neutral",
             },
             {
                 "titulo": "Pedidos emitidos",
                 "valor": _formatar_numero(Decimal(quantidade_emitida)),
+                "valor_completo": _formatar_numero(Decimal(quantidade_emitida)),
                 "icone": "bi-clipboard-check",
                 "tom": "positive",
             },
             {
                 "titulo": "Ticket medio",
                 "valor": _formatar_moeda_curta(
+                    total_emitido / Decimal(quantidade_emitida or 1)
+                ),
+                "valor_completo": _formatar_moeda(
                     total_emitido / Decimal(quantidade_emitida or 1)
                 ),
                 "icone": "bi-ticket-perforated",

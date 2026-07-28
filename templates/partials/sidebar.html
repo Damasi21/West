@@ -11,6 +11,11 @@
         </div>
     </div>
 
+    <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Encolher menu" title="Encolher menu">
+        <i class="bi bi-list"></i>
+        <span>Encolher menu</span>
+    </button>
+
     <nav class="sidebar-nav">
         <span class="sidebar-label">Visão geral</span>
         <a href="{% url 'dashboards:home' empresa.slug %}" class="{% if not area_slug %}active{% endif %}">

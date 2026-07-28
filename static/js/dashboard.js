@@ -38,6 +38,30 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 80);
     };
 
+    const setupSidebarToggle = () => {
+        const sidebar = document.querySelector(".app-sidebar");
+        const button = document.querySelector("[data-sidebar-toggle]");
+        if (!sidebar || !button) return;
+
+        const storageKey = "md21-sidebar-collapsed";
+        const setCollapsed = (collapsed) => {
+            sidebar.classList.toggle("is-collapsed", collapsed);
+            button.setAttribute("aria-expanded", String(!collapsed));
+            button.setAttribute("aria-label", collapsed ? "Expandir menu" : "Encolher menu");
+            button.title = collapsed ? "Expandir menu" : "Encolher menu";
+            const label = button.querySelector("span");
+            if (label) label.textContent = collapsed ? "Expandir menu" : "Encolher menu";
+            resizeChartIn(document);
+        };
+
+        setCollapsed(localStorage.getItem(storageKey) === "true");
+        button.addEventListener("click", () => {
+            const collapsed = !sidebar.classList.contains("is-collapsed");
+            localStorage.setItem(storageKey, String(collapsed));
+            setCollapsed(collapsed);
+        });
+    };
+
     const setupChartZoom = () => {
         if (!document.fullscreenEnabled) return;
         document.querySelectorAll(".dre-chart-card, .chart-card").forEach((card) => {
@@ -84,6 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     };
 
+    setupSidebarToggle();
     setupChartZoom();
 
     const overview = document.querySelector("[data-finance-overview]");
@@ -634,7 +659,89 @@ document.addEventListener("DOMContentLoaded", () => {
         const goalCanvas = billing.querySelector("[data-billing-goal-chart]");
 
         if (mainCanvas) {
+            const mainCanvasRegion = billing.querySelector("[data-billing-main-chart-canvas]");
+            if (mainCanvasRegion) {
+                mainCanvasRegion.style.minWidth = `${Math.max(720, labels.length * 104)}px`;
+            }
+            const findBillingHoverItem = (chart, event) => {
+                const sourceEvent = event.native || event;
+                if (sourceEvent.clientX == null || sourceEvent.clientY == null) return null;
+                const rect = chart.canvas.getBoundingClientRect();
+                const x = sourceEvent.clientX - rect.left;
+                const y = sourceEvent.clientY - rect.top;
+
+                for (const datasetIndex of [0, 1]) {
+                    const meta = chart.getDatasetMeta(datasetIndex);
+                    const item = meta.data.find((bar) => {
+                        const props = bar.getProps(["x", "y", "base", "width"], true);
+                        const left = props.x - props.width / 2;
+                        const right = props.x + props.width / 2;
+                        const top = Math.min(props.y, props.base);
+                        const bottom = Math.max(props.y, props.base);
+                        return x >= left && x <= right && y >= top && y <= bottom;
+                    });
+                    if (item) {
+                        return { datasetIndex, index: meta.data.indexOf(item) };
+                    }
+                }
+
+                const billedMeta = chart.getDatasetMeta(3);
+                const point = billedMeta.data.find((element) => {
+                    const props = element.getProps(["x", "y"], true);
+                    return Math.hypot(x - props.x, y - props.y) <= 12;
+                });
+                return point ? { datasetIndex: 3, index: billedMeta.data.indexOf(point) } : null;
+            };
+            const formatBillingShortValue = (value) => {
+                const number = Number(value || 0);
+                const sign = number < 0 ? "-" : "";
+                const abs = Math.abs(number);
+                const formatShortDecimal = (shortValue) => (
+                    shortValue.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 1,
+                    })
+                );
+
+                if (abs >= 1000000) {
+                    return `${sign}${formatShortDecimal(abs / 1000000)}mi`;
+                }
+                if (abs >= 1000) {
+                    const thousands = abs / 1000;
+                    const display = thousands >= 100 ? Math.round(thousands).toLocaleString("pt-BR") : formatShortDecimal(thousands);
+                    return `${sign}${display}mil`;
+                }
+                return `${sign}${Math.round(abs).toLocaleString("pt-BR")}`;
+            };
+            const billingBarLabelsPlugin = {
+                id: "billingBarLabels",
+                afterDatasetsDraw(chart) {
+                    const { ctx, chartArea } = chart;
+                    ctx.save();
+                    ctx.font = "700 10px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+                    ctx.fillStyle = "#344054";
+                    ctx.textAlign = "center";
+
+                    [0, 1].forEach((datasetIndex) => {
+                        const meta = chart.getDatasetMeta(datasetIndex);
+                        const dataset = chart.data.datasets[datasetIndex];
+                        meta.data.forEach((bar, index) => {
+                            const value = Number(dataset.data[index] || 0);
+                            const props = bar.getProps(["x", "y", "base"], true);
+                            const isPositive = props.y <= props.base;
+                            const y = isPositive
+                                ? Math.max(chartArea.top + 10, props.y - 6)
+                                : Math.min(chartArea.bottom - 10, props.y + 14);
+                            ctx.textBaseline = isPositive ? "bottom" : "top";
+                            ctx.fillText(formatBillingShortValue(value), props.x, y);
+                        });
+                    });
+
+                    ctx.restore();
+                },
+            };
             new Chart(mainCanvas, {
+                plugins: [billingBarLabelsPlugin],
                 data: {
                     labels,
                     datasets: [
@@ -644,7 +751,9 @@ document.addEventListener("DOMContentLoaded", () => {
                             data: products,
                             backgroundColor: "#f59e0b",
                             borderRadius: 4,
-                            maxBarThickness: 34,
+                            barPercentage: .5,
+                            categoryPercentage: .68,
+                            maxBarThickness: 26,
                             yAxisID: "y",
                         },
                         {
@@ -653,7 +762,9 @@ document.addEventListener("DOMContentLoaded", () => {
                             data: services,
                             backgroundColor: "#93c5fd",
                             borderRadius: 4,
-                            maxBarThickness: 34,
+                            barPercentage: .5,
+                            categoryPercentage: .68,
+                            maxBarThickness: 26,
                             yAxisID: "y",
                         },
                         {
@@ -670,22 +781,26 @@ document.addEventListener("DOMContentLoaded", () => {
                         },
                         {
                             type: "line",
-                            label: "Acumulado",
+                            label: "Faturado",
                             data: accumulated,
                             borderColor: "#10b981",
                             backgroundColor: "#10b981",
                             borderWidth: 3,
-                            pointRadius: 2,
+                            pointRadius: 3,
                             pointHoverRadius: 5,
+                            pointHitRadius: 10,
                             tension: .35,
-                            yAxisID: "y1",
+                            yAxisID: "y",
                         },
                     ],
                 },
                 options: {
                     ...chartBaseOptions,
+                    layout: {
+                        padding: { top: 20 },
+                    },
                     interaction: {
-                        mode: "nearest",
+                        mode: "point",
                         intersect: true,
                     },
                     plugins: {
@@ -706,13 +821,16 @@ document.addEventListener("DOMContentLoaded", () => {
                             },
                         },
                     },
-                    scales: {
-                        ...chartBaseOptions.scales,
-                        y1: {
-                            position: "right",
-                            grid: { drawOnChartArea: false },
-                            ticks: { color: "#10b981", font: { size: 11 } },
-                        },
+                    scales: chartBaseOptions.scales,
+                    onHover: (event, elements, chart) => {
+                        const item = findBillingHoverItem(chart, event);
+                        chart.canvas.style.cursor = item ? "default" : "default";
+                        chart.setActiveElements(item ? [item] : []);
+                        chart.tooltip?.setActiveElements(item ? [item] : [], {
+                            x: event.x,
+                            y: event.y,
+                        });
+                        chart.update("none");
                     },
                 },
             });

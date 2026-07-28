@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.dashboards.dre_services import dre_gerencial
+from apps.dashboards.faturamento_services import faturamento_comercial
 from apps.dashboards.fluxo_caixa_services import fluxo_de_caixa
 from apps.dashboards.visao_geral_services import visao_geral_financeira
 from apps.empresas.models import (
@@ -400,11 +401,66 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "data-billing-main-chart")
         self.assertContains(response, "data-billing-goal-chart")
         self.assertContains(response, "[10000.0]")
+        self.assertEqual(
+            response.context["faturamento"]["indicadores"][0]["valor_completo"],
+            "R$ 4.200,00",
+        )
+        self.assertEqual(
+            response.context["faturamento"]["indicadores"][1]["valor_completo"],
+            "R$ 10.000,00",
+        )
         self.assertEqual(response.context["vendedores_selecionados"], [f"{self.empresa.pk}:{vendedor.codigo}"])
         self.assertEqual(
             response.context["tipos_faturamento_selecionados"],
             ["produtos", "servicos"],
         )
+
+    def test_faturamento_linha_faturado_usa_total_mensal(self):
+        ano_atual = date.today().year
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=310,
+            numero_pedido="PV-310",
+            data_inclusao=date(ano_atual, 1, 5),
+            data_faturamento=date(ano_atual, 1, 8),
+            faturado=True,
+            valor_total_pedido=1000,
+        )
+        OrdemServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_os=410,
+            numero_os="OS-410",
+            data_inclusao=date(ano_atual, 1, 7),
+            data_faturamento=date(ano_atual, 1, 9),
+            faturada=True,
+            valor_total=300,
+        )
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=320,
+            numero_pedido="PV-320",
+            data_inclusao=date(ano_atual, 2, 5),
+            data_faturamento=date(ano_atual, 2, 8),
+            faturado=True,
+            valor_total_pedido=2000,
+        )
+        OrdemServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_os=420,
+            numero_os="OS-420",
+            data_inclusao=date(ano_atual, 2, 7),
+            data_faturamento=date(ano_atual, 2, 9),
+            faturada=True,
+            valor_total=400,
+        )
+
+        contexto = faturamento_comercial(
+            self.empresa,
+            f"tri-{ano_atual}-1",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(contexto["acumulado"], [1300.0, 2400.0, 0.0])
 
     def test_desempenho_vendedores_exibe_indicadores_graficos_e_carteira(self):
         ano_atual = date.today().year

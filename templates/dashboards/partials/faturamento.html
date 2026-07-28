@@ -4,7 +4,7 @@
             <article class="billing-kpi billing-kpi-{{ indicador.tom }}">
                 <div>
                     <span>{{ indicador.titulo }}</span>
-                    <strong>{{ indicador.valor }}</strong>
+                    <strong class="metric-value-with-tooltip" title="{{ indicador.valor_completo|default:indicador.valor }}">{{ indicador.valor }}</strong>
                 </div>
                 <i class="bi {{ indicador.icone }}"></i>
             </article>
@@ -15,11 +15,13 @@
         <div class="dre-chart-header">
             <div>
                 <small>FATURAMENTO</small>
-                <h2>Produtos, servicos e acumulado do periodo</h2>
+                <h2>Produtos, servicos e faturado do periodo</h2>
             </div>
         </div>
-        <div class="billing-chart-canvas billing-chart-canvas-large">
-            <canvas data-billing-main-chart></canvas>
+        <div class="billing-chart-scroll">
+            <div class="billing-chart-canvas billing-chart-canvas-large" data-billing-main-chart-canvas>
+                <canvas data-billing-main-chart></canvas>
+            </div>
         </div>
     </article>
 
