@@ -56,3 +56,26 @@ python manage.py loaddata backup_sqlite_YYYYMMDD.json
 
 As futuras chamadas ao OMIE devem ficar em camadas de serviço, começando por
 `apps/dashboards/services.py`, sem colocar credenciais ou consultas nas views.
+
+## Produção
+
+O pipeline de produção usa Docker Compose com Django/Gunicorn, PostgreSQL,
+Nginx e Certbot.
+
+No servidor, crie o arquivo de ambiente a partir do template:
+
+```bash
+cp .docker/.env.example .docker/.env.production
+```
+
+Com o arquivo preenchido, os comandos principais são:
+
+```bash
+./.docker/scripts/install.sh
+./.docker/scripts/build.sh logs
+./.docker/scripts/build.sh restart
+./.docker/scripts/certbot.sh renew
+```
+
+O deploy automatizado fica em `.github/workflows/deploy-production.yaml` e usa
+o GitHub Environment `production`.

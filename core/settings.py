@@ -5,6 +5,10 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def env_bool(name, default=False):
+    return os.getenv(name, str(default)).lower() in {"1", "true", "yes", "on"}
+
+
 def load_env(path):
     if not path.exists():
         return
@@ -26,12 +30,29 @@ OMIE_CREDENTIALS_ENCRYPTION_KEY = os.getenv(
 OMIE_API_TIMEOUT = int(os.getenv("OMIE_API_TIMEOUT", "90"))
 OMIE_API_RETRIES = int(os.getenv("OMIE_API_RETRIES", "3"))
 OMIE_API_RETRY_DELAY = int(os.getenv("OMIE_API_RETRY_DELAY", "2"))
-DEBUG = os.getenv("DEBUG", "True").lower() in {"1", "true", "yes"}
+DEBUG = env_bool("DEBUG", True)
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
     if host.strip()
 ]
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if not CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS = [
+        f"https://{host}"
+        for host in ALLOWED_HOSTS
+        if host not in {"127.0.0.1", "localhost"} and not host.startswith(".")
+    ]
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", not DEBUG)
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)
 
 INSTALLED_APPS = [
     "django.contrib.admin",

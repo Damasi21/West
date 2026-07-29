@@ -1,0 +1,126 @@
+name: deploy-production
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: django check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate Django project
+        run: python manage.py check
+
+      - name: Run tests
+        run: python manage.py test
+
+  deploy:
+    name: deploy production
+    needs: check
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+    steps:
+      - name: Production summary
+        run: |
+          echo "## Production deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- branch: \`${GITHUB_REF_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- commit: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- server path: \`${{ secrets.PRODUCTION_PATH }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_PORT || '22' }}
+          timeout: 120s
+          command_timeout: 45m
+          script_stop: true
+          envs: SERVER_PATH,REPO_URL,GITHUB_SHA,APP_VERSION,DOMAIN,EMAIL,PROXY_HTTP_PORT,PROXY_HTTPS_PORT,PROXY_CLIENT_MAX_BODY_SIZE,SECRET_KEY,OMIE_CREDENTIALS_ENCRYPTION_KEY,ALLOWED_HOSTS,CSRF_TRUSTED_ORIGINS,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD
+          script: |
+            set -euo pipefail
+
+            echo "[deploy] preparing ${SERVER_PATH}"
+            mkdir -p "${SERVER_PATH}"
+            cd "${SERVER_PATH}"
+
+            if [ ! -d .git ]; then
+              git init
+              git remote add origin "${REPO_URL}"
+            else
+              git remote set-url origin "${REPO_URL}"
+            fi
+
+            echo "[deploy] fetching ${GITHUB_SHA}"
+            git fetch --depth=1 origin "${GITHUB_SHA}"
+            git -c advice.detachedHead=false checkout -f FETCH_HEAD
+
+            mkdir -p .docker
+            : > .docker/.env.production
+            write_env() {
+              local key="$1"
+              local value
+              local escaped
+              value="$(printenv "$key" || true)"
+              escaped="$(printf "%s" "$value" | sed "s/'/'\\\\''/g")"
+              printf "%s='%s'\n" "$key" "$escaped" >> .docker/.env.production
+            }
+
+            write_env DOMAIN
+            write_env EMAIL
+            write_env PROXY_HTTP_PORT
+            write_env PROXY_HTTPS_PORT
+            write_env PROXY_CLIENT_MAX_BODY_SIZE
+            write_env SECRET_KEY
+            write_env OMIE_CREDENTIALS_ENCRYPTION_KEY
+            write_env ALLOWED_HOSTS
+            write_env CSRF_TRUSTED_ORIGINS
+            write_env POSTGRES_DB
+            write_env POSTGRES_USER
+            write_env POSTGRES_PASSWORD
+
+            chmod +x .docker/scripts/*.sh
+            APP_VERSION="${APP_VERSION:-${GITHUB_SHA}}" ./.docker/scripts/install.sh
+        env:
+          SERVER_PATH: ${{ secrets.PRODUCTION_PATH }}
+          REPO_URL: ${{ secrets.REPO_URL }}
+          GITHUB_SHA: ${{ github.sha }}
+          APP_VERSION: ${{ github.sha }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          EMAIL: ${{ secrets.EMAIL }}
+          PROXY_HTTP_PORT: ${{ secrets.PROXY_HTTP_PORT }}
+          PROXY_HTTPS_PORT: ${{ secrets.PROXY_HTTPS_PORT }}
+          PROXY_CLIENT_MAX_BODY_SIZE: ${{ secrets.PROXY_CLIENT_MAX_BODY_SIZE }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          OMIE_CREDENTIALS_ENCRYPTION_KEY: ${{ secrets.OMIE_CREDENTIALS_ENCRYPTION_KEY }}
+          ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS }}
+          CSRF_TRUSTED_ORIGINS: ${{ secrets.CSRF_TRUSTED_ORIGINS }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}

@@ -1,4 +1,5 @@
 Django==5.0.13
+gunicorn>=22.0,<24.0
 Pillow>=10.0,<12.0
 cryptography>=44.0,<46.0
 truststore>=0.10,<0.11
