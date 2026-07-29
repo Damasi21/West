@@ -363,6 +363,61 @@ class ProdutoOmie(models.Model):
         return self.descricao or self.codigo or str(self.codigo_produto)
 
 
+class PosicaoEstoqueOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="posicoes_estoque_omie",
+    )
+    produto = models.ForeignKey(
+        ProdutoOmie,
+        on_delete=models.SET_NULL,
+        related_name="posicoes_estoque_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_produto = models.BigIntegerField()
+    codigo_local_estoque = models.BigIntegerField(default=0)
+    codigo = models.CharField(max_length=60, blank=True)
+    codigo_integracao = models.CharField(max_length=100, blank=True)
+    descricao = models.CharField(max_length=255, blank=True)
+    data_posicao = models.DateField(null=True, blank=True)
+    estoque_minimo = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    fisico = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    pendente = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    reservado = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    saldo = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    cmc = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    preco_unitario = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["descricao", "codigo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_produto", "codigo_local_estoque"],
+                name="pos_est_emp_prod_local_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "codigo_produto"],
+                name="pos_est_emp_prod_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_local_estoque"],
+                name="pos_est_emp_local_idx",
+            ),
+        ]
+        verbose_name = "posicao de estoque OMIE"
+        verbose_name_plural = "posicoes de estoque OMIE"
+
+    def __str__(self):
+        return self.descricao or self.codigo or str(self.codigo_produto)
+
+
 class ServicoOmie(models.Model):
     empresa = models.ForeignKey(
         Empresa,

@@ -20,6 +20,7 @@ from .models import (
     OrdemServicoOmie,
     PedidoItemOmie,
     PedidoOmie,
+    PosicaoEstoqueOmie,
     ProdutoOmie,
     ProjetoOmie,
     ServicoOmie,
@@ -165,6 +166,24 @@ class ProdutoOmieAdmin(admin.ModelAdmin):
         "sincronizado_em",
         "criado_em",
     )
+
+
+@admin.register(PosicaoEstoqueOmie)
+class PosicaoEstoqueOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "codigo",
+        "descricao",
+        "codigo_produto",
+        "codigo_local_estoque",
+        "cmc",
+        "saldo",
+        "fisico",
+        "data_posicao",
+        "empresa",
+    )
+    list_filter = ("empresa", "codigo_local_estoque", "data_posicao")
+    search_fields = ("codigo", "descricao", "codigo_produto")
+    readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
 
 
 @admin.register(ServicoOmie)

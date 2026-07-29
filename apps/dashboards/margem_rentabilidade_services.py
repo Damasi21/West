@@ -14,19 +14,7 @@ from apps.dashboards.dre_services import (
     _variacao_percentual,
 )
 from apps.dashboards.visao_geral_services import _formatar_moeda_curta
-from apps.empresas.models import PedidoItemOmie, PedidoOmie
-
-
-CHAVES_CUSTO = (
-    "valor_custo",
-    "valorCusto",
-    "nValorCusto",
-    "custo",
-    "custo_unitario",
-    "valor_custo_unitario",
-    "preco_custo",
-    "precoCusto",
-)
+from apps.empresas.models import PedidoItemOmie, PedidoOmie, PosicaoEstoqueOmie
 
 
 def _decimal(valor):
@@ -68,28 +56,41 @@ def _query_pedidos(inicio, fim, empresas_ids, projetos):
     return queryset
 
 
-def _valor_em_json(*fontes):
-    for fonte in fontes:
-        if not isinstance(fonte, dict):
-            continue
-        for chave in CHAVES_CUSTO:
-            valor = fonte.get(chave)
-            if valor not in (None, ""):
-                return _decimal(valor)
-    return Decimal("0")
+def _mapear_cmc_por_produto(itens):
+    codigos_produtos = {
+        item.codigo_produto
+        for item in itens
+        if item.codigo_produto is not None
+    }
+    empresas_ids = {item.empresa_id for item in itens}
+    posicoes = {}
+    posicoes_por_produto = {}
+    for posicao in PosicaoEstoqueOmie.objects.filter(
+        empresa_id__in=empresas_ids,
+        codigo_produto__in=codigos_produtos,
+    ).order_by("codigo_local_estoque"):
+        chave_produto = (posicao.empresa_id, posicao.codigo_produto)
+        chave_local = (
+            posicao.empresa_id,
+            posicao.codigo_produto,
+            posicao.codigo_local_estoque,
+        )
+        posicoes[chave_local] = posicao.cmc
+        posicoes_por_produto.setdefault(chave_produto, posicao.cmc)
+    return posicoes, posicoes_por_produto
 
 
-def _custo_item(item):
-    custo_unitario = _valor_em_json(
-        item.produto_dados,
-        item.inf_adic,
-        item.dados_originais,
-        item.produto.info if item.produto_id else {},
-        item.produto.dados_originais if item.produto_id else {},
+def _cmc_item(item, posicoes, posicoes_por_produto):
+    chave_local = (
+        item.empresa_id,
+        item.codigo_produto,
+        item.codigo_local_estoque or 0,
     )
-    if not custo_unitario:
-        return Decimal("0")
-    return custo_unitario * _decimal(item.quantidade)
+    chave_produto = (item.empresa_id, item.codigo_produto)
+    cmc = _decimal(
+        posicoes.get(chave_local, posicoes_por_produto.get(chave_produto))
+    )
+    return cmc if cmc > 0 else None
 
 
 def _faixa_margem(margem):
@@ -114,12 +115,17 @@ def _itens_agregados(pedidos):
             "quantidade": Decimal("0"),
         }
     )
-    itens = (
+    itens = list(
         PedidoItemOmie.objects.filter(pedido__in=pedidos)
         .select_related("produto")
         .order_by("codigo_produto", "codigo_produto_texto", "descricao")
     )
+    posicoes, posicoes_por_produto = _mapear_cmc_por_produto(itens)
     for item in itens:
+        quantidade = _decimal(item.quantidade)
+        cmc = _cmc_item(item, posicoes, posicoes_por_produto)
+        if not cmc or not quantidade:
+            continue
         codigo = str(
             item.codigo_produto
             or item.codigo_produto_texto
@@ -133,10 +139,10 @@ def _itens_agregados(pedidos):
         produto["produto"] = (
             item.produto.descricao if item.produto_id else ""
         ) or item.descricao or "Produto nao informado"
-        produto["receita"] += _decimal(item.valor_total)
-        produto["custo"] += _custo_item(item)
+        produto["receita"] += _decimal(item.valor_unitario) * quantidade
+        produto["custo"] += cmc * quantidade
         produto["desconto"] += _decimal(item.valor_desconto)
-        produto["quantidade"] += _decimal(item.quantidade)
+        produto["quantidade"] += quantidade
     return list(produtos.values())
 
 

@@ -8,6 +8,7 @@ from django.urls import reverse
 from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import faturamento_comercial
 from apps.dashboards.fluxo_caixa_services import fluxo_de_caixa
+from apps.dashboards.margem_rentabilidade_services import margem_rentabilidade_comercial
 from apps.dashboards.visao_geral_services import visao_geral_financeira
 from apps.empresas.models import (
     CadastroOmie,
@@ -26,6 +27,7 @@ from apps.empresas.models import (
     OrdemServicoOmie,
     PedidoItemOmie,
     PedidoOmie,
+    PosicaoEstoqueOmie,
     ProdutoOmie,
     ProjetoOmie,
     ServicoOmie,
@@ -700,6 +702,24 @@ class DashboardPermissaoTests(TestCase):
             descricao="Produto Critico",
             info={"valor_custo": "130"},
         )
+        PosicaoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto_lucrativo,
+            codigo_produto=produto_lucrativo.codigo_produto,
+            codigo_local_estoque=0,
+            codigo=produto_lucrativo.codigo,
+            descricao=produto_lucrativo.descricao,
+            cmc=40,
+        )
+        PosicaoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto_critico,
+            codigo_produto=produto_critico.codigo_produto,
+            codigo_local_estoque=0,
+            codigo=produto_critico.codigo,
+            descricao=produto_critico.descricao,
+            cmc=130,
+        )
         pedido = PedidoOmie.objects.create(
             empresa=self.empresa,
             codigo_pedido=4201,
@@ -763,6 +783,105 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Produto Lucrativo")
         self.assertContains(response, "Produto Critico")
         self.assertContains(response, "data-margin-bubble-chart")
+
+    def test_margem_rentabilidade_usa_cmc_e_valor_unitario_dos_pedidos(self):
+        ano_atual = date.today().year
+        produto = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=5101,
+            codigo="CMC-01",
+            descricao="Produto CMC",
+            info={"valor_custo": "1"},
+        )
+        produto_sem_cmc = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=5102,
+            codigo="SEM-CMC",
+            descricao="Produto Sem CMC",
+        )
+        produto_cmc_zero = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=5103,
+            codigo="CMC-ZERO",
+            descricao="Produto CMC Zero",
+        )
+        PosicaoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            codigo_local_estoque=123,
+            codigo=produto.codigo,
+            descricao=produto.descricao,
+            cmc=30,
+        )
+        PosicaoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto_cmc_zero,
+            codigo_produto=produto_cmc_zero.codigo_produto,
+            codigo_local_estoque=123,
+            codigo=produto_cmc_zero.codigo,
+            descricao=produto_cmc_zero.descricao,
+            cmc=0,
+        )
+        pedido = PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=5201,
+            numero_pedido="PV-5201",
+            data_faturamento=date(ano_atual, 1, 15),
+            faturado=True,
+            valor_total_pedido=9999,
+        )
+        PedidoItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=5301,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            codigo_produto_texto=produto.codigo,
+            codigo_local_estoque=123,
+            descricao=produto.descricao,
+            quantidade=10,
+            valor_unitario=50,
+            valor_total=9999,
+        )
+        PedidoItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=5302,
+            produto=produto_sem_cmc,
+            codigo_produto=produto_sem_cmc.codigo_produto,
+            codigo_produto_texto=produto_sem_cmc.codigo,
+            codigo_local_estoque=123,
+            descricao=produto_sem_cmc.descricao,
+            quantidade=10,
+            valor_unitario=100,
+            valor_total=1000,
+        )
+        PedidoItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=5303,
+            produto=produto_cmc_zero,
+            codigo_produto=produto_cmc_zero.codigo_produto,
+            codigo_produto_texto=produto_cmc_zero.codigo,
+            codigo_local_estoque=123,
+            descricao=produto_cmc_zero.descricao,
+            quantidade=10,
+            valor_unitario=100,
+            valor_total=1000,
+        )
+
+        contexto = margem_rentabilidade_comercial(
+            self.empresa,
+            f"mes-{ano_atual}-01",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(contexto["indicadores"][0]["valor"], "40,0%")
+        self.assertEqual(contexto["indicadores"][1]["valor"], "R$ 500,00")
+        self.assertEqual(len(contexto["top_rentaveis"]), 1)
+        self.assertEqual(contexto["top_rentaveis"][0]["receita"], Decimal("500.0000"))
+        self.assertEqual(contexto["top_rentaveis"][0]["margem_fmt"], "40,0%")
 
     def test_dashboard_permite_multisselecao_de_filtros(self):
         ano_atual = date.today().year
