@@ -79,3 +79,17 @@ Com o arquivo preenchido, os comandos principais são:
 
 O deploy automatizado fica em `.github/workflows/deploy-production.yaml` e usa
 o GitHub Environment `production`.
+
+Variáveis mínimas no GitHub Environment `production`:
+
+```text
+PRODUCTION_HOST
+PRODUCTION_USER
+PRODUCTION_SSH_KEY
+PRODUCTION_PATH
+REPO_URL
+DOMAIN
+SECRET_KEY
+OMIE_CREDENTIALS_ENCRYPTION_KEY
+POSTGRES_PASSWORD
+```
