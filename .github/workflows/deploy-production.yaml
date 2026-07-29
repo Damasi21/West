@@ -62,7 +62,7 @@ jobs:
           timeout: 120s
           command_timeout: 45m
           script_stop: true
-          envs: SERVER_PATH,REPO_URL,GITHUB_SHA,APP_VERSION,DOMAIN,SECRET_KEY,OMIE_CREDENTIALS_ENCRYPTION_KEY,POSTGRES_PASSWORD
+          envs: SERVER_PATH,REPO_URL,GITHUB_SHA,APP_VERSION,DOMAIN,POSTGRES_PASSWORD
           script: |
             set -euo pipefail
 
@@ -82,7 +82,17 @@ jobs:
             git -c advice.detachedHead=false checkout -f FETCH_HEAD
 
             mkdir -p .docker
-            : > .docker/.env.production
+            DEPLOY_DOMAIN="${DOMAIN:-}"
+            DEPLOY_POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
+            if [ -f .docker/.env.production ]; then
+              set -a
+              . .docker/.env.production
+              set +a
+            fi
+            DOMAIN="$DEPLOY_DOMAIN"
+            POSTGRES_PASSWORD="$DEPLOY_POSTGRES_PASSWORD"
+            export DOMAIN POSTGRES_PASSWORD
+
             write_env() {
               local key="$1"
               local value
@@ -100,13 +110,33 @@ jobs:
               printf "%s='%s'\n" "$key" "$escaped" >> .docker/.env.production
             }
 
+            random_secret() {
+              command -v openssl >/dev/null 2>&1 || {
+                echo "openssl is required to generate production secrets" >&2
+                exit 2
+              }
+              openssl rand -base64 48
+            }
+
+            write_custom_secret_env() {
+              local key="$1"
+              local value="${!key:-}"
+              case "$value" in
+                ""|CHANGE_ME|change_me|changeme|troque-esta-chave|use-uma-chave-longa-e-estavel)
+                  value="$(random_secret)"
+                  ;;
+              esac
+              write_default_env "$key" "$value"
+            }
+
+            : > .docker/.env.production
             write_env DOMAIN
             write_default_env EMAIL "admin@${DOMAIN}"
             write_default_env PROXY_HTTP_PORT "80"
             write_default_env PROXY_HTTPS_PORT "443"
             write_default_env PROXY_CLIENT_MAX_BODY_SIZE "50M"
-            write_env SECRET_KEY
-            write_env OMIE_CREDENTIALS_ENCRYPTION_KEY
+            write_custom_secret_env SECRET_KEY
+            write_custom_secret_env OMIE_CREDENTIALS_ENCRYPTION_KEY
             write_default_env ALLOWED_HOSTS "${DOMAIN}"
             write_default_env CSRF_TRUSTED_ORIGINS "https://${DOMAIN}"
             write_default_env POSTGRES_DB "west_bi"
@@ -121,6 +151,4 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           APP_VERSION: ${{ github.sha }}
           DOMAIN: ${{ secrets.DOMAIN }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          OMIE_CREDENTIALS_ENCRYPTION_KEY: ${{ secrets.OMIE_CREDENTIALS_ENCRYPTION_KEY }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}

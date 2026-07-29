@@ -89,7 +89,9 @@ PRODUCTION_SSH_KEY
 PRODUCTION_PATH
 REPO_URL
 DOMAIN
-SECRET_KEY
-OMIE_CREDENTIALS_ENCRYPTION_KEY
 POSTGRES_PASSWORD
 ```
+
+`SECRET_KEY` e `OMIE_CREDENTIALS_ENCRYPTION_KEY` ficam no servidor em
+`.docker/.env.production`: o pipeline preserva valores existentes e gera
+valores seguros no primeiro deploy se estiverem ausentes ou com placeholder.
