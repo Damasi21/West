@@ -88,9 +88,11 @@ PRODUCTION_USER
 PRODUCTION_SSH_KEY
 PRODUCTION_PATH
 REPO_URL
-DOMAIN
 POSTGRES_PASSWORD
 ```
+
+`DOMAIN` fica no servidor em `.docker/.env.production`: se não for definido, o
+pipeline usa `PRODUCTION_HOST` como domínio padrão para Nginx e Certbot.
 
 `SECRET_KEY` e `OMIE_CREDENTIALS_ENCRYPTION_KEY` ficam no servidor em
 `.docker/.env.production`: o pipeline preserva valores existentes e gera

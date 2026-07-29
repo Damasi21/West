@@ -62,7 +62,7 @@ jobs:
           timeout: 120s
           command_timeout: 45m
           script_stop: true
-          envs: SERVER_PATH,REPO_URL,GITHUB_SHA,APP_VERSION,DOMAIN,POSTGRES_PASSWORD
+          envs: SERVER_PATH,REPO_URL,GITHUB_SHA,APP_VERSION,PRODUCTION_HOST,POSTGRES_PASSWORD
           script: |
             set -euo pipefail
 
@@ -82,14 +82,14 @@ jobs:
             git -c advice.detachedHead=false checkout -f FETCH_HEAD
 
             mkdir -p .docker
-            DEPLOY_DOMAIN="${DOMAIN:-}"
+            DEPLOY_PRODUCTION_HOST="${PRODUCTION_HOST:-}"
             DEPLOY_POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
             if [ -f .docker/.env.production ]; then
               set -a
               . .docker/.env.production
               set +a
             fi
-            DOMAIN="$DEPLOY_DOMAIN"
+            DOMAIN="${DOMAIN:-$DEPLOY_PRODUCTION_HOST}"
             POSTGRES_PASSWORD="$DEPLOY_POSTGRES_PASSWORD"
             export DOMAIN POSTGRES_PASSWORD
 
@@ -150,5 +150,5 @@ jobs:
           REPO_URL: ${{ secrets.REPO_URL }}
           GITHUB_SHA: ${{ github.sha }}
           APP_VERSION: ${{ github.sha }}
-          DOMAIN: ${{ secrets.DOMAIN }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
