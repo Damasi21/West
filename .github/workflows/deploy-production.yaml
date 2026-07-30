@@ -137,11 +137,14 @@ jobs:
             write_custom_secret_env() {
               local key="$1"
               local value="${!key:-}"
-              case "$value" in
-                ""|CHANGE_ME|change_me|changeme|troque-esta-chave|use-uma-chave-longa-e-estavel)
-                  value="$(random_secret)"
-                  ;;
-              esac
+              if [ -z "$value" ] ||
+                [ "$value" = "CHANGE_ME" ] ||
+                [ "$value" = "change_me" ] ||
+                [ "$value" = "changeme" ] ||
+                [ "$value" = "troque-esta-chave" ] ||
+                [ "$value" = "use-uma-chave-longa-e-estavel" ]; then
+                value="$(random_secret)"
+              fi
               write_default_env "$key" "$value"
             }
 
