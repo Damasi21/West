@@ -142,8 +142,15 @@ validate_health() {
   curl -fsSL --max-time 30 "$health_url" >/dev/null
 }
 
+dump_diagnostics() {
+  log "Collecting Docker diagnostics"
+  compose ps || true
+  compose logs --tail=120 app proxy postgres || true
+}
+
 install() {
   : > "$INSTALL_LOG"
+  trap 'status=$?; if [ "$status" -ne 0 ]; then dump_diagnostics; fi; exit "$status"' EXIT
   log "Loading production environment"
   load_env
   log "Validating production environment"
