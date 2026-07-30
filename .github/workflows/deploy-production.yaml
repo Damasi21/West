@@ -87,14 +87,27 @@ jobs:
             mkdir -p .docker
             DEPLOY_PRODUCTION_HOST="${PRODUCTION_HOST:-}"
             DEPLOY_POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
-            if [ -f .docker/.env.production ]; then
-              set -a
-              . .docker/.env.production
-              set +a
-            fi
+
+            read_existing_env() {
+              local key="$1"
+              local value
+              [ -f .docker/.env.production ] || return 0
+              value="$(awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2) }' .docker/.env.production | tail -n 1)"
+              value="${value%$'\r'}"
+              if [[ "$value" == \'*\' && "$value" == *\' ]]; then
+                value="${value:1:${#value}-2}"
+              elif [[ "$value" == \"*\" && "$value" == *\" ]]; then
+                value="${value:1:${#value}-2}"
+              fi
+              printf "%s" "$value"
+            }
+
+            DOMAIN="$(read_existing_env DOMAIN)"
+            SECRET_KEY="$(read_existing_env SECRET_KEY)"
+            OMIE_CREDENTIALS_ENCRYPTION_KEY="$(read_existing_env OMIE_CREDENTIALS_ENCRYPTION_KEY)"
             DOMAIN="${DOMAIN:-$DEPLOY_PRODUCTION_HOST}"
             POSTGRES_PASSWORD="$DEPLOY_POSTGRES_PASSWORD"
-            export DOMAIN POSTGRES_PASSWORD
+            export DOMAIN SECRET_KEY OMIE_CREDENTIALS_ENCRYPTION_KEY POSTGRES_PASSWORD
 
             write_env() {
               local key="$1"
