@@ -133,13 +133,23 @@ issue_certificate_when_enabled() {
 
 validate_health() {
   local health_url="http://127.0.0.1:${PROXY_HTTP_PORT:-80}/healthz"
+  local attempt=1
 
   if ssl_enabled; then
     health_url="https://${DOMAIN}/healthz"
   fi
 
   log "Validating health endpoint"
-  curl -fsSL --max-time 30 "$health_url" >/dev/null
+  while [ "$attempt" -le 30 ]; do
+    if curl -fsSL --max-time 10 "$health_url" >/dev/null; then
+      return 0
+    fi
+
+    sleep 2
+    attempt=$((attempt + 1))
+  done
+
+  fail "Health endpoint did not become ready: $health_url"
 }
 
 dump_diagnostics() {
