@@ -84,6 +84,7 @@ jobs:
             git fetch --depth=1 origin "${GITHUB_SHA}"
             git -c advice.detachedHead=false checkout -f FETCH_HEAD
 
+            echo "[deploy] rendering production environment"
             mkdir -p .docker
             DEPLOY_PRODUCTION_HOST="${PRODUCTION_HOST:-}"
             DEPLOY_POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
@@ -92,7 +93,7 @@ jobs:
               local key="$1"
               local value
               [ -f .docker/.env.production ] || return 0
-              value="$(awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2) }' .docker/.env.production | tail -n 1)"
+              value="$(awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2) }' .docker/.env.production 2>/dev/null | tail -n 1 || true)"
               value="${value%$'\r'}"
               if [[ "$value" == \'*\' && "$value" == *\' ]]; then
                 value="${value:1:${#value}-2}"
@@ -102,9 +103,9 @@ jobs:
               printf "%s" "$value"
             }
 
-            DOMAIN="$(read_existing_env DOMAIN)"
-            SECRET_KEY="$(read_existing_env SECRET_KEY)"
-            OMIE_CREDENTIALS_ENCRYPTION_KEY="$(read_existing_env OMIE_CREDENTIALS_ENCRYPTION_KEY)"
+            DOMAIN="$(read_existing_env DOMAIN || true)"
+            SECRET_KEY="$(read_existing_env SECRET_KEY || true)"
+            OMIE_CREDENTIALS_ENCRYPTION_KEY="$(read_existing_env OMIE_CREDENTIALS_ENCRYPTION_KEY || true)"
             DOMAIN="${DOMAIN:-$DEPLOY_PRODUCTION_HOST}"
             POSTGRES_PASSWORD="$DEPLOY_POSTGRES_PASSWORD"
             export DOMAIN SECRET_KEY OMIE_CREDENTIALS_ENCRYPTION_KEY POSTGRES_PASSWORD
@@ -162,6 +163,7 @@ jobs:
             write_default_env POSTGRES_USER "west_user"
             write_env POSTGRES_PASSWORD
 
+            echo "[deploy] running production install"
             chmod +x .docker/scripts/*.sh
             APP_VERSION="${APP_VERSION:-${GITHUB_SHA}}" ./.docker/scripts/install.sh
         env:
