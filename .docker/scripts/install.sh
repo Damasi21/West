@@ -8,12 +8,9 @@ LOG_DIR=".docker/logs"
 INSTALL_LOG="$LOG_DIR/install.log"
 
 REQUIRED_ENV_VARS=(
-  "DOMAIN"
-  "EMAIL"
   "SECRET_KEY"
   "OMIE_CREDENTIALS_ENCRYPTION_KEY"
   "ALLOWED_HOSTS"
-  "CSRF_TRUSTED_ORIGINS"
   "POSTGRES_DB"
   "POSTGRES_USER"
   "POSTGRES_PASSWORD"
@@ -40,6 +37,37 @@ compose() {
   docker compose --env-file "$ENV_FILE" -f "$ROOT_COMPOSE" "$@"
 }
 
+append_env() {
+  printf "%s=%s\n" "$1" "$2" >> "$ENV_FILE"
+}
+
+is_ip_address() {
+  case "${1:-}" in
+    *:*)
+      return 0
+      ;;
+  esac
+
+  printf "%s" "${1:-}" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+}
+
+ssl_enabled() {
+  case "${ENABLE_SSL:-auto}" in
+    1|true|TRUE|yes|YES|on|ON)
+      [ -n "${DOMAIN:-}" ] && ! is_ip_address "$DOMAIN"
+      ;;
+    0|false|FALSE|no|NO|off|OFF)
+      return 1
+      ;;
+    auto|"")
+      [ -n "${DOMAIN:-}" ] && [ "$DOMAIN" != "localhost" ] && ! is_ip_address "$DOMAIN"
+      ;;
+    *)
+      fail "ENABLE_SSL must be auto, true, or false."
+      ;;
+  esac
+}
+
 load_env() {
   if [ ! -f "$ENV_FILE" ]; then
     fail "Missing $ENV_FILE. Create it from $ENV_EXAMPLE."
@@ -54,6 +82,10 @@ validate_env() {
   for var_name in "${REQUIRED_ENV_VARS[@]}"; do
     [ -n "${!var_name:-}" ] || fail "Required production environment variable is missing: $var_name"
   done
+
+  if ssl_enabled && [ -z "${EMAIL:-}" ]; then
+    fail "EMAIL is required when SSL is enabled."
+  fi
 
   for var_name in "${SECRET_ENV_VARS[@]}"; do
     case "${!var_name:-}" in
@@ -70,6 +102,46 @@ validate_dependencies() {
   command -v curl >/dev/null 2>&1 || fail "curl is not installed or not available in PATH."
 }
 
+configure_proxy() {
+  if ssl_enabled; then
+    log "Configuring HTTPS proxy for ${DOMAIN}"
+    cp .docker/nginx.ssl.conf .docker/nginx.active.conf
+    append_env SECURE_SSL_REDIRECT True
+    append_env SESSION_COOKIE_SECURE True
+    append_env CSRF_COOKIE_SECURE True
+    append_env CSRF_TRUSTED_ORIGINS "${CSRF_TRUSTED_ORIGINS:-https://${DOMAIN}}"
+    return 0
+  fi
+
+  log "Configuring HTTP proxy without SSL"
+  cp .docker/nginx.http.conf .docker/nginx.active.conf
+  append_env SECURE_SSL_REDIRECT False
+  append_env SESSION_COOKIE_SECURE False
+  append_env CSRF_COOKIE_SECURE False
+  append_env CSRF_TRUSTED_ORIGINS "${CSRF_TRUSTED_ORIGINS:-}"
+}
+
+issue_certificate_when_enabled() {
+  if ssl_enabled; then
+    log "Issuing SSL certificate when needed"
+    ./.docker/scripts/certbot.sh issue
+    return 0
+  fi
+
+  log "SSL certificate skipped"
+}
+
+validate_health() {
+  local health_url="http://127.0.0.1:${PROXY_HTTP_PORT:-80}/healthz"
+
+  if ssl_enabled; then
+    health_url="https://${DOMAIN}/healthz"
+  fi
+
+  log "Validating health endpoint"
+  curl -fsSL --max-time 30 "$health_url" >/dev/null
+}
+
 install() {
   : > "$INSTALL_LOG"
   log "Loading production environment"
@@ -78,14 +150,13 @@ install() {
   validate_env
   log "Validating host dependencies"
   validate_dependencies
+  configure_proxy
   log "Building production image"
   compose build
-  log "Issuing SSL certificate when needed"
-  ./.docker/scripts/certbot.sh issue
+  issue_certificate_when_enabled
   log "Starting production stack"
   compose up -d
-  log "Validating HTTPS health endpoint"
-  curl -fsSL --max-time 30 "https://${DOMAIN}/healthz" >/dev/null
+  validate_health
   log "Production installation completed"
 }
 

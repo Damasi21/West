@@ -116,7 +116,6 @@ jobs:
             write_default_env SECRET_KEY "${POSTGRES_PASSWORD}-django"
             write_default_env OMIE_CREDENTIALS_ENCRYPTION_KEY "${POSTGRES_PASSWORD}-omie"
             write_default_env ALLOWED_HOSTS "${DOMAIN}"
-            write_default_env CSRF_TRUSTED_ORIGINS "https://${DOMAIN}"
             write_default_env POSTGRES_DB "west_bi"
             write_default_env POSTGRES_USER "west_user"
             write_env POSTGRES_PASSWORD

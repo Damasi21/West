@@ -17,6 +17,16 @@ compose() {
   docker compose --env-file "$ENV_FILE" -f "$ROOT_COMPOSE" "$@"
 }
 
+is_ip_address() {
+  case "${1:-}" in
+    *:*)
+      return 0
+      ;;
+  esac
+
+  printf "%s" "${1:-}" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+}
+
 cert_exists() {
   docker run --rm \
     -v WESTWISE_CERTBOT_CONF:/etc/letsencrypt \
@@ -26,6 +36,16 @@ cert_exists() {
 
 issue_certificate() {
   local force="${1:-}"
+
+  if [ -z "${DOMAIN:-}" ] || [ "${DOMAIN:-}" = "localhost" ] || is_ip_address "${DOMAIN:-}"; then
+    echo "Skipping certificate issuance because DOMAIN is not a public DNS name."
+    return 0
+  fi
+
+  if [ -z "${EMAIL:-}" ]; then
+    echo "EMAIL is required to issue a certificate." >&2
+    exit 2
+  fi
 
   if [ "$force" != "force" ] && cert_exists; then
     echo "Certificate already exists for $DOMAIN; skipping issuance."
