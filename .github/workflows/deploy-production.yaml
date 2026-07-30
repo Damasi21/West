@@ -89,24 +89,9 @@ jobs:
             DEPLOY_PRODUCTION_HOST="${PRODUCTION_HOST:-}"
             DEPLOY_POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 
-            read_existing_env() {
-              local key="$1"
-              local value
-              [ -f .docker/.env.production ] || return 0
-              value="$(awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2) }' .docker/.env.production 2>/dev/null | tail -n 1 || true)"
-              value="${value%$'\r'}"
-              if [[ "$value" == \'*\' && "$value" == *\' ]]; then
-                value="${value:1:${#value}-2}"
-              elif [[ "$value" == \"*\" && "$value" == *\" ]]; then
-                value="${value:1:${#value}-2}"
-              fi
-              printf "%s" "$value"
-            }
-
-            DOMAIN="$(read_existing_env DOMAIN || true)"
-            SECRET_KEY="$(read_existing_env SECRET_KEY || true)"
-            OMIE_CREDENTIALS_ENCRYPTION_KEY="$(read_existing_env OMIE_CREDENTIALS_ENCRYPTION_KEY || true)"
-            DOMAIN="${DOMAIN:-$DEPLOY_PRODUCTION_HOST}"
+            DOMAIN="$DEPLOY_PRODUCTION_HOST"
+            SECRET_KEY=""
+            OMIE_CREDENTIALS_ENCRYPTION_KEY=""
             POSTGRES_PASSWORD="$DEPLOY_POSTGRES_PASSWORD"
             export DOMAIN SECRET_KEY OMIE_CREDENTIALS_ENCRYPTION_KEY POSTGRES_PASSWORD
 
