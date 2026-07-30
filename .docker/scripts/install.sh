@@ -173,6 +173,8 @@ install() {
   issue_certificate_when_enabled
   log "Starting production stack"
   compose up -d
+  log "Refreshing production proxy"
+  compose up -d --force-recreate --no-deps proxy
   validate_health
   log "Production installation completed"
 }
