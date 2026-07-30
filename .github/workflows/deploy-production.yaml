@@ -111,20 +111,15 @@ jobs:
             export DOMAIN SECRET_KEY OMIE_CREDENTIALS_ENCRYPTION_KEY POSTGRES_PASSWORD
 
             write_env() {
-              local key="$1"
-              local value
-              local escaped
+              key="$1"
               value="$(printenv "$key" || true)"
-              escaped="$(printf "%s" "$value" | sed "s/'/'\\\\''/g")"
-              printf "%s='%s'\n" "$key" "$escaped" >> .docker/.env.production
+              printf "%s=%s\n" "$key" "$value" >> .docker/.env.production
             }
 
             write_default_env() {
-              local key="$1"
-              local value="$2"
-              local escaped
-              escaped="$(printf "%s" "$value" | sed "s/'/'\\\\''/g")"
-              printf "%s='%s'\n" "$key" "$escaped" >> .docker/.env.production
+              key="$1"
+              value="$2"
+              printf "%s=%s\n" "$key" "$value" >> .docker/.env.production
             }
 
             random_secret() {
@@ -136,8 +131,8 @@ jobs:
             }
 
             write_custom_secret_env() {
-              local key="$1"
-              local value="${!key:-}"
+              key="$1"
+              value="$(printenv "$key" || true)"
               if [ -z "$value" ] ||
                 [ "$value" = "CHANGE_ME" ] ||
                 [ "$value" = "change_me" ] ||
