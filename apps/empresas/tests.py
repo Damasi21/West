@@ -114,8 +114,8 @@ class ListaEmpresasTests(TestCase):
         self.assertContains(response, self.empresa_permitida.nome_fantasia)
         self.assertNotContains(response, self.empresa_bloqueada.nome_fantasia)
         self.assertNotContains(response, "Configurações")
-        self.assertContains(response, "MD21 BI")
-        self.assertContains(response, "/media/md21_bi.png")
+        self.assertContains(response, "Insight Wise")
+        self.assertContains(response, "/media/insight_wise_login.jpeg")
 
 
 class UsuariosEmpresaTests(TestCase):

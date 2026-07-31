@@ -9,8 +9,8 @@ class CadastroTests(TestCase):
 
         self.assertContains(response, reverse("accounts:cadastro"))
         self.assertContains(response, "Criar uma conta")
-        self.assertContains(response, "MD21 BI")
-        self.assertContains(response, "/media/md21_bi_login.png")
+        self.assertContains(response, "Insight Wise")
+        self.assertContains(response, "/media/insight_wise_login.jpeg")
 
     def test_usuario_pode_criar_conta_e_fica_autenticado(self):
         response = self.client.post(

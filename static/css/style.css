@@ -33,9 +33,9 @@ a { text-decoration: none; }
 }
 .navbar-brand { font-size: 1.25rem; letter-spacing: -.02em; }
 .brand-logo {
-    width: 44px;
-    height: 44px;
-    object-fit: cover;
+    width: 54px;
+    height: 54px;
+    object-fit: contain;
     border: 1px solid rgba(255,255,255,.12);
     border-radius: 10px;
 }
