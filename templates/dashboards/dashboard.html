@@ -15,6 +15,7 @@
         <a href="{% url 'dashboards:area' empresa.slug area_slug %}" class="btn btn-white">
             <i class="bi bi-arrow-left me-2"></i>Voltar
         </a>
+        {% if dashboard_slug != "aprovacao-de-pagamentos" %}
         <div class="dashboard-filter" data-filter-dropdown>
             <button class="filter-trigger" type="button" aria-expanded="false">
                 <i class="bi bi-calendar3"></i>
@@ -109,6 +110,7 @@
         <button class="btn btn-primary" type="submit">
             <i class="bi bi-arrow-repeat me-2"></i>Atualizar
         </button>
+        {% endif %}
     </form>
 </div>
 
@@ -135,6 +137,8 @@
     {% include "dashboards/partials/fluxo_caixa.html" with fluxo=fluxo_caixa %}
 {% elif inadimplencia %}
     {% include "dashboards/partials/inadimplencia.html" with dados=inadimplencia %}
+{% elif aprovacao_pagamentos %}
+    {% include "dashboards/partials/aprovacao_pagamentos.html" with dados=aprovacao_pagamentos %}
 {% else %}
 <div class="row g-3 mb-4">
     {% for item in "1234" %}

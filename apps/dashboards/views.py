@@ -1,11 +1,17 @@
+import json
 from datetime import date
 
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import render
 from django.utils.dateparse import parse_date
+from django.views.decorators.http import require_POST
 
 from apps.dashboards.analise_clientes_services import analise_clientes_comercial
+from apps.dashboards.aprovacao_pagamentos_services import (
+    painel_aprovacao_pagamentos,
+    salvar_aprovacoes_pagamentos,
+)
 from apps.dashboards.desempenho_vendedores_services import desempenho_vendedores
 from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import (
@@ -93,6 +99,12 @@ AREAS = {
                 "titulo": "Inadimplencia",
                 "descricao": "Monitore exposicao, aging, recuperacao e top devedores.",
                 "icone": "bi-exclamation-octagon",
+            },
+            {
+                "slug": "aprovacao-de-pagamentos",
+                "titulo": "Aprovacao de pagamentos",
+                "descricao": "Aprove, reagende e acompanhe os pagamentos do dia.",
+                "icone": "bi-check2-square",
             },
         ],
     },
@@ -316,6 +328,19 @@ def _valores_para_consulta(selecionados, opcoes):
 
 def _regime_financeiro_valido(valor):
     return valor if valor in REGIMES_FINANCEIROS else "caixa"
+
+
+def _periodo_aprovacao_pagamentos(request):
+    inicio = parse_date(request.GET.get("aprovacao_inicio", ""))
+    fim = parse_date(request.GET.get("aprovacao_fim", ""))
+    if not inicio and not fim:
+        hoje = date.today()
+        return hoje, hoje
+    inicio = inicio or fim
+    fim = fim or inicio
+    if inicio > fim:
+        inicio, fim = fim, inicio
+    return inicio, fim
 
 
 def _chave_empresas_inicio(empresa):
@@ -730,4 +755,48 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             empresas_consulta_ids,
             projetos_consulta,
         )
+    if area_slug == "financeiro" and dashboard_slug == "aprovacao-de-pagamentos":
+        aprovacao_inicio, aprovacao_fim = _periodo_aprovacao_pagamentos(request)
+        aprovacao_modal = request.GET.get("modal", "")
+        if aprovacao_modal not in {"pagamentos", "recebimentos"}:
+            aprovacao_modal = ""
+        contexto["aprovacao_pagamentos"] = painel_aprovacao_pagamentos(
+            empresa,
+            empresas_consulta_ids,
+            projetos_consulta,
+            aprovacao_inicio,
+            aprovacao_fim,
+            aprovacao_modal,
+        )
     return render(request, "dashboards/dashboard.html", contexto)
+
+
+@login_required
+@require_POST
+def salvar_aprovacao_pagamentos(request, empresa_slug):
+    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    if not usuario_pode_acessar_dashboard(
+        request.user,
+        empresa,
+        "financeiro",
+        "aprovacao-de-pagamentos",
+    ):
+        raise Http404("Dashboard nao encontrado.")
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"sucesso": False, "erros": [{"erro": "Payload invalido."}]},
+            status=400,
+        )
+
+    itens = payload.get("itens")
+    if not isinstance(itens, list):
+        return JsonResponse(
+            {"sucesso": False, "erros": [{"erro": "Lista de itens invalida."}]},
+            status=400,
+        )
+
+    resultado = salvar_aprovacoes_pagamentos(empresa, request.user, itens)
+    return JsonResponse(resultado, status=200 if resultado["sucesso"] else 207)

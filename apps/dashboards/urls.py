@@ -70,6 +70,11 @@ urlpatterns = [
         empresas_views.status_sincronizacao_omie,
         name="status_sincronizacao_omie",
     ),
+    path(
+        "financeiro/aprovacao-de-pagamentos/salvar/",
+        views.salvar_aprovacao_pagamentos,
+        name="salvar_aprovacao_pagamentos",
+    ),
     path("<slug:area_slug>/", views.area, name="area"),
     path(
         "<slug:area_slug>/<slug:dashboard_slug>/",

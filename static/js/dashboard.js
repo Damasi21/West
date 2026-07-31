@@ -1279,6 +1279,437 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    const paymentApproval = document.querySelector("[data-payment-approval-dashboard]");
+    if (paymentApproval) {
+        const paymentModal = paymentApproval.querySelector("[data-payment-modal]");
+        const receiptsModal = paymentApproval.querySelector("[data-receipts-modal]");
+        const successModal = paymentApproval.querySelector("[data-payment-success-modal]");
+        const statusDetailModal = paymentApproval.querySelector("[data-payment-status-detail-modal]");
+        const statusDetailTitle = paymentApproval.querySelector("[data-payment-status-detail-title]");
+        const statusDetailSummary = paymentApproval.querySelector("[data-payment-status-detail-summary]");
+        const statusDetailRows = paymentApproval.querySelector("[data-payment-status-detail-rows]");
+        const successMessage = paymentApproval.querySelector("[data-payment-success-message]");
+        const paymentRows = [...paymentApproval.querySelectorAll("[data-payment-row]")];
+        const pendingTotal = paymentApproval.querySelector("[data-payment-pending-total]");
+        const pendingCount = paymentApproval.querySelector("[data-payment-pending-count]");
+        const approvalRate = paymentApproval.querySelector("[data-payment-approval-rate]");
+        const statusChartCanvas = paymentApproval.querySelector("[data-payment-status-chart]");
+        const checkAll = paymentApproval.querySelector("[data-payment-check-all]");
+        const bulkActions = paymentApproval.querySelector("[data-payment-bulk-actions]");
+        const selectedCount = paymentApproval.querySelector("[data-payment-selected-count]");
+        const bulkDate = paymentApproval.querySelector("[data-payment-bulk-date]");
+        const bulkNewDate = paymentApproval.querySelector("[data-payment-bulk-new-date]");
+        const saveButton = paymentApproval.querySelector("[data-payment-save]");
+        const saveFeedback = paymentApproval.querySelector("[data-payment-save-feedback]");
+        let isSavingPayments = false;
+        let paymentStatusChart = null;
+        const parsePaymentValue = (value) => {
+            const raw = String(value || "0").trim();
+            if (raw.includes(",")) {
+                return Number(raw.replace(/\./g, "").replace(",", ".")) || 0;
+            }
+            return Number(raw) || 0;
+        };
+        const formatCurrency = (value) => moneyFormatter.format(parsePaymentValue(value));
+        const getCookie = (name) => {
+            const cookies = document.cookie ? document.cookie.split(";") : [];
+            const prefix = `${name}=`;
+            const cookie = cookies.find((item) => item.trim().startsWith(prefix));
+            return cookie ? decodeURIComponent(cookie.trim().slice(prefix.length)) : "";
+        };
+
+        const setModalVisible = (modal, visible) => {
+            if (modal) modal.hidden = !visible;
+        };
+        const openSuccessModal = (message) => {
+            if (successMessage) successMessage.textContent = message;
+            setModalVisible(successModal, true);
+        };
+        const statusMeta = {
+            approved: { label: "Aprovado", color: "#0f766e" },
+            pending: { label: "Pendente", color: "#f5b93f" },
+            rescheduled: { label: "Reagendado", color: "#2f7de1" },
+        };
+        const normalizedStatus = (row) => {
+            const status = row.dataset.paymentStatus || "pending";
+            return status === "error" ? "pending" : status;
+        };
+        const rowsByStatus = (status) => paymentRows.filter((row) => normalizedStatus(row) === status);
+        const openStatusDetails = (status) => {
+            const rows = rowsByStatus(status);
+            const total = rows.reduce((sum, row) => sum + parsePaymentValue(row.dataset.paymentValue), 0);
+            const meta = statusMeta[status] || statusMeta.pending;
+            if (statusDetailTitle) statusDetailTitle.textContent = `Pagamentos - ${meta.label}`;
+            if (statusDetailSummary) {
+                statusDetailSummary.textContent = `${rows.length} lancamento(s) · ${formatCurrency(total)}`;
+            }
+            if (statusDetailRows) {
+                statusDetailRows.innerHTML = "";
+                if (!rows.length) {
+                    const empty = document.createElement("div");
+                    empty.className = "payment-empty";
+                    empty.textContent = "Sem lancamentos neste status para o periodo.";
+                    statusDetailRows.appendChild(empty);
+                } else {
+                    rows.forEach((row) => {
+                        const detailRow = document.createElement("div");
+                        detailRow.className = "payment-status-detail-row";
+                        const company = document.createElement("span");
+                        company.textContent = row.dataset.paymentCompany || "";
+                        const supplier = document.createElement("span");
+                        const supplierName = document.createElement("strong");
+                        supplierName.textContent = row.dataset.paymentName || "";
+                        const category = document.createElement("small");
+                        category.textContent = row.dataset.paymentCategory || "";
+                        supplier.append(supplierName, category);
+                        const date = document.createElement("span");
+                        date.textContent = row.querySelector("[data-payment-due-date]")?.textContent || row.dataset.paymentDate || "";
+                        const value = document.createElement("strong");
+                        value.textContent = row.dataset.paymentValueLabel || "";
+                        detailRow.append(company, supplier, date, value);
+                        statusDetailRows.appendChild(detailRow);
+                    });
+                }
+            }
+            setModalVisible(statusDetailModal, true);
+        };
+        const selectedRows = () => paymentRows.filter((row) => (
+            row.dataset.paymentSentOmie !== "true"
+            && row.querySelector("[data-payment-check]")?.checked
+        ));
+        const currentRowDate = (row) => row.querySelector("[data-payment-new-date]")?.value || row.dataset.paymentOriginalDate || "";
+        const rowChanged = (row) => {
+            const status = row.dataset.paymentStatus || "pending";
+            if (row.dataset.paymentSentOmie === "true") return false;
+            if (status === "error") return false;
+            if (status !== (row.dataset.paymentOriginalStatus || "pending")) return true;
+            if (status === "rescheduled" && currentRowDate(row) !== (row.dataset.paymentOriginalDate || "")) return true;
+            return false;
+        };
+        const changedRows = () => paymentRows.filter(rowChanged);
+        const updateBulkActions = () => {
+            const rows = selectedRows();
+            if (selectedCount) selectedCount.textContent = String(rows.length);
+            if (bulkActions) bulkActions.hidden = rows.length === 0;
+            if (bulkDate && rows.length === 0) bulkDate.hidden = true;
+            if (checkAll) {
+                checkAll.checked = rows.length > 0 && rows.length === paymentRows.length;
+                checkAll.indeterminate = rows.length > 0 && rows.length < paymentRows.length;
+            }
+        };
+        const setPaymentStatus = (row, status) => {
+            if (row.dataset.paymentSentOmie === "true") return;
+            const label = row.querySelector("[data-payment-status-label]");
+            const box = row.querySelector("[data-payment-reschedule-box]");
+            row.dataset.paymentStatus = status;
+            if (!label) return;
+            label.className = `payment-status payment-status-${status}`;
+            if (status === "approved") label.textContent = "Aprovado";
+            if (status === "pending") label.textContent = "Pendente";
+            if (status === "rescheduled") label.textContent = "Reagendado";
+            if (status === "error") label.textContent = "Erro OMIE";
+            if (box && status !== "rescheduled") box.hidden = true;
+        };
+        const lockOmieRow = (row) => {
+            row.dataset.paymentSentOmie = "true";
+            row.querySelector("[data-payment-check]")?.setAttribute("disabled", "disabled");
+            row.querySelector("[data-payment-approve]")?.setAttribute("disabled", "disabled");
+            row.querySelector("[data-payment-reschedule]")?.setAttribute("disabled", "disabled");
+            row.querySelector("[data-payment-reset]")?.setAttribute("disabled", "disabled");
+            row.querySelectorAll("[data-payment-approve], [data-payment-reschedule], [data-payment-reset]").forEach((button) => {
+                button.title = "Lancamento ja enviado ao Omie. Altere somente no Omie.";
+            });
+        };
+        const markRowSaved = (row, result) => {
+            const status = result.status || row.dataset.paymentStatus || "pending";
+            row.dataset.paymentOriginalStatus = status;
+            row.dataset.paymentStatus = status;
+            if (result.omie === "alterado") lockOmieRow(row);
+            if (result.data_previsao) {
+                row.dataset.paymentOriginalDate = result.data_previsao;
+                const input = row.querySelector("[data-payment-new-date]");
+                if (input) input.value = result.data_previsao;
+            }
+        };
+        const enableSaveAfterRedundantDelay = (message) => {
+            const match = String(message || "").match(/Aguarde\s+(\d+)\s+segundos/i);
+            const seconds = match ? Number(match[1]) : 60;
+            window.setTimeout(() => {
+                isSavingPayments = false;
+                if (saveButton) saveButton.disabled = false;
+                setSaveFeedback("Pode tentar salvar novamente.", "");
+            }, Math.max(seconds, 5) * 1000);
+        };
+        const setSaveFeedback = (message, kind = "") => {
+            if (!saveFeedback) return;
+            saveFeedback.textContent = message;
+            saveFeedback.classList.toggle("is-success", kind === "success");
+            saveFeedback.classList.toggle("is-error", kind === "error");
+        };
+        const renderPaymentTotals = () => {
+            const totals = paymentRows.reduce((acc, row) => {
+                const status = normalizedStatus(row);
+                const value = parsePaymentValue(row.dataset.paymentValue);
+                acc[status] = (acc[status] || 0) + value;
+                acc.counts[status] = (acc.counts[status] || 0) + 1;
+                return acc;
+            }, { counts: {} });
+            const approvedCount = totals.counts.approved || 0;
+            const pendingCountValue = totals.counts.pending || 0;
+            const rescheduledCount = totals.counts.rescheduled || 0;
+            const totalCount = approvedCount + pendingCountValue + rescheduledCount;
+            const pending = totals.pending || 0;
+            if (pendingTotal) pendingTotal.textContent = formatCurrency(pending);
+            if (pendingCount) pendingCount.textContent = String(pendingCountValue);
+            if (approvalRate) {
+                const rate = totalCount ? Math.round((approvedCount / totalCount) * 100) : 0;
+                approvalRate.textContent = `${rate}%`;
+            }
+            if (paymentStatusChart) {
+                paymentStatusChart.data.datasets[0].data = [
+                    approvedCount,
+                    pendingCountValue,
+                    rescheduledCount,
+                ];
+                paymentStatusChart.update();
+            }
+        };
+        const setupPaymentStatusChart = () => {
+            if (!statusChartCanvas || typeof Chart === "undefined") return;
+            paymentStatusChart = new Chart(statusChartCanvas, {
+                type: "doughnut",
+                data: {
+                    labels: ["Aprovado", "Pendente", "Reagendado"],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ["#0f766e", "#f5b93f", "#2f7de1"],
+                        borderColor: "#ffffff",
+                        borderWidth: 2,
+                    }],
+                },
+                options: {
+                    responsive: false,
+                    maintainAspectRatio: true,
+                    cutout: "58%",
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.label}: ${context.parsed || 0} lancamento(s)`,
+                            },
+                        },
+                    },
+                    onClick: (event, elements) => {
+                        let index = elements[0]?.index;
+                        if (index == null) {
+                            const counts = paymentStatusChart.data.datasets[0].data;
+                            index = counts.findIndex((value) => Number(value || 0) > 0);
+                        }
+                        if (index < 0) return;
+                        const status = ["approved", "pending", "rescheduled"][index];
+                        openStatusDetails(status);
+                    },
+                    onHover: (event, elements, chart) => {
+                        const hasData = chart.data.datasets[0].data.some((value) => Number(value || 0) > 0);
+                        chart.canvas.style.cursor = elements.length || hasData ? "pointer" : "default";
+                    },
+                },
+            });
+            statusChartCanvas.addEventListener("click", (event) => {
+                const elements = paymentStatusChart.getElementsAtEventForMode(
+                    event,
+                    "nearest",
+                    { intersect: true },
+                    true,
+                );
+                if (elements.length) return;
+                const counts = paymentStatusChart.data.datasets[0].data;
+                const index = counts.findIndex((value) => Number(value || 0) > 0);
+                if (index >= 0) openStatusDetails(["approved", "pending", "rescheduled"][index]);
+            });
+        };
+
+        paymentApproval.querySelector("[data-open-payment-modal]")?.addEventListener("click", () => {
+            setModalVisible(paymentModal, true);
+        });
+        paymentApproval.querySelector("[data-close-payment-modal]")?.addEventListener("click", () => {
+            setModalVisible(paymentModal, false);
+        });
+        paymentApproval.querySelector("[data-open-receipts-modal]")?.addEventListener("click", () => {
+            setModalVisible(receiptsModal, true);
+        });
+        paymentApproval.querySelector("[data-close-receipts-modal]")?.addEventListener("click", () => {
+            setModalVisible(receiptsModal, false);
+        });
+        paymentApproval.querySelector("[data-close-payment-success-modal]")?.addEventListener("click", () => {
+            setModalVisible(successModal, false);
+        });
+        paymentApproval.querySelector("[data-close-payment-status-detail]")?.addEventListener("click", () => {
+            setModalVisible(statusDetailModal, false);
+        });
+        [paymentModal, receiptsModal, successModal, statusDetailModal].forEach((modal) => {
+            modal?.addEventListener("click", (event) => {
+                if (event.target === modal) setModalVisible(modal, false);
+            });
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            setModalVisible(paymentModal, false);
+            setModalVisible(receiptsModal, false);
+            setModalVisible(successModal, false);
+            setModalVisible(statusDetailModal, false);
+        });
+
+        checkAll?.addEventListener("change", () => {
+            paymentRows.forEach((row) => {
+                const checkbox = row.querySelector("[data-payment-check]");
+                if (checkbox) checkbox.checked = checkAll.checked;
+            });
+            updateBulkActions();
+        });
+        paymentRows.forEach((row) => {
+            row.querySelector("[data-payment-check]")?.addEventListener("change", updateBulkActions);
+            row.querySelector("[data-payment-approve]")?.addEventListener("click", () => {
+                setPaymentStatus(row, "approved");
+                renderPaymentTotals();
+            });
+            row.querySelector("[data-payment-reschedule]")?.addEventListener("click", () => {
+                const box = row.querySelector("[data-payment-reschedule-box]");
+                if (box) box.hidden = false;
+                setPaymentStatus(row, "rescheduled");
+                renderPaymentTotals();
+            });
+            row.querySelector("[data-payment-reset]")?.addEventListener("click", () => {
+                setPaymentStatus(row, "pending");
+                renderPaymentTotals();
+            });
+        });
+        paymentApproval.querySelector("[data-payment-bulk-approve]")?.addEventListener("click", () => {
+            selectedRows().forEach((row) => setPaymentStatus(row, "approved"));
+            if (bulkDate) bulkDate.hidden = true;
+            renderPaymentTotals();
+            updateBulkActions();
+        });
+        paymentApproval.querySelector("[data-payment-bulk-reschedule]")?.addEventListener("click", () => {
+            if (bulkDate) bulkDate.hidden = false;
+            bulkNewDate?.focus();
+        });
+        paymentApproval.querySelector("[data-payment-bulk-apply-date]")?.addEventListener("click", () => {
+            if (!bulkNewDate?.value) return;
+            selectedRows().forEach((row) => {
+                const input = row.querySelector("[data-payment-new-date]");
+                const box = row.querySelector("[data-payment-reschedule-box]");
+                if (input) input.value = bulkNewDate.value;
+                if (box) box.hidden = true;
+                setPaymentStatus(row, "rescheduled");
+                const label = row.querySelector("[data-payment-due-date]");
+                const statusLabel = row.querySelector("[data-payment-status-label]");
+                const [year, month, day] = bulkNewDate.value.split("-");
+                if (label) label.textContent = `${day}/${month}/${year}`;
+                if (statusLabel) statusLabel.textContent = "Reagendado";
+            });
+            if (bulkDate) bulkDate.hidden = true;
+            renderPaymentTotals();
+            updateBulkActions();
+        });
+        saveButton?.addEventListener("click", async () => {
+            if (isSavingPayments) return;
+            paymentRows.forEach((row) => {
+                if (row.dataset.paymentStatus !== "rescheduled") return;
+                const input = row.querySelector("[data-payment-new-date]");
+                const label = row.querySelector("[data-payment-due-date]");
+                if (!input?.value || !label) return;
+                const [year, month, day] = input.value.split("-");
+                label.textContent = `${day}/${month}/${year}`;
+                const statusLabel = row.querySelector("[data-payment-status-label]");
+                if (statusLabel) statusLabel.textContent = "Reagendado";
+                const box = row.querySelector("[data-payment-reschedule-box]");
+                if (box) box.hidden = true;
+            });
+            const rowsToSave = changedRows();
+            if (!rowsToSave.length) {
+                setSaveFeedback("Nenhuma alteracao para salvar.", "");
+                return;
+            }
+            const itens = rowsToSave.map((row) => ({
+                id: Number(row.dataset.paymentId),
+                status: row.dataset.paymentStatus || "pending",
+                new_date: row.querySelector("[data-payment-new-date]")?.value || "",
+            }));
+            isSavingPayments = true;
+            saveButton.disabled = true;
+            setSaveFeedback("Salvando aprovacoes e atualizando Omie...");
+            try {
+                const response = await fetch(paymentApproval.dataset.paymentSaveUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": getCookie("csrftoken"),
+                    },
+                    body: JSON.stringify({ itens }),
+                });
+                const result = await response.json();
+                if (!response.ok && response.status !== 207) {
+                    throw new Error(result.erros?.[0]?.erro || "Nao foi possivel salvar.");
+                }
+                result.resultados?.forEach((item) => {
+                    const row = paymentRows.find((paymentRow) => Number(paymentRow.dataset.paymentId) === Number(item.id));
+                    if (row) markRowSaved(row, item);
+                });
+                if (result.erros?.length) {
+                    result.erros.forEach((erro) => {
+                        const row = paymentRows.find((item) => Number(item.dataset.paymentId) === Number(erro.id));
+                        if (row) {
+                            setPaymentStatus(row, "error");
+                            const label = row.querySelector("[data-payment-status-label]");
+                            if (label && erro.erro) label.title = erro.erro;
+                        }
+                    });
+                    renderPaymentTotals();
+                    const firstError = result.erros[0]?.erro || "Nao foi possivel atualizar na Omie.";
+                    const temporary = result.erros.some((erro) => erro.temporario);
+                    const prefix = temporary
+                        ? "Omie bloqueou chamadas repetidas. Aguarde alguns segundos e tente novamente."
+                        : `${result.erros.length} lancamento(s) nao foram atualizados na Omie.`;
+                    setSaveFeedback(`${prefix} ${firstError}`, "error");
+                    if (temporary) {
+                        enableSaveAfterRedundantDelay(firstError);
+                    }
+                    return;
+                }
+                const omieUpdated = result.resultados?.filter((item) => item.omie === "alterado").length || 0;
+                const onlyLocal = result.resultados?.filter((item) => item.omie !== "alterado").length || 0;
+                if (omieUpdated) {
+                    const suffix = onlyLocal ? ` ${onlyLocal} alteracao(oes) salva(s) no BI.` : "";
+                    const message = `${omieUpdated} lancamento(s) reagendado(s) no Omie com sucesso.${suffix}`;
+                    setSaveFeedback(message, "success");
+                    openSuccessModal(message);
+                } else {
+                    const message = "Aprovacoes salvas no BI com sucesso.";
+                    setSaveFeedback(message, "success");
+                    openSuccessModal(message);
+                }
+            } catch (error) {
+                setSaveFeedback(error.message || "Nao foi possivel salvar.", "error");
+            } finally {
+                const hasTemporaryError = saveFeedback?.textContent?.includes("chamadas repetidas");
+                if (!hasTemporaryError) {
+                    isSavingPayments = false;
+                    saveButton.disabled = false;
+                }
+            }
+        });
+        if (paymentApproval.dataset.paymentOpenInitial === "pagamentos") {
+            setModalVisible(paymentModal, true);
+        }
+        if (paymentApproval.dataset.paymentOpenInitial === "recebimentos") {
+            setModalVisible(receiptsModal, true);
+        }
+        setupPaymentStatusChart();
+        updateBulkActions();
+        renderPaymentTotals();
+    }
+
     const dreDashboard = document.querySelector("[data-dre-dashboard]");
     if (!dreDashboard) return;
 

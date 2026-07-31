@@ -1,0 +1,305 @@
+{% load l10n %}
+<section
+    class="payment-approval-dashboard"
+    data-payment-approval-dashboard
+    data-payment-open-initial="{{ dados.abrir_modal }}"
+    data-payment-save-url="{% url 'dashboards:salvar_aprovacao_pagamentos' empresa.slug %}"
+>
+    <form class="payment-panel-period-form" method="get" data-payment-period-form>
+        <input type="hidden" name="modal" value="">
+        <div>
+            <span>Periodo do painel</span>
+            <strong>{{ dados.periodo_rotulo }}</strong>
+        </div>
+        <label>
+            <span>Data inicial</span>
+            <input type="date" name="aprovacao_inicio" value="{{ dados.periodo_inicio_iso }}" data-payment-date>
+        </label>
+        <label>
+            <span>Data final</span>
+            <input type="date" name="aprovacao_fim" value="{{ dados.periodo_fim_iso }}">
+        </label>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-search me-2"></i>Consultar
+        </button>
+    </form>
+
+    <div class="payment-approval-kpis">
+        <article class="payment-approval-kpi">
+            <span>Total a pagar no periodo</span>
+            <strong data-payment-total>{{ dados.total_pagar_curto }}</strong>
+            <small>{{ dados.periodo_rotulo }} · {{ dados.pagamentos_count }} lancamento(s)</small>
+        </article>
+        <article class="payment-approval-kpi payment-approval-kpi-positive">
+            <span>Saldo disponivel</span>
+            <strong>{{ dados.saldo_atual_curto }}</strong>
+            <small>Contas correntes visiveis</small>
+        </article>
+        <article class="payment-approval-kpi payment-approval-kpi-warning">
+            <span>Pendente de aprovacao</span>
+            <strong data-payment-pending-total>{{ dados.pendente_total }}</strong>
+            <small><span data-payment-pending-count>{{ dados.pendentes_count }}</span> lancamento(s) aguardando</small>
+        </article>
+        <article class="payment-approval-kpi">
+            <span>Taxa de aprovacao</span>
+            <strong data-payment-approval-rate>{{ dados.taxa_aprovacao }}%</strong>
+            <small>Meta: 95%</small>
+        </article>
+    </div>
+
+    <article class="payment-balance-card">
+        <div class="payment-balance-header">
+            <span>Comprometimento do saldo com pagamentos do periodo</span>
+            <strong>{{ dados.comprometimento }}%</strong>
+        </div>
+        <div class="payment-balance-track">
+            <span class="payment-balance-fill" style="width: {{ dados.comprometimento_largura }}%"></span>
+            <i></i>
+        </div>
+        <div class="payment-balance-scale">
+            <span>R$ 0</span>
+            <span>Alerta em 80% do saldo</span>
+            <span>{{ dados.saldo_atual }}</span>
+        </div>
+    </article>
+
+    <div class="payment-approval-grid">
+        <article class="payment-status-card">
+            <div class="payment-card-header">
+                <h2>Pagamentos por status</h2>
+            </div>
+            <div class="payment-donut" aria-label="Pagamentos por status">
+                <canvas width="168" height="168" data-payment-status-chart></canvas>
+            </div>
+            <div class="payment-legend">
+                <span><i class="payment-dot-approved"></i>Aprovado</span>
+                <span><i class="payment-dot-pending"></i>Pendente</span>
+                <span><i class="payment-dot-rescheduled"></i>Reagendado</span>
+            </div>
+        </article>
+
+        <article class="payment-category-card">
+            <div class="payment-card-header">
+                <h2>Valor por categoria</h2>
+            </div>
+            <div class="payment-category-list">
+                {% for categoria in dados.categorias %}
+                    <div class="payment-category-row">
+                        <span>{{ categoria.nome }}</span>
+                        <div><i style="width: {{ categoria.largura }}%"></i></div>
+                        <strong>{{ categoria.valor_fmt }}</strong>
+                    </div>
+                {% empty %}
+                    <div class="payment-empty">Sem pagamentos para a data selecionada.</div>
+                {% endfor %}
+            </div>
+        </article>
+    </div>
+
+    <div class="payment-actions">
+        <button type="button" class="btn btn-primary" data-open-payment-modal>
+            <i class="bi bi-check2-square me-2"></i>Abrir aprovacao de pagamentos
+        </button>
+        <button type="button" class="btn btn-white" data-open-receipts-modal>
+            <i class="bi bi-search me-2"></i>Consultar recebimentos do dia
+        </button>
+    </div>
+
+    <div class="payment-modal" data-payment-modal hidden>
+        <div class="payment-dialog" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
+            <header class="payment-dialog-header">
+                <h2 id="payment-modal-title">Aprovacao de pagamentos</h2>
+                <button type="button" class="payment-icon-button" data-close-payment-modal aria-label="Fechar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </header>
+            <div class="payment-dialog-summary">
+                <div>
+                    <span>Total pagamentos</span>
+                    <strong>{{ dados.total_pagar }}</strong>
+                </div>
+                <div>
+                    <span>Saldo disponivel</span>
+                    <strong>{{ dados.saldo_atual }}</strong>
+                </div>
+                <div>
+                    <span>Comprometimento</span>
+                    <strong>{{ dados.comprometimento }}%</strong>
+                </div>
+                <div>
+                    <span>Periodo</span>
+                    <strong>{{ dados.periodo_rotulo }}</strong>
+                </div>
+            </div>
+            <div class="payment-table-wrap">
+                <div class="payment-row payment-head">
+                    <label><input type="checkbox" data-payment-check-all></label>
+                    <span>Empresa</span>
+                    <span>Fornecedor / categoria</span>
+                    <span>Previsao</span>
+                    <span>Valor</span>
+                    <span>Status</span>
+                    <span>Acoes</span>
+                    <span></span>
+                </div>
+                <div class="payment-bulk-actions" data-payment-bulk-actions hidden>
+                    <strong><span data-payment-selected-count>0</span> selecionado(s)</strong>
+                    <button type="button" data-payment-bulk-approve>
+                        <i class="bi bi-check2"></i>Aprovar selecionados
+                    </button>
+                    <button type="button" data-payment-bulk-reschedule>
+                        <i class="bi bi-calendar3"></i>Reagendar selecionados
+                    </button>
+                    <div class="payment-bulk-date" data-payment-bulk-date hidden>
+                        <label>
+                            <span>Nova previsao</span>
+                            <input type="date" value="{{ dados.periodo_fim_iso }}" data-payment-bulk-new-date>
+                        </label>
+                        <button type="button" data-payment-bulk-apply-date>Aplicar data</button>
+                    </div>
+                </div>
+                <div data-payment-rows>
+                    {% for pagamento in dados.pagamentos %}
+                        <div
+                            class="payment-row"
+                            data-payment-row
+                            data-payment-id="{{ pagamento.id }}"
+                            data-payment-value="{{ pagamento.valor_num|unlocalize }}"
+                            data-payment-status="{{ pagamento.status_valor }}"
+                            data-payment-original-status="{{ pagamento.status_valor }}"
+                            data-payment-original-date="{{ pagamento.previsao }}"
+                            data-payment-sent-omie="{% if pagamento.enviado_omie %}true{% else %}false{% endif %}"
+                            data-payment-company="{{ pagamento.empresa }}"
+                            data-payment-name="{{ pagamento.nome }}"
+                            data-payment-category="{{ pagamento.categoria }}"
+                            data-payment-date="{{ pagamento.previsao_fmt }}"
+                            data-payment-value-label="{{ pagamento.valor_fmt }}"
+                        >
+                            <label><input type="checkbox" data-payment-check {% if pagamento.enviado_omie %}disabled{% endif %}></label>
+                            <span>{{ pagamento.empresa }}</span>
+                            <span>
+                                <strong>{{ pagamento.nome }}</strong>
+                                <small>{{ pagamento.categoria }}</small>
+                            </span>
+                            <span data-payment-due-label>
+                                <b data-payment-due-date>{{ pagamento.previsao_fmt }}</b>
+                                <small>Venc. {{ pagamento.vencimento_fmt }}</small>
+                            </span>
+                            <strong>{{ pagamento.valor_fmt }}</strong>
+                            <span>
+                                <em
+                                    class="payment-status payment-status-{{ pagamento.status_classe }}"
+                                    data-payment-status-label
+                                    title="{{ pagamento.erro_omie }}"
+                                >{{ pagamento.status }}</em>
+                            </span>
+                            <span class="payment-row-actions">
+                                <button type="button" data-payment-approve {% if pagamento.enviado_omie %}disabled title="Lancamento ja enviado ao Omie. Altere somente no Omie."{% endif %}>Aprovar</button>
+                                <button type="button" data-payment-reschedule {% if pagamento.enviado_omie %}disabled title="Lancamento ja enviado ao Omie. Altere somente no Omie."{% endif %}>Reagendar</button>
+                            </span>
+                            <button type="button" class="payment-reset-button" data-payment-reset aria-label="Voltar para pendente" {% if pagamento.enviado_omie %}disabled title="Lancamento ja enviado ao Omie. Altere somente no Omie."{% endif %}>
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                            <div class="payment-reschedule-box" data-payment-reschedule-box hidden>
+                                <label>
+                                    <span>Nova data</span>
+                                    <input type="date" value="{{ pagamento.previsao }}" data-payment-new-date>
+                                </label>
+                            </div>
+                        </div>
+                    {% empty %}
+                        <div class="payment-empty">Sem contas a pagar vencendo no periodo selecionado.</div>
+                    {% endfor %}
+                </div>
+            </div>
+            <footer class="payment-dialog-footer">
+                <span data-payment-save-feedback>Sem acao selecionada, o lancamento permanece pendente.</span>
+                <button type="button" class="btn btn-primary" data-payment-save>
+                    <i class="bi bi-save me-2"></i>Salvar
+                </button>
+            </footer>
+        </div>
+    </div>
+
+    <div class="payment-modal" data-receipts-modal hidden>
+        <div class="payment-dialog payment-receipts-dialog" role="dialog" aria-modal="true" aria-labelledby="receipts-modal-title">
+            <header class="payment-dialog-header">
+                <h2 id="receipts-modal-title">Recebimentos do dia</h2>
+                <button type="button" class="payment-icon-button" data-close-receipts-modal aria-label="Fechar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </header>
+            <div class="payment-dialog-summary payment-receipts-summary">
+                <div>
+                    <span>Total a receber</span>
+                    <strong>{{ dados.total_receber }}</strong>
+                </div>
+                <div>
+                    <span>Lancamentos</span>
+                    <strong>{{ dados.recebimentos_count }}</strong>
+                </div>
+                <div>
+                    <span>Periodo</span>
+                    <strong>{{ dados.periodo_rotulo }}</strong>
+                </div>
+            </div>
+            <div class="payment-table-wrap">
+                <div class="payment-row payment-receipt-row payment-head">
+                    <span>Empresa</span>
+                    <span>Cliente / categoria</span>
+                    <span>Vencimento</span>
+                    <span>Valor</span>
+                    <span>Status</span>
+                </div>
+                {% for recebimento in dados.recebimentos %}
+                    <div class="payment-row payment-receipt-row">
+                        <span>{{ recebimento.empresa }}</span>
+                        <span>
+                            <strong>{{ recebimento.nome }}</strong>
+                            <small>{{ recebimento.categoria }}</small>
+                        </span>
+                        <span>{{ recebimento.vencimento_fmt }}</span>
+                        <strong>{{ recebimento.valor_fmt }}</strong>
+                        <span><em class="payment-status payment-status-info">{{ recebimento.status }}</em></span>
+                    </div>
+                {% empty %}
+                    <div class="payment-empty">Sem contas a receber vencendo no periodo selecionado.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="payment-modal" data-payment-success-modal hidden>
+        <div class="payment-success-dialog" role="dialog" aria-modal="true" aria-labelledby="payment-success-title">
+            <div class="payment-success-icon">
+                <i class="bi bi-check2-circle"></i>
+            </div>
+            <h2 id="payment-success-title">Operacao concluida</h2>
+            <p data-payment-success-message>Aprovacoes salvas com sucesso.</p>
+            <button type="button" class="btn btn-primary" data-close-payment-success-modal>
+                <i class="bi bi-check2 me-2"></i>Ok
+            </button>
+        </div>
+    </div>
+
+    <div class="payment-modal" data-payment-status-detail-modal hidden>
+        <div class="payment-dialog payment-status-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="payment-status-detail-title">
+            <header class="payment-dialog-header">
+                <h2 id="payment-status-detail-title" data-payment-status-detail-title>Pagamentos</h2>
+                <button type="button" class="payment-icon-button" data-close-payment-status-detail aria-label="Fechar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </header>
+            <div class="payment-status-detail-summary" data-payment-status-detail-summary></div>
+            <div class="payment-table-wrap">
+                <div class="payment-status-detail-row payment-status-detail-head">
+                    <span>Empresa</span>
+                    <span>Fornecedor / categoria</span>
+                    <span>Previsao</span>
+                    <span>Valor</span>
+                </div>
+                <div data-payment-status-detail-rows></div>
+            </div>
+        </div>
+    </div>
+</section>

@@ -1,5 +1,7 @@
+import json
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -9,6 +11,7 @@ from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import faturamento_comercial
 from apps.dashboards.fluxo_caixa_services import fluxo_de_caixa
 from apps.dashboards.margem_rentabilidade_services import margem_rentabilidade_comercial
+from apps.dashboards.models import AprovacaoPagamento
 from apps.dashboards.visao_geral_services import visao_geral_financeira
 from apps.empresas.models import (
     CadastroOmie,
@@ -20,6 +23,7 @@ from apps.empresas.models import (
     DepartamentoOmie,
     Empresa,
     EmpresaUsuario,
+    IntegracaoOmie,
     LancamentoContaCorrenteOmie,
     MetaVendedorComercial,
     MovimentoFinanceiroOmie,
@@ -1591,6 +1595,272 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(detalhes["entradas"][0]["categoria"], "Assinaturas")
         self.assertEqual(detalhes["entradas"][0]["valor_fmt"], "R$ 900,00")
         self.assertEqual(detalhes["saidas"][0]["nome"], "Fornecedor Critico")
+
+    def test_aprovacao_de_pagamentos_exibe_painel_e_modal_do_dia(self):
+        hoje = date.today()
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=15001,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="Amazon AWS",
+        )
+        cliente = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=15002,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente recorrente",
+        )
+        fornecedor_anterior = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=15003,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="AWS anterior",
+        )
+        categoria = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.03.01",
+            descricao="Servicos em nuvem",
+        )
+        ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=601,
+            descricao="Conta principal",
+            saldo_atual=297182,
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61001,
+            fornecedor=fornecedor,
+            categoria_principal=categoria,
+            data_previsao=hoje,
+            data_vencimento=hoje,
+            valor_documento=12500,
+            valor_a_pagar=12500,
+            status_titulo="A VENCER",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61002,
+            fornecedor=fornecedor_anterior,
+            categoria_principal=categoria,
+            data_previsao=hoje - timedelta(days=7),
+            data_vencimento=hoje - timedelta(days=3),
+            valor_documento=9800,
+            valor_a_pagar=9800,
+            status_titulo="A VENCER",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=62001,
+            cliente=cliente,
+            categoria_principal=categoria,
+            data_vencimento=hoje,
+            valor_documento=4300,
+            valor_a_receber=4300,
+            status_titulo="A VENCER",
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "aprovacao-de-pagamentos",
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Aprovacao de pagamentos")
+        self.assertContains(response, "Abrir aprovacao de pagamentos")
+        self.assertContains(response, "Consultar recebimentos do dia")
+        self.assertContains(response, "Amazon AWS")
+        self.assertContains(response, "Servicos em nuvem")
+        self.assertContains(response, 'data-payment-value="12500.00"')
+        self.assertContains(response, "Aprovar")
+        self.assertContains(response, "Reagendar")
+        self.assertContains(response, "Aprovar selecionados")
+        self.assertContains(response, "Reagendar selecionados")
+        self.assertContains(response, "Nova previsao")
+        self.assertContains(response, "Previsao")
+        self.assertContains(response, "Periodo do painel")
+        self.assertNotContains(response, "Todos os projetos")
+        self.assertNotContains(response, "Todos os departamentos")
+        self.assertNotContains(response, "Limpar filtros")
+        self.assertNotContains(response, "Atualizar")
+        self.assertContains(response, "Cliente recorrente")
+        self.assertContains(response, 'data-payment-modal')
+        self.assertContains(response, 'data-payment-success-modal')
+        self.assertContains(response, 'data-payment-status-chart')
+        self.assertContains(response, 'data-payment-status-detail-modal')
+        self.assertContains(response, 'data-payment-status-detail-title')
+        self.assertContains(response, "Operacao concluida")
+        self.assertNotContains(response, "AWS anterior")
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "aprovacao-de-pagamentos",
+                },
+            ),
+            {
+                "modal": "pagamentos",
+                "aprovacao_inicio": (hoje - timedelta(days=7)).isoformat(),
+                "aprovacao_fim": hoje.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "AWS anterior")
+        self.assertContains(response, 'name="aprovacao_inicio"')
+        self.assertContains(response, 'data-payment-open-initial="pagamentos"')
+
+    @patch("apps.dashboards.aprovacao_pagamentos_services.alterar_conta_pagar")
+    def test_salvar_aprovacao_pagamentos_persiste_e_reagenda_na_omie(
+        self,
+        alterar_conta_pagar_mock,
+    ):
+        hoje = date.today()
+        nova_previsao = hoje + timedelta(days=5)
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        integracao = IntegracaoOmie(empresa=self.empresa, app_key="app-key")
+        integracao.definir_app_secret("app-secret")
+        integracao.save()
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=81001,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="Fornecedor lote",
+        )
+        conta_corrente = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=91001,
+            descricao="Conta principal",
+            saldo_atual=1000,
+        )
+        categoria = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.03.01",
+            descricao="Servicos",
+        )
+        conta_aprovada = ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=71001,
+            codigo_cliente_fornecedor=fornecedor.codigo_cliente_omie,
+            fornecedor=fornecedor,
+            id_conta_corrente=conta_corrente.codigo_omie,
+            conta_corrente=conta_corrente,
+            codigo_categoria=categoria.codigo,
+            categoria_principal=categoria,
+            data_previsao=hoje,
+            data_vencimento=hoje,
+            valor_documento=100,
+            valor_a_pagar=100,
+            status_titulo="A VENCER",
+        )
+        conta_reagendada = ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=71002,
+            codigo_cliente_fornecedor=fornecedor.codigo_cliente_omie,
+            fornecedor=fornecedor,
+            id_conta_corrente=conta_corrente.codigo_omie,
+            conta_corrente=conta_corrente,
+            codigo_categoria=categoria.codigo,
+            categoria_principal=categoria,
+            data_previsao=hoje,
+            data_vencimento=hoje + timedelta(days=2),
+            valor_documento=250,
+            valor_a_pagar=250,
+            status_titulo="A VENCER",
+        )
+        alterar_conta_pagar_mock.return_value = {
+            "codigo_status": "0",
+            "descricao_status": "Lancamento alterado com sucesso!",
+        }
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            reverse(
+                "dashboards:salvar_aprovacao_pagamentos",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            data=json.dumps(
+                {
+                    "itens": [
+                        {"id": conta_aprovada.pk, "status": "approved"},
+                        {
+                            "id": conta_reagendada.pk,
+                            "status": "rescheduled",
+                            "new_date": nova_previsao.isoformat(),
+                        },
+                    ]
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        dados_resposta = response.json()
+        self.assertIn(
+            {
+                "id": conta_reagendada.pk,
+                "status": "rescheduled",
+                "data_previsao": nova_previsao.isoformat(),
+                "omie": "alterado",
+            },
+            dados_resposta["resultados"],
+        )
+        conta_reagendada.refresh_from_db()
+        aprovacao_aprovada = AprovacaoPagamento.objects.get(conta_pagar=conta_aprovada)
+        aprovacao_reagendada = AprovacaoPagamento.objects.get(
+            conta_pagar=conta_reagendada
+        )
+        self.assertEqual(conta_reagendada.data_previsao, nova_previsao)
+        self.assertEqual(
+            aprovacao_aprovada.status,
+            AprovacaoPagamento.Status.APROVADO,
+        )
+        self.assertEqual(
+            aprovacao_reagendada.status,
+            AprovacaoPagamento.Status.REAGENDADO,
+        )
+        alterar_conta_pagar_mock.assert_called_once()
+        _, payload = alterar_conta_pagar_mock.call_args.args
+        self.assertEqual(payload["codigo_lancamento_omie"], 71002)
+        self.assertEqual(payload["data_previsao"], nova_previsao.strftime("%d/%m/%Y"))
+
+        alterar_conta_pagar_mock.reset_mock()
+        response = self.client.post(
+            reverse(
+                "dashboards:salvar_aprovacao_pagamentos",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            data=json.dumps(
+                {
+                    "itens": [
+                        {
+                            "id": conta_reagendada.pk,
+                            "status": "rescheduled",
+                            "new_date": nova_previsao.isoformat(),
+                        },
+                    ]
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 207)
+        self.assertEqual(
+            response.json()["erros"][0]["erro"],
+            "Lancamento ja enviado ao Omie. Altere somente no Omie.",
+        )
+        alterar_conta_pagar_mock.assert_not_called()
 
     def test_fluxo_de_caixa_usa_apenas_lancamentos_realizados(self):
         ano_atual = date.today().year
