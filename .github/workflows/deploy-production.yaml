@@ -62,7 +62,7 @@ jobs:
           timeout: 120s
           command_timeout: 45m
           script_stop: true
-          envs: SERVER_PATH,REPO_URL,GITHUB_SHA,APP_VERSION,PRODUCTION_HOST,POSTGRES_PASSWORD
+          envs: SERVER_PATH,REPO_URL,GITHUB_SHA,APP_VERSION,PRODUCTION_HOST,PRODUCTION_DOMAIN,POSTGRES_PASSWORD
           script: |
             set -euo pipefail
 
@@ -87,9 +87,10 @@ jobs:
             echo "[deploy] rendering production environment"
             mkdir -p .docker
             DEPLOY_PRODUCTION_HOST="${PRODUCTION_HOST:-}"
+            DEPLOY_PRODUCTION_DOMAIN="${PRODUCTION_DOMAIN:-app.insightwise.com.br}"
             DEPLOY_POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 
-            DOMAIN="$DEPLOY_PRODUCTION_HOST"
+            DOMAIN="$DEPLOY_PRODUCTION_DOMAIN"
             SECRET_KEY=""
             OMIE_CREDENTIALS_ENCRYPTION_KEY=""
             POSTGRES_PASSWORD="$DEPLOY_POSTGRES_PASSWORD"
@@ -115,7 +116,7 @@ jobs:
             write_default_env PROXY_CLIENT_MAX_BODY_SIZE "50M"
             write_default_env SECRET_KEY "${POSTGRES_PASSWORD}-django"
             write_default_env OMIE_CREDENTIALS_ENCRYPTION_KEY "${POSTGRES_PASSWORD}-omie"
-            write_default_env ALLOWED_HOSTS "${DOMAIN},127.0.0.1,localhost"
+            write_default_env ALLOWED_HOSTS "${DOMAIN},${DEPLOY_PRODUCTION_HOST},127.0.0.1,localhost"
             write_default_env POSTGRES_DB "west_bi"
             write_default_env POSTGRES_USER "west_user"
             write_env POSTGRES_PASSWORD
@@ -129,4 +130,5 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           APP_VERSION: ${{ github.sha }}
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN || secrets.PRODUCTION_DOMAIN || vars.DOMAIN || secrets.DOMAIN || 'app.insightwise.com.br' }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
