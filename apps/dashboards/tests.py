@@ -1617,6 +1617,12 @@ class DashboardPermissaoTests(TestCase):
             tipo=CadastroOmie.Tipo.FORNECEDOR,
             nome_fantasia="AWS anterior",
         )
+        fornecedor_pago = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=15004,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="DATATEM SOLUCOES",
+        )
         categoria = CategoriaOmie.objects.create(
             empresa=self.empresa,
             codigo="2.03.01",
@@ -1649,6 +1655,17 @@ class DashboardPermissaoTests(TestCase):
             valor_documento=9800,
             valor_a_pagar=9800,
             status_titulo="A VENCER",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61003,
+            fornecedor=fornecedor_pago,
+            categoria_principal=categoria,
+            data_previsao=hoje,
+            data_vencimento=hoje - timedelta(days=4),
+            valor_documento=1646,
+            valor_a_pagar=0,
+            status_titulo=" pago ",
         )
         ContaReceberOmie.objects.create(
             empresa=self.empresa,
@@ -1699,6 +1716,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, 'data-payment-status-detail-title')
         self.assertContains(response, "Operacao concluida")
         self.assertNotContains(response, "AWS anterior")
+        self.assertNotContains(response, "DATATEM SOLUCOES")
 
         response = self.client.get(
             reverse(
@@ -1718,6 +1736,7 @@ class DashboardPermissaoTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "AWS anterior")
+        self.assertNotContains(response, "DATATEM SOLUCOES")
         self.assertContains(response, 'name="aprovacao_inicio"')
         self.assertContains(response, 'data-payment-open-initial="pagamentos"')
 

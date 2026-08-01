@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.db.models import Sum
+from django.db.models.functions import Trim, Upper
 from django.utils.dateparse import parse_date
 
 from apps.dashboards.dre_services import _formatar_moeda
@@ -77,7 +78,11 @@ def _contas_pagar_do_periodo(inicio, fim, empresas_ids, projetos):
         empresa_id__in=empresas_ids,
         data_previsao__gte=inicio,
         data_previsao__lte=fim,
-    ).exclude(status_titulo__in=STATUS_FECHADOS_PAGAR)
+    ).annotate(
+        status_titulo_normalizado=Upper(Trim("status_titulo"))
+    ).exclude(
+        status_titulo_normalizado__in=STATUS_FECHADOS_PAGAR
+    )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
     return registros_com_conta_visivel_financeiro(
