@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    AgendamentoSincronizacaoOmie,
     CadastroOmie,
     CategoriaOmie,
     ContaCorrenteOmie,
@@ -676,15 +677,31 @@ class SincronizacaoOmieAdmin(admin.ModelAdmin):
     list_display = (
         "empresa",
         "recurso",
+        "origem",
+        "disparada_por",
         "status",
         "registros_processados",
         "total_registros",
         "criada_em",
     )
-    list_filter = ("empresa", "status", "recurso")
+    list_filter = ("empresa", "status", "origem", "recurso")
     readonly_fields = (
         "criada_em",
         "atualizada_em",
         "iniciada_em",
         "finalizada_em",
     )
+
+
+@admin.register(AgendamentoSincronizacaoOmie)
+class AgendamentoSincronizacaoOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "empresa",
+        "ativo",
+        "tipo_agendamento",
+        "horarios_texto",
+        "atualizado_por",
+        "atualizado_em",
+    )
+    list_filter = ("ativo", "tipo_agendamento", "empresa")
+    readonly_fields = ("criado_em", "atualizado_em")

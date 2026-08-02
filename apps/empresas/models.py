@@ -1,6 +1,7 @@
 import re
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
@@ -364,6 +365,10 @@ class ProdutoOmie(models.Model):
 
 
 class PosicaoEstoqueOmie(models.Model):
+    class Origem(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        AGENDADA = "agendada", "Agendada"
+
     empresa = models.ForeignKey(
         Empresa,
         on_delete=models.CASCADE,
@@ -1711,12 +1716,36 @@ class SincronizacaoOmie(models.Model):
         CONCLUIDA = "concluida", "Concluída"
         ERRO = "erro", "Erro"
 
+    class Origem(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        AGENDADA = "agendada", "Agendada"
+
     empresa = models.ForeignKey(
         Empresa,
         on_delete=models.CASCADE,
         related_name="sincronizacoes_omie",
     )
+    agendamento = models.ForeignKey(
+        "AgendamentoSincronizacaoOmie",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="execucoes",
+    )
+    disparada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sincronizacoes_omie_disparadas",
+    )
+    origem = models.CharField(
+        max_length=20,
+        choices=Origem.choices,
+        default=Origem.MANUAL,
+    )
     recurso = models.CharField(max_length=50, default="clientes")
+    agendada_para = models.DateTimeField(null=True, blank=True)
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -1735,6 +1764,12 @@ class SincronizacaoOmie(models.Model):
 
     class Meta:
         ordering = ["-criada_em"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "agendamento", "agendada_para"],
+                name="sync_omie_agendamento_horario_unico",
+            )
+        ]
         verbose_name = "sincronização OMIE"
         verbose_name_plural = "sincronizações OMIE"
 
@@ -1745,3 +1780,69 @@ class SincronizacaoOmie(models.Model):
         if self.total_paginas:
             return min(99, round((self.pagina_atual / self.total_paginas) * 100))
         return 0
+
+
+class AgendamentoSincronizacaoOmie(models.Model):
+    class Tipo(models.TextChoices):
+        DIAS_SEMANA = "dias_semana", "Dia da semana"
+        TODO_DIA = "todo_dia", "Todo dia"
+
+    DIAS_SEMANA = (
+        (0, "Segunda"),
+        (1, "Terca"),
+        (2, "Quarta"),
+        (3, "Quinta"),
+        (4, "Sexta"),
+        (5, "Sabado"),
+        (6, "Domingo"),
+    )
+
+    empresa = models.OneToOneField(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="agendamento_sincronizacao_omie",
+    )
+    ativo = models.BooleanField(default=False)
+    tipo_agendamento = models.CharField(
+        max_length=20,
+        choices=Tipo.choices,
+        default=Tipo.TODO_DIA,
+    )
+    dias_semana = models.JSONField(default=list, blank=True)
+    dia_mes = models.PositiveSmallIntegerField(null=True, blank=True)
+    horarios = models.JSONField(default=list, blank=True)
+    atualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="agendamentos_sincronizacao_omie_atualizados",
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["empresa__nome_fantasia"]
+        verbose_name = "agendamento de sincronizacao OMIE"
+        verbose_name_plural = "agendamentos de sincronizacao OMIE"
+
+    def clean(self):
+        horarios = self.horarios or []
+        if len(horarios) > 4:
+            raise ValidationError({"horarios": "Informe no maximo 4 horarios por dia."})
+        if self.ativo and not horarios:
+            raise ValidationError({"horarios": "Informe ao menos um horario."})
+        if self.tipo_agendamento == self.Tipo.DIAS_SEMANA and not self.dias_semana:
+            raise ValidationError({"dias_semana": "Selecione ao menos um dia da semana."})
+
+    @property
+    def horarios_texto(self):
+        return ", ".join(self.horarios or []) or "Nenhum horario"
+
+    @property
+    def dias_semana_texto(self):
+        mapa = {str(valor): rotulo for valor, rotulo in self.DIAS_SEMANA}
+        return ", ".join(mapa.get(str(dia), str(dia)) for dia in self.dias_semana or [])
+
+    def __str__(self):
+        return f"{self.empresa} - {self.get_tipo_agendamento_display()}"

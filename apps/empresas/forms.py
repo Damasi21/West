@@ -2,7 +2,13 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.db.models import Max
 
-from .models import ContaDRE, Empresa, EmpresaUsuario, IntegracaoOmie
+from .models import (
+    AgendamentoSincronizacaoOmie,
+    ContaDRE,
+    Empresa,
+    EmpresaUsuario,
+    IntegracaoOmie,
+)
 from .services import usuario_pode_gerenciar_vinculo
 
 
@@ -102,6 +108,106 @@ class IntegracaoOmieForm(forms.Form):
             integracao.definir_app_secret(self.cleaned_data["app_secret"])
         integracao.save()
         return integracao
+
+
+class AgendamentoSincronizacaoOmieForm(forms.ModelForm):
+    dias_semana = forms.MultipleChoiceField(
+        label="Dias da semana",
+        required=False,
+        choices=[
+            (str(valor), rotulo)
+            for valor, rotulo in AgendamentoSincronizacaoOmie.DIAS_SEMANA
+        ],
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "sync-native-weekday-select",
+                "size": 4,
+            }
+        ),
+    )
+    horario_1 = forms.TimeField(
+        label="Horario 1",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
+    )
+    horario_2 = forms.TimeField(
+        label="Horario 2",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
+    )
+    horario_3 = forms.TimeField(
+        label="Horario 3",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
+    )
+    horario_4 = forms.TimeField(
+        label="Horario 4",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
+    )
+
+    class Meta:
+        model = AgendamentoSincronizacaoOmie
+        fields = ("ativo", "tipo_agendamento", "dias_semana")
+        widgets = {
+            "ativo": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "tipo_agendamento": forms.Select(attrs={"class": "form-select"}),
+        }
+
+    def __init__(self, *args, empresa, usuario=None, **kwargs):
+        self.empresa = empresa
+        self.usuario = usuario
+        instance = kwargs.get("instance")
+        super().__init__(*args, **kwargs)
+        if not self.is_bound and instance:
+            self.initial["dias_semana"] = [
+                str(dia) for dia in instance.dias_semana or []
+            ]
+            for indice, horario in enumerate(instance.horarios or [], start=1):
+                self.initial[f"horario_{indice}"] = horario
+
+    def clean_dias_semana(self):
+        return [int(dia) for dia in self.cleaned_data.get("dias_semana", [])]
+
+    def clean(self):
+        cleaned = super().clean()
+        horarios = []
+        for indice in range(1, 5):
+            horario = cleaned.get(f"horario_{indice}")
+            if horario:
+                valor = horario.strftime("%H:%M")
+                if valor not in horarios:
+                    horarios.append(valor)
+        cleaned["horarios"] = horarios
+
+        ativo = cleaned.get("ativo")
+        tipo = cleaned.get("tipo_agendamento")
+        if ativo and not horarios:
+            raise forms.ValidationError("Informe ao menos um horario de sincronizacao.")
+        if len(horarios) > 4:
+            raise forms.ValidationError("Informe no maximo 4 horarios por dia.")
+        if tipo == AgendamentoSincronizacaoOmie.Tipo.DIAS_SEMANA and not cleaned.get(
+            "dias_semana"
+        ):
+            self.add_error("dias_semana", "Selecione ao menos um dia da semana.")
+        cleaned["dia_mes"] = None
+        if tipo != AgendamentoSincronizacaoOmie.Tipo.DIAS_SEMANA:
+            cleaned["dias_semana"] = []
+        self.instance.horarios = horarios
+        self.instance.dias_semana = cleaned.get("dias_semana", [])
+        self.instance.dia_mes = cleaned.get("dia_mes")
+        return cleaned
+
+    def save(self, commit=True):
+        agendamento = super().save(commit=False)
+        agendamento.empresa = self.empresa
+        agendamento.horarios = self.cleaned_data["horarios"]
+        agendamento.dias_semana = self.cleaned_data.get("dias_semana", [])
+        agendamento.atualizado_por = self.usuario
+        if commit:
+            agendamento.full_clean()
+            agendamento.save()
+        return agendamento
 
 
 class EmpresaUsuarioForm(forms.Form):

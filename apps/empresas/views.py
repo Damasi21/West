@@ -13,8 +13,15 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 
-from .forms import ContaDREForm, EmpresaForm, EmpresaUsuarioForm, IntegracaoOmieForm
+from .forms import (
+    AgendamentoSincronizacaoOmieForm,
+    ContaDREForm,
+    EmpresaForm,
+    EmpresaUsuarioForm,
+    IntegracaoOmieForm,
+)
 from .models import (
+    AgendamentoSincronizacaoOmie,
     CadastroOmie,
     CategoriaOmie,
     ContaDRE,
@@ -106,11 +113,28 @@ def configuracoes_empresas(request):
 def parametros(request, empresa_slug):
     empresa = _obter_empresa_administravel(empresa_slug)
     _exigir_administrador_empresa(request, empresa)
+    agendamento = AgendamentoSincronizacaoOmie.objects.filter(empresa=empresa).first()
+    formulario_postado = request.POST.get("formulario")
     form_omie = IntegracaoOmieForm(
-        request.POST or None,
+        request.POST
+        if request.method == "POST" and formulario_postado in (None, "omie")
+        else None,
         empresa=empresa,
     )
-    if request.method == "POST" and form_omie.is_valid():
+    form_agendamento = AgendamentoSincronizacaoOmieForm(
+        request.POST
+        if request.method == "POST" and formulario_postado == "sincronizacao"
+        else None,
+        empresa=empresa,
+        usuario=request.user,
+        instance=agendamento,
+    )
+    if request.method == "POST" and formulario_postado == "sincronizacao":
+        if form_agendamento.is_valid():
+            agendamento = form_agendamento.save()
+            messages.success(request, "Agendamento de sincronizacao salvo com sucesso.")
+            return redirect(f"{request.path}#sincronizacao-omie")
+    elif request.method == "POST" and form_omie.is_valid():
         form_omie.save()
         messages.success(
             request,
@@ -167,6 +191,16 @@ def parametros(request, empresa_slug):
                 kwargs={"empresa_slug": empresa.slug},
             ),
         },
+        {
+            "titulo": "Sincronizacao",
+            "descricao": "Agende atualizacoes automaticas da OMIE com ate 4 horarios por dia.",
+            "icone": "bi-robot",
+            "status": "Disponivel",
+            "url": reverse(
+                "dashboards:sincronizacao_omie",
+                kwargs={"empresa_slug": empresa.slug},
+            ),
+        },
     ]
     return render(
         request,
@@ -176,7 +210,77 @@ def parametros(request, empresa_slug):
             "empresa": empresa,
             "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
             "form_omie": form_omie,
+            "form_agendamento": form_agendamento,
+            "agendamento_sincronizacao": agendamento,
             "ultima_sincronizacao": empresa.sincronizacoes_omie.first(),
+            "total_cadastros_omie": empresa.cadastros_omie.count(),
+            "total_clientes_omie": empresa.cadastros_omie.filter(
+                tipo__in=[CadastroOmie.Tipo.CLIENTE, CadastroOmie.Tipo.AMBOS]
+            ).count(),
+            "total_fornecedores_omie": empresa.cadastros_omie.filter(
+                tipo__in=[CadastroOmie.Tipo.FORNECEDOR, CadastroOmie.Tipo.AMBOS]
+            ).count(),
+            "total_projetos_omie": empresa.projetos_omie.count(),
+            "total_departamentos_omie": empresa.departamentos_omie.count(),
+            "total_vendedores_omie": empresa.vendedores_omie.count(),
+            "total_produtos_omie": empresa.produtos_omie.count(),
+            "total_servicos_omie": empresa.servicos_omie.count(),
+            "total_ordens_servico_omie": empresa.ordens_servico_omie.count(),
+            "total_itens_ordem_servico_omie": (
+                empresa.itens_ordem_servico_omie.count()
+            ),
+            "total_contratos_omie": empresa.contratos_omie.count(),
+            "total_itens_contrato_omie": empresa.itens_contrato_omie.count(),
+            "total_categorias_omie": empresa.categorias_omie.count(),
+            "total_tipos_conta_corrente_omie": (
+                empresa.tipos_conta_corrente_omie.count()
+            ),
+            "total_contas_correntes_omie": empresa.contas_correntes_omie.count(),
+            "total_contas_pagar_omie": empresa.contas_pagar_omie.count(),
+            "total_contas_receber_omie": empresa.contas_receber_omie.count(),
+            "total_lancamentos_conta_corrente_omie": (
+                empresa.lancamentos_conta_corrente_omie.count()
+            ),
+            "total_pedidos_omie": empresa.pedidos_omie.count(),
+            "total_itens_pedido_omie": empresa.itens_pedido_omie.count(),
+        },
+    )
+
+
+@login_required
+def sincronizacao_omie(request, empresa_slug):
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
+    agendamento = AgendamentoSincronizacaoOmie.objects.filter(empresa=empresa).first()
+    form_agendamento = AgendamentoSincronizacaoOmieForm(
+        request.POST or None,
+        empresa=empresa,
+        usuario=request.user,
+        instance=agendamento,
+    )
+    if request.method == "POST" and form_agendamento.is_valid():
+        agendamento = form_agendamento.save()
+        messages.success(request, "Agendamento de sincronizacao salvo com sucesso.")
+        return redirect(
+            reverse(
+                "dashboards:sincronizacao_omie",
+                kwargs={"empresa_slug": empresa.slug},
+            )
+        )
+
+    form_omie = IntegracaoOmieForm(None, empresa=empresa)
+    ultima_sincronizacao = empresa.sincronizacoes_omie.first()
+    return render(
+        request,
+        "empresas/sincronizacao_omie.html",
+        {
+            "empresa": empresa,
+            "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
+            "form_omie": form_omie,
+            "form_agendamento": form_agendamento,
+            "agendamento_sincronizacao": agendamento,
+            "ultima_sincronizacao": ultima_sincronizacao,
+            "ultima_sincronizacao_info": _info_sincronizacao(ultima_sincronizacao),
             "total_cadastros_omie": empresa.cadastros_omie.count(),
             "total_clientes_omie": empresa.cadastros_omie.filter(
                 tipo__in=[CadastroOmie.Tipo.CLIENTE, CadastroOmie.Tipo.AMBOS]
@@ -660,6 +764,47 @@ def reordenar_contas_dre(request, empresa_slug):
     return JsonResponse({"ok": True})
 
 
+def _formatar_data_hora_sincronizacao(valor):
+    if not valor:
+        return ""
+    return timezone.localtime(valor).strftime("%d/%m/%Y %H:%M")
+
+
+def _formatar_duracao_sincronizacao(inicio, fim):
+    if not inicio:
+        return ""
+    fim = fim or timezone.now()
+    total_segundos = max(0, int((fim - inicio).total_seconds()))
+    horas, resto = divmod(total_segundos, 3600)
+    minutos, segundos = divmod(resto, 60)
+    if horas:
+        return f"{horas} h {minutos:02d} min"
+    if minutos:
+        return f"{minutos} min {segundos:02d} s"
+    return f"{segundos} s"
+
+
+def _info_sincronizacao(sincronizacao):
+    if not sincronizacao:
+        return {
+            "iniciada_em": "",
+            "finalizada_em": "",
+            "duracao": "",
+        }
+    return {
+        "iniciada_em": _formatar_data_hora_sincronizacao(
+            sincronizacao.iniciada_em
+        ),
+        "finalizada_em": _formatar_data_hora_sincronizacao(
+            sincronizacao.finalizada_em
+        ),
+        "duracao": _formatar_duracao_sincronizacao(
+            sincronizacao.iniciada_em,
+            sincronizacao.finalizada_em,
+        ),
+    }
+
+
 def _dados_sincronizacao(sincronizacao):
     return {
         "id": sincronizacao.pk,
@@ -672,6 +817,15 @@ def _dados_sincronizacao(sincronizacao):
         "total_registros": sincronizacao.total_registros,
         "mensagem": sincronizacao.mensagem,
         "erro": sincronizacao.erro,
+        **_info_sincronizacao(sincronizacao),
+        "origem": sincronizacao.origem,
+        "origem_label": sincronizacao.get_origem_display(),
+        "disparada_por": (
+            sincronizacao.disparada_por.get_full_name()
+            or sincronizacao.disparada_por.username
+            if sincronizacao.disparada_por_id
+            else ""
+        ),
     }
 
 
@@ -715,7 +869,9 @@ def sincronizar_clientes_omie(request, empresa_slug):
 
     sincronizacao = SincronizacaoOmie.objects.create(
         empresa=empresa,
-        recurso="cadastros",
+        recurso="completa",
+        origem=SincronizacaoOmie.Origem.MANUAL,
+        disparada_por=request.user,
         mensagem="Sincronização adicionada à fila.",
     )
     iniciar_sincronizacao_omie(sincronizacao.pk)

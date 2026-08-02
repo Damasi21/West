@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}Sincronizacao | {{ empresa.nome_fantasia }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">PARAMETROS</span>
+        <h1>Sincronizacao</h1>
+        <p>Agende e acompanhe a atualizacao automatica da base OMIE da {{ empresa.nome_fantasia }}.</p>
+    </div>
+    <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">
+        <i class="bi bi-arrow-left me-2"></i>Voltar
+    </a>
+</div>
+
+<article class="omie-settings-card sync-page-card">
+    <div class="omie-settings-header">
+        <div class="parameter-icon"><i class="bi bi-robot"></i></div>
+        <div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h2>Sincronizacao OMIE</h2>
+                <span class="integration-status {% if agendamento_sincronizacao and agendamento_sincronizacao.ativo %}is-active{% endif %}">
+                    {% if agendamento_sincronizacao and agendamento_sincronizacao.ativo %}Ativa{% else %}Inativa{% endif %}
+                </span>
+            </div>
+            <p class="mb-0">Configure dias e horarios, execute manualmente e acompanhe o progresso.</p>
+        </div>
+    </div>
+
+    {% include "empresas/partials/sincronizacao_omie_card.html" %}
+</article>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (() => {
+        const panel = document.querySelector("[data-omie-sync]");
+        if (!panel) return;
+
+        const button = panel.querySelector("[data-sync-start]");
+        const progress = panel.querySelector("[data-sync-progress]");
+        const bar = panel.querySelector("[data-sync-bar]");
+        const percent = panel.querySelector("[data-sync-percent]");
+        const message = panel.querySelector("[data-sync-message]");
+        const detail = panel.querySelector("[data-sync-detail]");
+        const errorBox = panel.querySelector("[data-sync-error]");
+        const startedAt = panel.querySelector("[data-sync-started-at]");
+        const finishedAt = panel.querySelector("[data-sync-finished-at]");
+        const duration = panel.querySelector("[data-sync-duration]");
+        const frequency = document.querySelector("[name=tipo_agendamento]");
+        const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
+        let timer = null;
+
+        document.querySelectorAll("[data-weekday-dropdown]").forEach((dropdown) => {
+            const select = dropdown.previousElementSibling;
+            const summary = dropdown.querySelector("[data-weekday-summary]");
+            const menu = dropdown.querySelector(".sync-weekday-menu");
+            const toggle = dropdown.querySelector(".sync-weekday-toggle");
+            const checks = [...dropdown.querySelectorAll("[data-weekday-option]")];
+
+            function updateSummary() {
+                if (frequency?.value === "todo_dia") {
+                    summary.textContent = "Todos os dias";
+                    return;
+                }
+                const selected = [...select.selectedOptions].map((option) => option.text);
+                summary.textContent = selected.length ? selected.join(", ") : "Selecione os dias";
+            }
+
+            function syncAvailability() {
+                const disabled = frequency?.value === "todo_dia";
+                select.disabled = disabled;
+                toggle.disabled = disabled;
+                dropdown.classList.toggle("is-disabled", disabled);
+                checks.forEach((check) => {
+                    check.disabled = disabled;
+                });
+                updateSummary();
+            }
+
+            menu?.addEventListener("click", (event) => event.stopPropagation());
+            checks.forEach((check) => {
+                const option = [...select.options].find(
+                    (item) => item.value === check.value
+                );
+                check.checked = Boolean(option?.selected);
+                check.addEventListener("click", (event) => event.stopPropagation());
+                check.addEventListener("change", () => {
+                    if (option) option.selected = check.checked;
+                    updateSummary();
+                });
+            });
+            frequency?.addEventListener("change", syncAvailability);
+            syncAvailability();
+        });
+
+        const statusUrl = (id) =>
+            panel.dataset.statusUrlTemplate.replace("999999999", id);
+
+        function render(data) {
+            const value = Math.max(0, Math.min(100, data.percentual || 0));
+            progress.classList.remove("d-none");
+            bar.style.width = `${value}%`;
+            bar.classList.toggle("bg-danger", data.status === "erro");
+            percent.textContent = `${value}%`;
+            message.textContent = data.mensagem || data.status_label || "Sincronizando...";
+            detail.textContent = data.total_registros
+                ? `${data.registros_processados} de ${data.total_registros} registros`
+                : `${data.registros_processados || 0} registros processados`;
+            startedAt.textContent = data.iniciada_em || "-";
+            finishedAt.textContent = data.finalizada_em || "-";
+            duration.textContent = data.duracao || "-";
+
+            const finished = data.status === "concluida" || data.status === "erro";
+            button.disabled = !finished;
+            button.querySelector("span").textContent = finished
+                ? "Atualizar dados da OMIE"
+                : "Atualizando...";
+
+            errorBox.classList.toggle("d-none", data.status !== "erro");
+            errorBox.textContent = data.erro || "";
+
+            if (data.totais) {
+                panel.querySelector("[data-total-cadastros]").textContent = data.totais.cadastros;
+                panel.querySelector("[data-total-clientes]").textContent = data.totais.clientes;
+                panel.querySelector("[data-total-fornecedores]").textContent = data.totais.fornecedores;
+                panel.querySelector("[data-total-projetos]").textContent = data.totais.projetos;
+                panel.querySelector("[data-total-departamentos]").textContent = data.totais.departamentos;
+                panel.querySelector("[data-total-vendedores]").textContent = data.totais.vendedores;
+                panel.querySelector("[data-total-produtos]").textContent = data.totais.produtos;
+                panel.querySelector("[data-total-servicos]").textContent = data.totais.servicos;
+                panel.querySelector("[data-total-contratos]").textContent = data.totais.contratos;
+                panel.querySelector("[data-total-itens-contrato]").textContent = data.totais.itens_contrato;
+                panel.querySelector("[data-total-ordens-servico]").textContent = data.totais.ordens_servico;
+                panel.querySelector("[data-total-itens-ordem-servico]").textContent = data.totais.itens_ordem_servico;
+                panel.querySelector("[data-total-categorias]").textContent = data.totais.categorias;
+                panel.querySelector("[data-total-tipos-conta-corrente]").textContent = data.totais.tipos_conta_corrente;
+                panel.querySelector("[data-total-contas-correntes]").textContent = data.totais.contas_correntes;
+                panel.querySelector("[data-total-contas-pagar]").textContent = data.totais.contas_pagar;
+                panel.querySelector("[data-total-contas-receber]").textContent = data.totais.contas_receber;
+                panel.querySelector("[data-total-lancamentos-conta-corrente]").textContent = data.totais.lancamentos_conta_corrente;
+                panel.querySelector("[data-total-pedidos]").textContent = data.totais.pedidos;
+                panel.querySelector("[data-total-itens-pedido]").textContent = data.totais.itens_pedido;
+            }
+            return finished;
+        }
+
+        async function poll(id) {
+            try {
+                const response = await fetch(statusUrl(id), {
+                    headers: {"X-Requested-With": "XMLHttpRequest"},
+                });
+                if (!response.ok) throw new Error("Nao foi possivel consultar o progresso.");
+                const data = await response.json();
+                if (!render(data)) timer = window.setTimeout(() => poll(id), 1000);
+            } catch (error) {
+                button.disabled = false;
+                errorBox.textContent = error.message;
+                errorBox.classList.remove("d-none");
+            }
+        }
+
+        button?.addEventListener("click", async () => {
+            window.clearTimeout(timer);
+            button.disabled = true;
+            errorBox.classList.add("d-none");
+            progress.classList.remove("d-none");
+            message.textContent = "Iniciando sincronizacao...";
+            try {
+                const response = await fetch(panel.dataset.startUrl, {
+                    method: "POST",
+                    headers: {
+                        "X-CSRFToken": csrfToken,
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.erro || "Nao foi possivel iniciar.");
+                render(data);
+                poll(data.id);
+            } catch (error) {
+                button.disabled = false;
+                errorBox.textContent = error.message;
+                errorBox.classList.remove("d-none");
+            }
+        });
+
+        if (
+            panel.dataset.lastSyncId &&
+            ["pendente", "em_andamento"].includes(panel.dataset.lastSyncStatus)
+        ) {
+            button.disabled = true;
+            poll(panel.dataset.lastSyncId);
+        }
+    })();
+</script>
+{% endblock %}
