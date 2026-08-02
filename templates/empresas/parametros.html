@@ -55,9 +55,41 @@
         </div>
     </div>
 
-    <article class="omie-settings-card" id="integracao-omie">
+    <div class="data-source-grid" data-source-tabs>
+        <button class="data-source-card is-active" type="button" data-source-target="omie">
+            <span class="data-source-logo">
+                <img src="/media/omie_icone.png" alt="Omie">
+            </span>
+            <span>
+                <strong>Omie</strong>
+                <small>API financeira e cadastros</small>
+            </span>
+        </button>
+        <button class="data-source-card" type="button" data-source-target="conta-azul">
+            <span class="data-source-logo">
+                <img src="/media/contaazul_icone.jpg" alt="Conta Azul">
+            </span>
+            <span>
+                <strong>Conta Azul</strong>
+                <small>Credenciais da API</small>
+            </span>
+        </button>
+        <button class="data-source-card" type="button" data-source-target="excel">
+            <span class="data-source-logo">
+                <img src="/media/excel_icone.png" alt="Excel">
+            </span>
+            <span>
+                <strong>Excel</strong>
+                <small>Importacao por planilha</small>
+            </span>
+        </button>
+    </div>
+
+    <article class="omie-settings-card data-source-panel is-active" id="integracao-omie" data-source-panel="omie">
             <div class="omie-settings-header">
-                <div class="parameter-icon"><i class="bi bi-cloud-arrow-down"></i></div>
+                <div class="data-source-logo is-large">
+                    <img src="/media/omie_icone.png" alt="Omie">
+                </div>
                 <div>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <h2>Integração OMIE</h2>
@@ -77,6 +109,7 @@
 
             <form method="post" novalidate>
                 {% csrf_token %}
+                <input type="hidden" name="formulario" value="omie">
 
                 <div class="row g-4">
                     <div class="col-md-6">
@@ -118,86 +151,69 @@
                     </button>
                 </div>
             </form>
-
-            <section
-                class="omie-sync-panel"
-                data-omie-sync
-                data-start-url="{% url 'dashboards:sincronizar_clientes_omie' empresa.slug %}"
-                data-status-url-template="{% url 'dashboards:status_sincronizacao_omie' empresa.slug 999999999 %}"
-                {% if ultima_sincronizacao %}data-last-sync-id="{{ ultima_sincronizacao.id }}"{% endif %}
-                data-last-sync-status="{{ ultima_sincronizacao.status|default:'' }}"
-            >
-                <div class="omie-sync-heading">
-                    <div>
-                        <span class="eyebrow">BASE LOCAL</span>
-                        <h3>Dados da OMIE</h3>
-                        <p>Atualiza cadastros, projetos, categorias e dados financeiros na base local.</p>
-                    </div>
-                    <button
-                        class="btn btn-primary"
-                        type="button"
-                        data-sync-start
-                        {% if not form_omie.integracao or not form_omie.integracao.ativa %}disabled{% endif %}
-                    >
-                        <i class="bi bi-arrow-repeat me-2"></i>
-                        <span>Atualizar dados da OMIE</span>
-                    </button>
-                </div>
-
-                <div class="omie-sync-totals">
-                    <div><span>Cadastros</span><strong data-total-cadastros>{{ total_cadastros_omie }}</strong></div>
-                    <div><span>Clientes</span><strong data-total-clientes>{{ total_clientes_omie }}</strong></div>
-                    <div><span>Fornecedores</span><strong data-total-fornecedores>{{ total_fornecedores_omie }}</strong></div>
-                    <div><span>Projetos</span><strong data-total-projetos>{{ total_projetos_omie }}</strong></div>
-                    <div><span>Departamentos</span><strong data-total-departamentos>{{ total_departamentos_omie }}</strong></div>
-                    <div><span>Vendedores</span><strong data-total-vendedores>{{ total_vendedores_omie }}</strong></div>
-                    <div><span>Produtos</span><strong data-total-produtos>{{ total_produtos_omie }}</strong></div>
-                    <div><span>Servicos</span><strong data-total-servicos>{{ total_servicos_omie }}</strong></div>
-                    <div><span>Contratos</span><strong data-total-contratos>{{ total_contratos_omie }}</strong></div>
-                    <div><span>Itens contrato</span><strong data-total-itens-contrato>{{ total_itens_contrato_omie }}</strong></div>
-                    <div><span>Ordens servico</span><strong data-total-ordens-servico>{{ total_ordens_servico_omie }}</strong></div>
-                    <div><span>Itens OS</span><strong data-total-itens-ordem-servico>{{ total_itens_ordem_servico_omie }}</strong></div>
-                    <div><span>Categorias</span><strong data-total-categorias>{{ total_categorias_omie }}</strong></div>
-                    <div><span>Tipos de conta</span><strong data-total-tipos-conta-corrente>{{ total_tipos_conta_corrente_omie }}</strong></div>
-                    <div><span>Contas correntes</span><strong data-total-contas-correntes>{{ total_contas_correntes_omie }}</strong></div>
-                    <div><span>Contas a pagar</span><strong data-total-contas-pagar>{{ total_contas_pagar_omie }}</strong></div>
-                    <div><span>Contas a receber</span><strong data-total-contas-receber>{{ total_contas_receber_omie }}</strong></div>
-                    <div><span>Pedidos</span><strong data-total-pedidos>{{ total_pedidos_omie }}</strong></div>
-                    <div><span>Itens pedido</span><strong data-total-itens-pedido>{{ total_itens_pedido_omie }}</strong></div>
-                    <div><span>Lançamentos CC</span><strong data-total-lancamentos-conta-corrente>{{ total_lancamentos_conta_corrente_omie }}</strong></div>
-                </div>
-
-                <div class="omie-sync-progress {% if not ultima_sincronizacao %}d-none{% endif %}" data-sync-progress>
-                    <div class="d-flex justify-content-between gap-3 mb-2">
-                        <span data-sync-message>
-                            {% if ultima_sincronizacao %}{{ ultima_sincronizacao.mensagem }}{% endif %}
-                        </span>
-                        <strong data-sync-percent>
-                            {% if ultima_sincronizacao %}{{ ultima_sincronizacao.percentual }}%{% else %}0%{% endif %}
-                        </strong>
-                    </div>
-                    <div
-                        class="progress"
-                        role="progressbar"
-                        aria-label="Progresso da sincronização OMIE"
-                        aria-valuemin="0"
-                        aria-valuemax="100"
-                    >
-                        <div
-                            class="progress-bar"
-                            data-sync-bar
-                            style="width: {% if ultima_sincronizacao %}{{ ultima_sincronizacao.percentual }}{% else %}0{% endif %}%"
-                        ></div>
-                    </div>
-                    <small data-sync-detail>
-                        {% if ultima_sincronizacao %}
-                            {{ ultima_sincronizacao.registros_processados }} de {{ ultima_sincronizacao.total_registros }} registros
-                        {% endif %}
-                    </small>
-                    <div class="alert alert-danger mt-3 mb-0 d-none" data-sync-error></div>
-                </div>
-            </section>
     </article>
+
+    <article class="omie-settings-card data-source-panel" data-source-panel="conta-azul">
+        <div class="omie-settings-header">
+            <div class="data-source-logo is-large">
+                <img src="/media/contaazul_icone.jpg" alt="Conta Azul">
+            </div>
+            <div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h2>Integracao Conta Azul</h2>
+                    <span class="integration-status">Planejada</span>
+                </div>
+                <p class="mb-0">Campos reservados para a futura integracao da {{ empresa.nome_fantasia }}.</p>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-md-6">
+                <label class="form-label" for="conta-azul-app-key">App Key</label>
+                <input class="form-control" id="conta-azul-app-key" type="text" placeholder="Disponivel em breve" disabled>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="conta-azul-app-secret">App Secret</label>
+                <input class="form-control" id="conta-azul-app-secret" type="password" placeholder="Disponivel em breve" disabled>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button class="btn btn-outline-secondary" type="button" disabled>
+                <i class="bi bi-plug me-2"></i>Testar conexao
+            </button>
+            <button class="btn btn-primary" type="button" disabled>
+                <i class="bi bi-shield-check me-2"></i>Salvar credenciais
+            </button>
+        </div>
+    </article>
+
+    <article class="omie-settings-card data-source-panel" data-source-panel="excel">
+        <div class="omie-settings-header">
+            <div class="data-source-logo is-large">
+                <img src="/media/excel_icone.png" alt="Excel">
+            </div>
+            <div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h2>Importacao Excel</h2>
+                    <span class="integration-status">Planejada</span>
+                </div>
+                <p class="mb-0">Importacao de planilhas para alimentar a base local.</p>
+            </div>
+        </div>
+
+        <div class="excel-import-placeholder">
+            <i class="bi bi-file-earmark-spreadsheet"></i>
+            <div>
+                <strong>Importacao por planilha</strong>
+                <span>A dinamica de layout, validacao e processamento sera definida na proxima etapa.</span>
+            </div>
+            <button class="btn btn-outline-secondary" type="button" disabled>
+                Selecionar planilha
+            </button>
+        </div>
+    </article>
+
 </div>
 {% endblock %}
 
@@ -210,115 +226,21 @@
         this.querySelector("i").className = showing ? "bi bi-eye" : "bi bi-eye-slash";
     });
 
-    (() => {
-        const panel = document.querySelector("[data-omie-sync]");
-        if (!panel) return;
+    document.querySelectorAll("[data-source-tabs]").forEach((tabs) => {
+        const cards = [...tabs.querySelectorAll("[data-source-target]")];
+        const panels = [...document.querySelectorAll("[data-source-panel]")];
 
-        const button = panel.querySelector("[data-sync-start]");
-        const progress = panel.querySelector("[data-sync-progress]");
-        const bar = panel.querySelector("[data-sync-bar]");
-        const percent = panel.querySelector("[data-sync-percent]");
-        const message = panel.querySelector("[data-sync-message]");
-        const detail = panel.querySelector("[data-sync-detail]");
-        const errorBox = panel.querySelector("[data-sync-error]");
-        const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
-        let timer = null;
-
-        const statusUrl = (id) =>
-            panel.dataset.statusUrlTemplate.replace("999999999", id);
-
-        function render(data) {
-            const value = Math.max(0, Math.min(100, data.percentual || 0));
-            progress.classList.remove("d-none");
-            bar.style.width = `${value}%`;
-            bar.classList.toggle("bg-danger", data.status === "erro");
-            percent.textContent = `${value}%`;
-            message.textContent = data.mensagem || data.status_label || "Sincronizando...";
-            detail.textContent = data.total_registros
-                ? `${data.registros_processados} de ${data.total_registros} registros`
-                : `${data.registros_processados || 0} registros processados`;
-
-            const finished = data.status === "concluida" || data.status === "erro";
-            button.disabled = !finished;
-            button.querySelector("span").textContent = finished
-                ? "Atualizar dados da OMIE"
-                : "Atualizando...";
-
-            errorBox.classList.toggle("d-none", data.status !== "erro");
-            errorBox.textContent = data.erro || "";
-
-            if (data.totais) {
-                panel.querySelector("[data-total-cadastros]").textContent = data.totais.cadastros;
-                panel.querySelector("[data-total-clientes]").textContent = data.totais.clientes;
-                panel.querySelector("[data-total-fornecedores]").textContent = data.totais.fornecedores;
-                panel.querySelector("[data-total-projetos]").textContent = data.totais.projetos;
-                panel.querySelector("[data-total-departamentos]").textContent = data.totais.departamentos;
-                panel.querySelector("[data-total-vendedores]").textContent = data.totais.vendedores;
-                panel.querySelector("[data-total-produtos]").textContent = data.totais.produtos;
-                panel.querySelector("[data-total-servicos]").textContent = data.totais.servicos;
-                panel.querySelector("[data-total-contratos]").textContent = data.totais.contratos;
-                panel.querySelector("[data-total-itens-contrato]").textContent = data.totais.itens_contrato;
-                panel.querySelector("[data-total-ordens-servico]").textContent = data.totais.ordens_servico;
-                panel.querySelector("[data-total-itens-ordem-servico]").textContent = data.totais.itens_ordem_servico;
-                panel.querySelector("[data-total-categorias]").textContent = data.totais.categorias;
-                panel.querySelector("[data-total-tipos-conta-corrente]").textContent = data.totais.tipos_conta_corrente;
-                panel.querySelector("[data-total-contas-correntes]").textContent = data.totais.contas_correntes;
-                panel.querySelector("[data-total-contas-pagar]").textContent = data.totais.contas_pagar;
-                panel.querySelector("[data-total-contas-receber]").textContent = data.totais.contas_receber;
-                panel.querySelector("[data-total-lancamentos-conta-corrente]").textContent = data.totais.lancamentos_conta_corrente;
-                panel.querySelector("[data-total-pedidos]").textContent = data.totais.pedidos;
-                panel.querySelector("[data-total-itens-pedido]").textContent = data.totais.itens_pedido;
-            }
-            return finished;
-        }
-
-        async function poll(id) {
-            try {
-                const response = await fetch(statusUrl(id), {
-                    headers: {"X-Requested-With": "XMLHttpRequest"},
+        cards.forEach((card) => {
+            card.addEventListener("click", () => {
+                const target = card.dataset.sourceTarget;
+                cards.forEach((item) => {
+                    item.classList.toggle("is-active", item === card);
                 });
-                if (!response.ok) throw new Error("Não foi possível consultar o progresso.");
-                const data = await response.json();
-                if (!render(data)) timer = window.setTimeout(() => poll(id), 1000);
-            } catch (error) {
-                button.disabled = false;
-                errorBox.textContent = error.message;
-                errorBox.classList.remove("d-none");
-            }
-        }
-
-        button?.addEventListener("click", async () => {
-            window.clearTimeout(timer);
-            button.disabled = true;
-            errorBox.classList.add("d-none");
-            progress.classList.remove("d-none");
-            message.textContent = "Iniciando sincronização...";
-            try {
-                const response = await fetch(panel.dataset.startUrl, {
-                    method: "POST",
-                    headers: {
-                        "X-CSRFToken": csrfToken,
-                        "X-Requested-With": "XMLHttpRequest",
-                    },
+                panels.forEach((panel) => {
+                    panel.classList.toggle("is-active", panel.dataset.sourcePanel === target);
                 });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.erro || "Não foi possível iniciar.");
-                render(data);
-                poll(data.id);
-            } catch (error) {
-                button.disabled = false;
-                errorBox.textContent = error.message;
-                errorBox.classList.remove("d-none");
-            }
+            });
         });
-
-        if (
-            panel.dataset.lastSyncId &&
-            ["pendente", "em_andamento"].includes(panel.dataset.lastSyncStatus)
-        ) {
-            button.disabled = true;
-            poll(panel.dataset.lastSyncId);
-        }
-    })();
+    });
 </script>
 {% endblock %}

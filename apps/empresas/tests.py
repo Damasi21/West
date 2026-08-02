@@ -1,18 +1,20 @@
 import json
 from datetime import timedelta
 from decimal import Decimal
-from io import BytesIO
+from io import BytesIO, StringIO
 from unittest.mock import patch
 from urllib.error import URLError
 
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
 from .models import (
+    AgendamentoSincronizacaoOmie,
     CadastroOmie,
     CategoriaOmie,
     ContaCorrenteOmie,
@@ -305,6 +307,58 @@ class ParametrosOmieTests(TestCase):
         )
         self.assertContains(response, "Credenciais exclusivas de")
         self.assertContains(response, self.empresa.nome_fantasia)
+        self.assertContains(response, "Omie")
+        self.assertContains(response, "Conta Azul")
+        self.assertContains(response, "Excel")
+        self.assertContains(response, "/media/omie_icone.png")
+        self.assertContains(response, "/media/contaazul_icone.jpg")
+        self.assertContains(response, "/media/excel_icone.png")
+        self.assertContains(response, "Integracao Conta Azul")
+        self.assertContains(response, "Importacao Excel")
+        self.assertContains(response, "Selecionar planilha")
+        self.assertContains(response, "Sincronizacao")
+        self.assertContains(
+            response,
+            reverse(
+                "dashboards:sincronizacao_omie",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+        )
+        self.assertNotContains(response, "Limite de 4 atualizacoes por dia.")
+
+    def test_pagina_de_sincronizacao_exibe_configuracao_completa(self):
+        self.client.force_login(self.administrador)
+        fim = timezone.now()
+        SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            status=SincronizacaoOmie.Status.CONCLUIDA,
+            iniciada_em=fim - timedelta(minutes=15, seconds=7),
+            finalizada_em=fim,
+            mensagem="Sincronizacao concluida.",
+        )
+
+        response = self.client.get(
+            reverse(
+                "dashboards:sincronizacao_omie",
+                kwargs={"empresa_slug": self.empresa.slug},
+            )
+        )
+
+        self.assertContains(response, "Sincronizacao")
+        self.assertContains(response, "Sincronizacao automatica ativa")
+        self.assertContains(response, "Limite de 4 atualizacoes por dia.")
+        self.assertContains(response, "Dia da semana")
+        self.assertContains(response, "Todo dia")
+        self.assertContains(response, "multiple")
+        self.assertContains(response, "Selecione os dias")
+        self.assertContains(response, "Use quando a frequencia for dia da semana.")
+        self.assertNotContains(response, "Segure Ctrl")
+        self.assertNotContains(response, "Dia especifico do mes")
+        self.assertContains(response, "Atualizar dados da OMIE")
+        self.assertContains(response, "Inicio da ultima sincronizacao")
+        self.assertContains(response, "Finalizacao")
+        self.assertContains(response, "Tempo de sincronizacao")
+        self.assertContains(response, "15 min")
 
     def test_salva_credenciais_isoladas_e_criptografadas(self):
         self.client.force_login(self.administrador)
@@ -350,6 +404,48 @@ class ParametrosOmieTests(TestCase):
         integracao.refresh_from_db()
         self.assertEqual(integracao.app_key, "key-nova")
         self.assertEqual(integracao.obter_app_secret(), "secret-original")
+
+    def test_salva_agendamento_de_sincronizacao_omie(self):
+        self.client.force_login(self.administrador)
+
+        response = self.client.post(
+            reverse(
+                "dashboards:sincronizacao_omie",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            {
+                "ativo": "on",
+                "tipo_agendamento": AgendamentoSincronizacaoOmie.Tipo.DIAS_SEMANA,
+                "dias_semana": ["0", "2", "4"],
+                "horario_1": "07:00",
+                "horario_2": "12:30",
+                "horario_3": "18:00",
+                "horario_4": "21:15",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "dashboards:sincronizacao_omie",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+        )
+        agendamento = AgendamentoSincronizacaoOmie.objects.get(empresa=self.empresa)
+        self.assertTrue(agendamento.ativo)
+        self.assertEqual(agendamento.dias_semana, [0, 2, 4])
+        self.assertEqual(agendamento.horarios, ["07:00", "12:30", "18:00", "21:15"])
+        self.assertEqual(agendamento.atualizado_por, self.administrador)
+
+    def test_agendamento_limita_quatro_horarios_por_dia(self):
+        agendamento = AgendamentoSincronizacaoOmie(
+            empresa=self.empresa,
+            ativo=True,
+            horarios=["07:00", "10:00", "13:00", "16:00", "19:00"],
+        )
+
+        with self.assertRaisesMessage(Exception, "maximo 4 horarios"):
+            agendamento.full_clean()
 
 
 class EstruturaDRETests(TestCase):
@@ -1035,6 +1131,9 @@ class SincronizacaoClientesOmieTests(TestCase):
         sincronizacao = SincronizacaoOmie.objects.get(empresa=self.empresa)
         iniciar_mock.assert_called_once_with(sincronizacao.pk)
         self.assertEqual(response.json()["status"], SincronizacaoOmie.Status.PENDENTE)
+        self.assertEqual(sincronizacao.origem, SincronizacaoOmie.Origem.MANUAL)
+        self.assertEqual(sincronizacao.disparada_por, self.administrador)
+        self.assertEqual(sincronizacao.recurso, "completa")
 
     @patch("apps.empresas.views.iniciar_sincronizacao_omie")
     def test_nova_sincronizacao_substitui_pendente_obsoleta(self, iniciar_mock):
@@ -1113,7 +1212,79 @@ class SincronizacaoClientesOmieTests(TestCase):
             response.json()["status"],
             SincronizacaoOmie.Status.EM_ANDAMENTO,
         )
+        self.assertIn("iniciada_em", response.json())
+        self.assertIn("finalizada_em", response.json())
+        self.assertIn("duracao", response.json())
         encerrar_mock.assert_not_called()
+
+    @patch(
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+    )
+    def test_command_executa_sincronizacao_agendada_vencida(self, executar_mock):
+        horario = (timezone.localtime() - timedelta(minutes=5)).strftime("%H:%M")
+        agendamento = AgendamentoSincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            ativo=True,
+            tipo_agendamento=AgendamentoSincronizacaoOmie.Tipo.TODO_DIA,
+            horarios=[horario],
+        )
+        saida = StringIO()
+
+        call_command("executar_sincronizacoes_agendadas", stdout=saida)
+
+        sincronizacao = SincronizacaoOmie.objects.get(
+            empresa=self.empresa,
+            agendamento=agendamento,
+        )
+        self.assertEqual(sincronizacao.origem, SincronizacaoOmie.Origem.AGENDADA)
+        self.assertEqual(sincronizacao.recurso, "completa")
+        self.assertIsNotNone(sincronizacao.agendada_para)
+        executar_mock.assert_called_once_with(sincronizacao.pk)
+        self.assertIn("Sincronizacoes criadas/executadas: 1", saida.getvalue())
+
+    @patch(
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+    )
+    def test_command_nao_duplica_mesmo_horario_agendado(self, executar_mock):
+        horario = (timezone.localtime() - timedelta(minutes=5)).strftime("%H:%M")
+        agendamento = AgendamentoSincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            ativo=True,
+            tipo_agendamento=AgendamentoSincronizacaoOmie.Tipo.TODO_DIA,
+            horarios=[horario],
+        )
+
+        call_command("executar_sincronizacoes_agendadas", stdout=StringIO())
+        call_command("executar_sincronizacoes_agendadas", stdout=StringIO())
+
+        self.assertEqual(
+            SincronizacaoOmie.objects.filter(agendamento=agendamento).count(),
+            1,
+        )
+        executar_mock.assert_called_once()
+
+    @patch(
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+    )
+    def test_command_ignora_horario_antigo_fora_da_tolerancia(self, executar_mock):
+        horario = (timezone.localtime() - timedelta(hours=2)).strftime("%H:%M")
+        agendamento = AgendamentoSincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            ativo=True,
+            tipo_agendamento=AgendamentoSincronizacaoOmie.Tipo.TODO_DIA,
+            horarios=[horario],
+        )
+
+        call_command(
+            "executar_sincronizacoes_agendadas",
+            tolerancia_minutos=10,
+            stdout=StringIO(),
+        )
+
+        self.assertFalse(
+            SincronizacaoOmie.objects.filter(agendamento=agendamento).exists()
+        )
+        executar_mock.assert_not_called()
 
     @patch("apps.empresas.omie.urlopen")
     def test_consultas_novas_usam_os_contratos_da_omie(self, urlopen_mock):

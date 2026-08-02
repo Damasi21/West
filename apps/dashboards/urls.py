@@ -31,6 +31,11 @@ urlpatterns = [
         name="usuarios",
     ),
     path(
+        "parametros/sincronizacao/",
+        empresas_views.sincronizacao_omie,
+        name="sincronizacao_omie",
+    ),
+    path(
         "parametros/dre-categorias/planilha/exportar/",
         empresas_views.exportar_planilha_dre,
         name="exportar_planilha_dre",

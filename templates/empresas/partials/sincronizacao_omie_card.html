@@ -1,0 +1,169 @@
+<div class="sync-card-body">
+    <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="formulario" value="sincronizacao">
+
+        <div class="row g-4">
+            <div class="col-12">
+                <div class="form-check form-switch">
+                    {{ form_agendamento.ativo }}
+                    <label class="form-check-label" for="{{ form_agendamento.ativo.id_for_label }}">Sincronizacao automatica ativa</label>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="{{ form_agendamento.tipo_agendamento.id_for_label }}">{{ form_agendamento.tipo_agendamento.label }}</label>
+                {{ form_agendamento.tipo_agendamento }}
+                {% for error in form_agendamento.tipo_agendamento.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="{{ form_agendamento.dias_semana.id_for_label }}">{{ form_agendamento.dias_semana.label }}</label>
+                {{ form_agendamento.dias_semana }}
+                <div class="dropdown sync-weekday-dropdown" data-weekday-dropdown>
+                    <button
+                        class="btn sync-weekday-toggle dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                        data-weekday-summary
+                    >
+                        Selecione os dias
+                    </button>
+                    <div class="dropdown-menu sync-weekday-menu">
+                        {% for valor, rotulo in form_agendamento.fields.dias_semana.choices %}
+                            <label class="sync-weekday-check">
+                                <input class="form-check-input" type="checkbox" value="{{ valor }}" data-weekday-option>
+                                <span>{{ rotulo }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="form-text">Use quando a frequencia for dia da semana.</div>
+                {% for error in form_agendamento.dias_semana.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Horarios do dia</label>
+                <div class="sync-time-grid">
+                    {{ form_agendamento.horario_1 }}
+                    {{ form_agendamento.horario_2 }}
+                    {{ form_agendamento.horario_3 }}
+                    {{ form_agendamento.horario_4 }}
+                </div>
+                <div class="form-text">Limite de 4 atualizacoes por dia.</div>
+            </div>
+        </div>
+
+        {% for error in form_agendamento.non_field_errors %}
+            <div class="alert alert-danger mt-4 mb-0">{{ error }}</div>
+        {% endfor %}
+
+        <div class="sync-schedule-summary">
+            {% if agendamento_sincronizacao %}
+                <span>Agenda atual:</span>
+                <strong>{{ agendamento_sincronizacao.get_tipo_agendamento_display }}</strong>
+                <span>{{ agendamento_sincronizacao.horarios_texto }}</span>
+            {% else %}
+                <span>Nenhum agendamento salvo.</span>
+            {% endif %}
+        </div>
+
+        <div class="form-actions">
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-clock-history me-2"></i>Salvar sincronizacao
+            </button>
+        </div>
+    </form>
+
+    <section
+        class="omie-sync-panel"
+        data-omie-sync
+        data-start-url="{% url 'dashboards:sincronizar_clientes_omie' empresa.slug %}"
+        data-status-url-template="{% url 'dashboards:status_sincronizacao_omie' empresa.slug 999999999 %}"
+        {% if ultima_sincronizacao %}data-last-sync-id="{{ ultima_sincronizacao.id }}"{% endif %}
+        data-last-sync-status="{{ ultima_sincronizacao.status|default:'' }}"
+    >
+        <div class="omie-sync-heading">
+            <div>
+                <span class="eyebrow">BASE LOCAL</span>
+                <h3>Dados da OMIE</h3>
+                <p>Atualiza cadastros, projetos, categorias e dados financeiros na base local.</p>
+            </div>
+            <button
+                class="btn btn-primary"
+                type="button"
+                data-sync-start
+                {% if not form_omie.integracao or not form_omie.integracao.ativa %}disabled{% endif %}
+            >
+                <i class="bi bi-arrow-repeat me-2"></i>
+                <span>Atualizar dados da OMIE</span>
+            </button>
+        </div>
+
+        <div class="sync-last-run" aria-label="Ultima sincronizacao da OMIE">
+            <div>
+                <span>Inicio da ultima sincronizacao</span>
+                <strong data-sync-started-at>{{ ultima_sincronizacao_info.iniciada_em|default:"-" }}</strong>
+            </div>
+            <div>
+                <span>Finalizacao</span>
+                <strong data-sync-finished-at>{{ ultima_sincronizacao_info.finalizada_em|default:"-" }}</strong>
+            </div>
+            <div>
+                <span>Tempo de sincronizacao</span>
+                <strong data-sync-duration>{{ ultima_sincronizacao_info.duracao|default:"-" }}</strong>
+            </div>
+        </div>
+
+        <div class="omie-sync-totals">
+            <div><span>Cadastros</span><strong data-total-cadastros>{{ total_cadastros_omie }}</strong></div>
+            <div><span>Clientes</span><strong data-total-clientes>{{ total_clientes_omie }}</strong></div>
+            <div><span>Fornecedores</span><strong data-total-fornecedores>{{ total_fornecedores_omie }}</strong></div>
+            <div><span>Projetos</span><strong data-total-projetos>{{ total_projetos_omie }}</strong></div>
+            <div><span>Departamentos</span><strong data-total-departamentos>{{ total_departamentos_omie }}</strong></div>
+            <div><span>Vendedores</span><strong data-total-vendedores>{{ total_vendedores_omie }}</strong></div>
+            <div><span>Produtos</span><strong data-total-produtos>{{ total_produtos_omie }}</strong></div>
+            <div><span>Servicos</span><strong data-total-servicos>{{ total_servicos_omie }}</strong></div>
+            <div><span>Contratos</span><strong data-total-contratos>{{ total_contratos_omie }}</strong></div>
+            <div><span>Itens contrato</span><strong data-total-itens-contrato>{{ total_itens_contrato_omie }}</strong></div>
+            <div><span>Ordens servico</span><strong data-total-ordens-servico>{{ total_ordens_servico_omie }}</strong></div>
+            <div><span>Itens OS</span><strong data-total-itens-ordem-servico>{{ total_itens_ordem_servico_omie }}</strong></div>
+            <div><span>Categorias</span><strong data-total-categorias>{{ total_categorias_omie }}</strong></div>
+            <div><span>Tipos de conta</span><strong data-total-tipos-conta-corrente>{{ total_tipos_conta_corrente_omie }}</strong></div>
+            <div><span>Contas correntes</span><strong data-total-contas-correntes>{{ total_contas_correntes_omie }}</strong></div>
+            <div><span>Contas a pagar</span><strong data-total-contas-pagar>{{ total_contas_pagar_omie }}</strong></div>
+            <div><span>Contas a receber</span><strong data-total-contas-receber>{{ total_contas_receber_omie }}</strong></div>
+            <div><span>Pedidos</span><strong data-total-pedidos>{{ total_pedidos_omie }}</strong></div>
+            <div><span>Itens pedido</span><strong data-total-itens-pedido>{{ total_itens_pedido_omie }}</strong></div>
+            <div><span>Lancamentos CC</span><strong data-total-lancamentos-conta-corrente>{{ total_lancamentos_conta_corrente_omie }}</strong></div>
+        </div>
+
+        <div class="omie-sync-progress {% if not ultima_sincronizacao %}d-none{% endif %}" data-sync-progress>
+            <div class="d-flex justify-content-between gap-3 mb-2">
+                <span data-sync-message>
+                    {% if ultima_sincronizacao %}{{ ultima_sincronizacao.mensagem }}{% endif %}
+                </span>
+                <strong data-sync-percent>
+                    {% if ultima_sincronizacao %}{{ ultima_sincronizacao.percentual }}%{% else %}0%{% endif %}
+                </strong>
+            </div>
+            <div
+                class="progress"
+                role="progressbar"
+                aria-label="Progresso da sincronizacao OMIE"
+                aria-valuemin="0"
+                aria-valuemax="100"
+            >
+                <div
+                    class="progress-bar"
+                    data-sync-bar
+                    style="width: {% if ultima_sincronizacao %}{{ ultima_sincronizacao.percentual }}{% else %}0{% endif %}%"
+                ></div>
+            </div>
+            <small data-sync-detail>
+                {% if ultima_sincronizacao %}
+                    {{ ultima_sincronizacao.registros_processados }} de {{ ultima_sincronizacao.total_registros }} registros
+                {% endif %}
+            </small>
+            <div class="alert alert-danger mt-3 mb-0 d-none" data-sync-error></div>
+        </div>
+    </section>
+</div>
