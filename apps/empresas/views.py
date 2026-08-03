@@ -44,6 +44,7 @@ from .services import (
     empresas_permitidas,
     obter_empresa_permitida,
     usuario_admin_empresa,
+    usuario_gestor_empresa,
     usuario_pode_gerenciar_vinculo,
 )
 
@@ -90,6 +91,11 @@ def _exigir_administrador_empresa(request, empresa):
         raise PermissionDenied
 
 
+def _exigir_gestor_empresa(request, empresa):
+    if not usuario_gestor_empresa(request.user, empresa):
+        raise PermissionDenied
+
+
 def _obter_empresa_administravel(empresa_slug):
     return get_object_or_404(Empresa, slug=empresa_slug, ativa=True)
 
@@ -112,7 +118,7 @@ def configuracoes_empresas(request):
 @login_required
 def parametros(request, empresa_slug):
     empresa = _obter_empresa_administravel(empresa_slug)
-    _exigir_administrador_empresa(request, empresa)
+    _exigir_gestor_empresa(request, empresa)
     agendamento = AgendamentoSincronizacaoOmie.objects.filter(empresa=empresa).first()
     formulario_postado = request.POST.get("formulario")
     form_omie = IntegracaoOmieForm(

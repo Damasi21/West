@@ -299,6 +299,25 @@ class ParametrosOmieTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_gestor_acessa_parametros(self):
+        EmpresaUsuario.objects.create(
+            empresa=self.empresa,
+            usuario=self.cliente,
+            papel=EmpresaUsuario.Papel.GESTOR,
+        )
+        self.client.force_login(self.cliente)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:parametros",
+                kwargs={"empresa_slug": self.empresa.slug},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Par")
+        self.assertContains(response, self.empresa.nome_fantasia)
+
     def test_administrador_seleciona_empresa(self):
         self.client.force_login(self.administrador)
         response = self.client.get(

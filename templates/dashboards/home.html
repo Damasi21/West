@@ -10,7 +10,7 @@
         <p>Acompanhe as principais áreas da {{ empresa.nome_fantasia }}.</p>
     </div>
     <div class="page-heading-actions">
-        {% if pode_administrar_empresa %}
+        {% if pode_ver_parametros %}
             <a class="btn btn-primary" href="{% url 'dashboards:parametros' empresa.slug %}">
                 <i class="bi bi-sliders2 me-2"></i>Parâmetros
             </a>
