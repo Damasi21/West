@@ -26,6 +26,8 @@ OMIE_CREDENTIALS_ENCRYPTION_KEY = os.getenv(
 OMIE_API_TIMEOUT = int(os.getenv("OMIE_API_TIMEOUT", "90"))
 OMIE_API_RETRIES = int(os.getenv("OMIE_API_RETRIES", "3"))
 OMIE_API_RETRY_DELAY = int(os.getenv("OMIE_API_RETRY_DELAY", "2"))
+OMIE_API_REDUNDANT_DELAY = int(os.getenv("OMIE_API_REDUNDANT_DELAY", "60"))
+OMIE_API_REDUNDANT_BUFFER = int(os.getenv("OMIE_API_REDUNDANT_BUFFER", "5"))
 DEBUG = os.getenv("DEBUG", "True").lower() in {"1", "true", "yes"}
 ALLOWED_HOSTS = [
     host.strip()

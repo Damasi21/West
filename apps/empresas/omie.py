@@ -1,4 +1,5 @@
 import json
+import re
 import ssl
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -67,6 +68,91 @@ class OmieAPIError(Exception):
     pass
 
 
+class _RespostaOmieLocal:
+    def __init__(self, dados):
+        self._dados = dados
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self):
+        return json.dumps(self._dados).encode("utf-8")
+
+
+def _detalhe_http_omie(exc):
+    corpo = exc.read().decode("utf-8", errors="replace")
+    if not corpo:
+        return f"resposta sem corpo ({exc.reason or 'sem detalhe'})"
+    try:
+        dados = json.loads(corpo)
+    except json.JSONDecodeError:
+        return corpo
+    if not isinstance(dados, dict):
+        return corpo
+    for chave in ("faultstring", "message", "error", "faultcode"):
+        detalhe = dados.get(chave)
+        if detalhe:
+            return detalhe
+    return corpo
+
+
+def _eh_consumo_redundante_omie(detalhe):
+    detalhe_normalizado = str(detalhe or "").casefold()
+    return (
+        "redundant" in detalhe_normalizado
+        or "consumo redundante" in detalhe_normalizado
+    )
+
+
+def _eh_pagina_sem_registros_omie(detalhe):
+    detalhe_normalizado = str(detalhe or "").casefold()
+    return (
+        "não existem registros para a página" in detalhe_normalizado
+        or "nao existem registros para a pagina" in detalhe_normalizado
+    )
+
+
+def _pagina_requisicao_omie(request):
+    try:
+        payload = json.loads(request.data.decode("utf-8"))
+    except (AttributeError, json.JSONDecodeError, UnicodeDecodeError):
+        return 1
+    parametros = payload.get("param") or [{}]
+    if not parametros or not isinstance(parametros[0], dict):
+        return 1
+    return parametros[0].get("pagina") or parametros[0].get("nPagina") or 1
+
+
+def _resposta_sem_registros_omie(request):
+    pagina = _pagina_requisicao_omie(request)
+    return _RespostaOmieLocal(
+        {
+            "pagina": pagina,
+            "nPagina": pagina,
+            "total_de_paginas": 1,
+            "total_de_registros": 0,
+            "nTotPaginas": 1,
+            "nTotRegistros": 0,
+        }
+    )
+
+
+def _espera_consumo_redundante_omie(detalhe):
+    espera_padrao = getattr(settings, "OMIE_API_REDUNDANT_DELAY", 60)
+    margem = getattr(settings, "OMIE_API_REDUNDANT_BUFFER", 5)
+    resultado = re.search(
+        r"aguarde\s+(\d+)\s+segundos",
+        str(detalhe),
+        re.IGNORECASE,
+    )
+    if resultado:
+        return int(resultado.group(1)) + margem
+    return espera_padrao + margem
+
+
 def _fechar_conexoes_antigas_fora_de_transacao():
     if not connection.in_atomic_block:
         close_old_connections()
@@ -79,6 +165,20 @@ def _abrir_requisicao_omie(request, timeout):
     for tentativa in range(1, tentativas + 1):
         try:
             return urlopen(request, timeout=timeout, context=SSL_CONTEXT)
+        except HTTPError as exc:
+            detalhe = _detalhe_http_omie(exc)
+            if exc.code == 500:
+                if _eh_pagina_sem_registros_omie(detalhe):
+                    return _resposta_sem_registros_omie(request)
+                if _eh_consumo_redundante_omie(detalhe):
+                    ultimo_erro = OmieAPIError(
+                        f"OMIE respondeu HTTP {exc.code}: {detalhe}"
+                    )
+                    if tentativa == tentativas:
+                        raise ultimo_erro from exc
+                    time.sleep(_espera_consumo_redundante_omie(detalhe))
+                    continue
+            raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
         except (URLError, TimeoutError) as exc:
             ultimo_erro = exc
             if tentativa == tentativas:
@@ -2742,6 +2842,9 @@ def executar_sincronizacao_omie(sincronizacao_id):
         ]
 
         for recurso in recursos:
+            contexto_atual = f"Consultando {recurso['nome']}"
+            sincronizacao.mensagem = f"{contexto_atual}..."
+            sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
             recurso["primeira_resposta"] = recurso["consultar"](integracao, 1)
             chave_total_paginas = recurso.get(
                 "chave_total_paginas",
@@ -2778,6 +2881,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
         for recurso in recursos:
             inicio_recurso = timezone.now()
             for pagina in range(1, recurso["total_paginas"] + 1):
+                contexto_atual = f"{recurso['nome']}: pagina {pagina}"
                 resposta = (
                     recurso["primeira_resposta"]
                     if pagina == 1
@@ -2851,7 +2955,8 @@ def executar_sincronizacao_omie(sincronizacao_id):
     except Exception as exc:
         sincronizacao.status = SincronizacaoOmie.Status.ERRO
         sincronizacao.finalizada_em = timezone.now()
-        sincronizacao.erro = str(exc)[:2000]
+        contexto = locals().get("contexto_atual") or sincronizacao.mensagem
+        sincronizacao.erro = f"{contexto}: {exc}"[:2000]
         sincronizacao.mensagem = "A sincronização não foi concluída."
         sincronizacao.save(
             update_fields=[

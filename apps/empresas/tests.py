@@ -3,7 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
 from unittest.mock import patch
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -43,6 +43,8 @@ from .models import (
     VendedorOmie,
 )
 from .omie import (
+    OmieAPIError,
+    _salvar_categorias,
     consultar_clientes,
     consultar_contratos,
     consultar_contas_correntes,
@@ -1537,6 +1539,101 @@ class SincronizacaoClientesOmieTests(TestCase):
 
         self.assertEqual(dados["pagina"], 1)
         self.assertEqual(urlopen_mock.call_count, 2)
+
+    @override_settings(OMIE_API_RETRIES=2)
+    @patch("apps.empresas.omie.time.sleep")
+    @patch("apps.empresas.omie.urlopen")
+    def test_consulta_omie_tenta_novamente_quando_consumo_e_redundante(
+        self,
+        urlopen_mock,
+        sleep_mock,
+    ):
+        resposta = urlopen_mock.return_value
+        resposta.__enter__.return_value.read.return_value = (
+            b'{"pagina": 1, "total_de_paginas": 1, "total_de_registros": 0}'
+        )
+        erro_redundante = HTTPError(
+            "https://app.omie.com.br/api/v1/geral/clientes/",
+            500,
+            "Internal Server Error",
+            hdrs=None,
+            fp=BytesIO(
+                b'{"faultstring": "ERROR: Consumo redundante detectado. '
+                b'Aguarde 55 segundos para tentar novamente (REDUNDANT)."}'
+            ),
+        )
+        urlopen_mock.side_effect = [erro_redundante, resposta]
+
+        dados = consultar_clientes(self.integracao, 1)
+
+        self.assertEqual(dados["pagina"], 1)
+        self.assertEqual(urlopen_mock.call_count, 2)
+        sleep_mock.assert_called_once_with(60)
+
+    @override_settings(OMIE_API_RETRIES=2)
+    @patch("apps.empresas.omie.urlopen")
+    def test_consulta_omie_preserva_detalhe_de_http_error(self, urlopen_mock):
+        erro_omie = HTTPError(
+            "https://app.omie.com.br/api/v1/geral/clientes/",
+            500,
+            "Internal Server Error",
+            hdrs=None,
+            fp=BytesIO(b'{"faultstring": "Credenciais invalidas."}'),
+        )
+        urlopen_mock.side_effect = erro_omie
+
+        with self.assertRaisesMessage(
+            OmieAPIError,
+            "OMIE respondeu HTTP 500: Credenciais invalidas.",
+        ):
+            consultar_clientes(self.integracao, 1)
+
+    @override_settings(OMIE_API_RETRIES=2)
+    @patch("apps.empresas.omie.urlopen")
+    def test_consulta_omie_trata_pagina_sem_registros_como_lista_vazia(
+        self,
+        urlopen_mock,
+    ):
+        erro_sem_registros = HTTPError(
+            "https://app.omie.com.br/api/v1/geral/clientes/",
+            500,
+            "Internal Server Error",
+            hdrs=None,
+            fp=BytesIO(
+                b'{"faultstring": "ERROR: Nao existem registros para a pagina [1]!"}'
+            ),
+        )
+        urlopen_mock.side_effect = erro_sem_registros
+
+        dados = consultar_clientes(self.integracao, 1)
+
+        self.assertEqual(dados["pagina"], 1)
+        self.assertEqual(dados["total_de_paginas"], 1)
+        self.assertEqual(dados["total_de_registros"], 0)
+        self.assertEqual(dados.get("clientes_cadastro", []), [])
+        self.assertEqual(urlopen_mock.call_count, 1)
+
+    def test_salva_categoria_omie_com_codigo_maior_que_vinte_caracteres(self):
+        codigo = "1.02.03.04.05.06.07.08.09"
+        categoria_superior = "1.02.03.04.05.06.07"
+        tag_conta_contabil = "TAG-CONTABIL-COM-MAIS-DE-VINTE-CARACTERES"
+
+        processados = _salvar_categorias(
+            self.empresa,
+            [
+                {
+                    "codigo": codigo,
+                    "categoria_superior": categoria_superior,
+                    "descricao": "Categoria longa",
+                    "tag_conta_contabil": tag_conta_contabil,
+                }
+            ],
+        )
+
+        categoria = CategoriaOmie.objects.get(empresa=self.empresa, codigo=codigo)
+        self.assertEqual(processados, 1)
+        self.assertEqual(categoria.categoria_superior, categoria_superior)
+        self.assertEqual(categoria.tag_conta_contabil, tag_conta_contabil)
 
     @patch("apps.empresas.omie.consultar_extrato_conta_corrente")
     @patch("apps.empresas.omie.consultar_resumo_financas")
