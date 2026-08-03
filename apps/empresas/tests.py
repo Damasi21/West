@@ -2331,6 +2331,19 @@ class SincronizacaoClientesOmieTests(TestCase):
                 }
             ],
         }
+        conta_pagar_obsoleta = ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=999001,
+            data_previsao=timezone.localdate(),
+            data_vencimento=timezone.localdate(),
+            valor_documento=100,
+            valor_a_pagar=100,
+            status_titulo="A VENCER",
+            ativo_omie=True,
+        )
+        ContaPagarOmie.objects.filter(pk=conta_pagar_obsoleta.pk).update(
+            ultima_presenca_omie=timezone.now() - timedelta(days=2)
+        )
         sincronizacao = SincronizacaoOmie.objects.create(empresa=self.empresa)
 
         executar_sincronizacao_omie(sincronizacao.pk)
@@ -2493,10 +2506,14 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(str(conta_pagar.valor_documento), "74.89")
         self.assertEqual(str(conta_pagar.valor_a_pagar), "74.89")
         self.assertEqual(conta_pagar.status_titulo, "ATRASADO")
+        self.assertTrue(conta_pagar.ativo_omie)
+        self.assertIsNotNone(conta_pagar.ultima_presenca_omie)
         self.assertEqual(
             conta_pagar.cnab_integracao_bancaria["codigo_forma_pagamento"],
             "PIX",
         )
+        conta_pagar_obsoleta.refresh_from_db()
+        self.assertFalse(conta_pagar_obsoleta.ativo_omie)
         movimento = MovimentoFinanceiroOmie.objects.get(
             codigo_titulo=1344090316
         )

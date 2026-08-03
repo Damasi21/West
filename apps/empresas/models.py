@@ -1271,6 +1271,8 @@ class ContaPagarOmie(models.Model):
     cnab_integracao_bancaria = models.JSONField(default=dict, blank=True)
     info = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -1290,6 +1292,10 @@ class ContaPagarOmie(models.Model):
             models.Index(
                 fields=["empresa", "status_titulo"],
                 name="conta_pagar_emp_status_idx",
+            ),
+            models.Index(
+                fields=["empresa", "ativo_omie"],
+                name="conta_pagar_emp_ativo_idx",
             ),
         ]
         verbose_name = "conta a pagar OMIE"

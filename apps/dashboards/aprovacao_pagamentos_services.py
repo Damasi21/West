@@ -76,6 +76,7 @@ def _saldo_contas_correntes(empresas_ids):
 def _contas_pagar_do_periodo(inicio, fim, empresas_ids, projetos):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_previsao__gte=inicio,
         data_previsao__lte=fim,
     ).annotate(

@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import faturamento_comercial
@@ -35,6 +36,7 @@ from apps.empresas.models import (
     ProdutoOmie,
     ProjetoOmie,
     ServicoOmie,
+    SincronizacaoOmie,
     VendedorOmie,
 )
 
@@ -1623,10 +1625,23 @@ class DashboardPermissaoTests(TestCase):
             tipo=CadastroOmie.Tipo.FORNECEDOR,
             nome_fantasia="DATATEM SOLUCOES",
         )
+        fornecedor_orfao = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=15005,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="Lancamento removido Omie",
+        )
         categoria = CategoriaOmie.objects.create(
             empresa=self.empresa,
             codigo="2.03.01",
             descricao="Servicos em nuvem",
+        )
+        SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            recurso="completa",
+            status=SincronizacaoOmie.Status.CONCLUIDA,
+            iniciada_em=timezone.now() - timedelta(hours=1),
+            finalizada_em=timezone.now() - timedelta(minutes=55),
         )
         ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
@@ -1667,6 +1682,18 @@ class DashboardPermissaoTests(TestCase):
             valor_a_pagar=0,
             status_titulo=" pago ",
         )
+        conta_orfa = ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61004,
+            fornecedor=fornecedor_orfao,
+            categoria_principal=categoria,
+            data_previsao=hoje,
+            data_vencimento=hoje,
+            valor_documento=700,
+            valor_a_pagar=700,
+            status_titulo="A VENCER",
+            ativo_omie=False,
+        )
         ContaReceberOmie.objects.create(
             empresa=self.empresa,
             codigo_lancamento_omie=62001,
@@ -1696,6 +1723,8 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Consultar recebimentos do dia")
         self.assertContains(response, "Amazon AWS")
         self.assertContains(response, "Servicos em nuvem")
+        self.assertNotContains(response, "Lancamento removido Omie")
+        self.assertNotContains(response, "DATATEM SOLUCOES")
         self.assertContains(response, 'data-payment-value="12500.00"')
         self.assertContains(response, "Aprovar")
         self.assertContains(response, "Reagendar")
