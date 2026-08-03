@@ -139,6 +139,27 @@ class DashboardPermissaoTests(TestCase):
             ),
         )
 
+    def test_gestor_da_empresa_ve_parametros_na_home(self):
+        EmpresaUsuario.objects.create(
+            empresa=self.empresa,
+            usuario=self.usuario,
+            papel=EmpresaUsuario.Papel.GESTOR,
+            areas_permitidas=["financeiro"],
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse("dashboards:home", kwargs={"empresa_slug": self.empresa.slug})
+        )
+
+        self.assertContains(
+            response,
+            reverse(
+                "dashboards:parametros",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+        )
+
     def test_gestor_acessa_apenas_modulos_liberados(self):
         EmpresaUsuario.objects.create(
             empresa=self.empresa,

@@ -24,6 +24,7 @@ from apps.empresas.services import (
     empresas_permitidas_no_grupo,
     obter_empresa_permitida,
     usuario_admin_empresa,
+    usuario_gestor_empresa,
     usuario_pode_acessar_area,
     usuario_pode_acessar_dashboard,
 )
@@ -335,6 +336,7 @@ def _contexto_base(request, empresa_slug):
         "empresa": empresa,
         "areas": areas_permitidas_usuario(request.user, empresa, AREAS),
         "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
+        "pode_ver_parametros": usuario_gestor_empresa(request.user, empresa),
     }
 
 
