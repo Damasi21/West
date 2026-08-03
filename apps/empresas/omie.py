@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 import truststore
 from django.conf import settings
 from django.db import close_old_connections, connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import (
@@ -1884,6 +1885,7 @@ def _atualizar_resumo_financeiro_empresa(empresa, integracao):
 
 
 def _salvar_contas_pagar(empresa, itens):
+    agora = timezone.now()
     codigos_fornecedores = {
         codigo
         for item in itens
@@ -2006,10 +2008,22 @@ def _salvar_contas_pagar(empresa, itens):
                 ),
                 "info": item.get("info") or {},
                 "dados_originais": item,
+                "ativo_omie": True,
+                "ultima_presenca_omie": agora,
             },
         )
         processados += 1
     return processados
+
+
+def _desativar_contas_pagar_ausentes_na_omie(empresa, inicio_sincronizacao):
+    return ContaPagarOmie.objects.filter(
+        empresa=empresa,
+        ativo_omie=True,
+    ).filter(
+        Q(ultima_presenca_omie__isnull=True)
+        | Q(ultima_presenca_omie__lt=inicio_sincronizacao)
+    ).update(ativo_omie=False)
 
 
 def _salvar_contas_receber(empresa, itens):
@@ -2831,6 +2845,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
 
         pagina_global = 0
         for recurso in recursos:
+            inicio_recurso = timezone.now()
             for pagina in range(1, recurso["total_paginas"] + 1):
                 contexto_atual = f"{recurso['nome']}: pagina {pagina}"
                 resposta = (
@@ -2857,6 +2872,15 @@ def executar_sincronizacao_omie(sincronizacao_id):
                             "atualizada_em",
                         ]
                     )
+            if recurso["salvar"] == _salvar_contas_pagar:
+                desativados = _desativar_contas_pagar_ausentes_na_omie(
+                    sincronizacao.empresa,
+                    inicio_recurso,
+                )
+                sincronizacao.mensagem = (
+                    f"{recurso['nome']}: {desativados} lancamento(s) obsoleto(s)."
+                )
+                sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
 
         processados = _atualizar_resumo_financeiro_empresa(
             sincronizacao.empresa,

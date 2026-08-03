@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("empresas", "0029_sincronizacaoomie_agendada_para_and_more"),
+        ("empresas", "0030_contapagaromie_ativo_omie_and_more"),
     ]
 
     operations = [
