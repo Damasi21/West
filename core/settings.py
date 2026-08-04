@@ -35,6 +35,32 @@ ALLOWED_HOSTS = [
     if host.strip()
 ]
 
+APP_BRAND_NAME = os.getenv("APP_BRAND_NAME", "MD21 BI")
+APP_BRAND_NAVBAR_TEXT = os.getenv("APP_BRAND_NAVBAR_TEXT", "MD21 BI")
+APP_BRAND_LOGIN_LOGO = os.getenv("APP_BRAND_LOGIN_LOGO", "md21_bi_login.png")
+APP_BRAND_NAVBAR_LOGO = os.getenv("APP_BRAND_NAVBAR_LOGO", "md21_bi.png")
+APP_BRAND_HERO_EYEBROW = os.getenv("APP_BRAND_HERO_EYEBROW", "BEM-VINDO")
+APP_BRAND_HERO_TITLE = os.getenv(
+    "APP_BRAND_HERO_TITLE",
+    "Dados claros e<br>decis&otilde;es melhores.",
+)
+APP_BRAND_HERO_SUBTITLE = os.getenv(
+    "APP_BRAND_HERO_SUBTITLE",
+    "Uma visao completa da sua operacao, do comercial ao financeiro, em um so lugar.",
+)
+APP_BRAND_REGISTER_EYEBROW = os.getenv(
+    "APP_BRAND_REGISTER_EYEBROW",
+    "MD21 BUSINESS INTELLIGENCE",
+)
+APP_BRAND_REGISTER_TITLE = os.getenv(
+    "APP_BRAND_REGISTER_TITLE",
+    "Sua empresa<br>vista por inteiro.",
+)
+APP_BRAND_REGISTER_SUBTITLE = os.getenv(
+    "APP_BRAND_REGISTER_SUBTITLE",
+    "Crie sua conta para acessar indicadores comerciais, financeiros, compras, estoque e CRM.",
+)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -75,6 +101,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.context_processors.brand",
             ],
         },
     },

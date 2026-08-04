@@ -2,8 +2,8 @@
 <nav class="navbar navbar-expand-lg navbar-dark app-navbar sticky-top">
     <div class="container-fluid px-3 px-lg-4">
         <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'empresas:lista' %}">
-            <img class="brand-logo" src="{% get_media_prefix %}md21_bi.png" alt="MD21 BI">
-            <span><strong>MD21</strong> BI</span>
+            <img class="brand-logo" src="{% get_media_prefix %}{{ app_brand_navbar_logo }}" alt="{{ app_brand_name }}">
+            <span>{{ app_brand_navbar_text }}</span>
         </a>
 
         {% if user.is_authenticated %}
