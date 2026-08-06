@@ -198,6 +198,16 @@ def parametros(request, empresa_slug):
             ),
         },
         {
+            "titulo": "Budget",
+            "descricao": "Defina o controle de compras por produto, familia, projeto ou fornecedor.",
+            "icone": "bi-wallet2",
+            "status": "Disponivel",
+            "url": reverse(
+                "dashboards:budget",
+                kwargs={"empresa_slug": empresa.slug},
+            ),
+        },
+        {
             "titulo": "Sincronizacao",
             "descricao": "Agende atualizacoes automaticas da OMIE com ate 4 horarios por dia.",
             "icone": "bi-robot",
@@ -249,6 +259,10 @@ def parametros(request, empresa_slug):
             ),
             "total_pedidos_omie": empresa.pedidos_omie.count(),
             "total_itens_pedido_omie": empresa.itens_pedido_omie.count(),
+            "total_pedidos_compra_omie": empresa.pedidos_compra_omie.count(),
+            "total_itens_pedido_compra_omie": (
+                empresa.itens_pedido_compra_omie.count()
+            ),
         },
     )
 
@@ -317,6 +331,10 @@ def sincronizacao_omie(request, empresa_slug):
             ),
             "total_pedidos_omie": empresa.pedidos_omie.count(),
             "total_itens_pedido_omie": empresa.itens_pedido_omie.count(),
+            "total_pedidos_compra_omie": empresa.pedidos_compra_omie.count(),
+            "total_itens_pedido_compra_omie": (
+                empresa.itens_pedido_compra_omie.count()
+            ),
         },
     )
 
@@ -932,6 +950,8 @@ def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
             ),
             "pedidos": empresa.pedidos_omie.count(),
             "itens_pedido": empresa.itens_pedido_omie.count(),
+            "pedidos_compra": empresa.pedidos_compra_omie.count(),
+            "itens_pedido_compra": empresa.itens_pedido_compra_omie.count(),
         }
     return JsonResponse(dados)
 

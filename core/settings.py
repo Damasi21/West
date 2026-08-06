@@ -28,6 +28,9 @@ OMIE_API_RETRIES = int(os.getenv("OMIE_API_RETRIES", "3"))
 OMIE_API_RETRY_DELAY = int(os.getenv("OMIE_API_RETRY_DELAY", "2"))
 OMIE_API_REDUNDANT_DELAY = int(os.getenv("OMIE_API_REDUNDANT_DELAY", "60"))
 OMIE_API_REDUNDANT_BUFFER = int(os.getenv("OMIE_API_REDUNDANT_BUFFER", "5"))
+DATA_UPLOAD_MAX_NUMBER_FIELDS = int(
+    os.getenv("DATA_UPLOAD_MAX_NUMBER_FIELDS", "50000")
+)
 DEBUG = os.getenv("DEBUG", "True").lower() in {"1", "true", "yes"}
 ALLOWED_HOSTS = [
     host.strip()

@@ -2353,6 +2353,200 @@
     grid-template-columns: minmax(120px, .9fr) minmax(190px, 1.35fr) 105px 120px 130px;
     min-width: 720px;
 }
+.purchase-budget-dashboard {
+    display: grid;
+    gap: 1.2rem;
+}
+.purchase-budget-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(170px, 1fr));
+    gap: .9rem;
+}
+.purchase-budget-kpi,
+.purchase-budget-card {
+    background: white;
+    border: 1px solid #dfe5ee;
+    border-radius: 8px;
+    box-shadow: 0 8px 22px rgba(23, 37, 84, .05);
+}
+.purchase-budget-kpi {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .85rem;
+    min-height: 150px;
+    padding: 1.05rem;
+}
+.purchase-budget-kpi span {
+    display: block;
+    min-height: 30px;
+    color: #1f4f7c;
+    font-size: .74rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.purchase-budget-kpi strong {
+    display: block;
+    margin-top: .55rem;
+    color: #111827;
+    font-size: 1.35rem;
+    line-height: 1.1;
+}
+.purchase-budget-kpi small {
+    display: block;
+    margin-top: .45rem;
+    color: #667085;
+    font-size: .72rem;
+}
+.purchase-budget-kpi > i {
+    display: grid;
+    place-items: center;
+    flex: 0 0 52px;
+    width: 52px;
+    height: 52px;
+    color: #2563eb;
+    background: #dbeafe;
+    border-radius: 8px;
+    font-size: 1.25rem;
+}
+.purchase-budget-kpi-success strong { color: #0f766e; }
+.purchase-budget-kpi-danger strong { color: #b42318; }
+.purchase-budget-track,
+.purchase-budget-bar {
+    overflow: hidden;
+    background: #e8edf5;
+    border-radius: 999px;
+}
+.purchase-budget-track {
+    height: 8px;
+    margin-top: .8rem;
+}
+.purchase-budget-track i,
+.purchase-budget-bar i {
+    display: block;
+    max-width: 100%;
+    height: 100%;
+    background: #f5b93f;
+    border-radius: inherit;
+}
+.purchase-budget-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(330px, .95fr);
+    gap: 1rem;
+}
+.purchase-budget-card {
+    min-height: 360px;
+    padding: 1.1rem 1.2rem;
+}
+.purchase-budget-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+}
+.purchase-budget-card-header small {
+    color: #64748b;
+    font-size: .65rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+}
+.purchase-budget-card-header h2 {
+    margin: .25rem 0 0;
+    color: #182230;
+    font-size: 1.05rem;
+}
+.purchase-budget-card-header > span {
+    color: #667085;
+    font-size: .78rem;
+}
+.purchase-budget-detail-button {
+    display: grid;
+    place-items: center;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    color: #475467;
+    background: white;
+    border: 1px solid #d7deea;
+    border-radius: 8px;
+}
+.purchase-budget-ranking {
+    display: grid;
+    gap: 1rem;
+}
+.purchase-budget-ranking-row > div:first-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: .55rem;
+}
+.purchase-budget-ranking-row span {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    min-width: 0;
+    color: #182230;
+    font-size: .86rem;
+}
+.purchase-budget-ranking-row span i,
+.purchase-budget-status i {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+.purchase-budget-ranking-row strong {
+    color: #b77905;
+    font-size: .82rem;
+}
+.purchase-budget-row-danger span i,
+.purchase-budget-row-danger .purchase-budget-bar i { background: #e5485d; }
+.purchase-budget-row-danger strong { color: #b42318; }
+.purchase-budget-row-warning span i,
+.purchase-budget-row-warning .purchase-budget-bar i { background: #f5b93f; }
+.purchase-budget-row-success span i,
+.purchase-budget-row-success .purchase-budget-bar i { background: #0f766e; }
+.purchase-budget-row-success strong { color: #0f766e; }
+.purchase-budget-bar { height: 10px; }
+.purchase-budget-status {
+    display: grid;
+    gap: .2rem;
+}
+.purchase-budget-status div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 58px;
+    border-bottom: 1px solid #edf1f6;
+}
+.purchase-budget-status div:last-child { border-bottom: 0; }
+.purchase-budget-status span {
+    display: inline-flex;
+    align-items: center;
+    gap: .8rem;
+    color: #182230;
+    font-size: .9rem;
+}
+.purchase-budget-status strong {
+    color: #111827;
+}
+.purchase-budget-status .is-success { background: #0f766e; }
+.purchase-budget-status .is-warning { background: #f5b93f; }
+.purchase-budget-status .is-danger { background: #e5485d; }
+.purchase-budget-status div:nth-child(1) strong { color: #0f766e; }
+.purchase-budget-status div:nth-child(2) strong { color: #b77905; }
+.purchase-budget-status div:nth-child(3) strong { color: #b42318; }
+.purchase-budget-empty {
+    min-height: 220px;
+    display: grid;
+    place-items: center;
+    color: #667085;
+    text-align: center;
+}
 
 @media (max-width: 991.98px) {
     .app-sidebar { flex-basis: 76px; padding-inline: .65rem; }
@@ -2466,6 +2660,14 @@
         text-align: left;
     }
     .payment-dialog-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .purchase-budget-kpis,
+    .purchase-budget-grid {
+        grid-template-columns: 1fr;
+    }
+    .purchase-budget-card-header {
         align-items: flex-start;
         flex-direction: column;
     }

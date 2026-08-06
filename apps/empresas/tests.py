@@ -32,6 +32,8 @@ from .models import (
     MovimentoFinanceiroOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
+    PedidoCompraItemOmie,
+    PedidoCompraOmie,
     PedidoItemOmie,
     PedidoOmie,
     PosicaoEstoqueOmie,
@@ -55,6 +57,7 @@ from .omie import (
     consultar_movimentos_financeiros,
     consultar_ordens_servico,
     consultar_pedidos,
+    consultar_pedidos_compra,
     consultar_posicoes_estoque,
     consultar_produtos,
     consultar_resumo_financas,
@@ -62,6 +65,7 @@ from .omie import (
     consultar_tipos_conta_corrente,
     consultar_vendedores,
     executar_sincronizacao_omie,
+    _salvar_pedidos_compra,
 )
 
 
@@ -1322,10 +1326,11 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_produtos(self.integracao, 8)
         consultar_posicoes_estoque(self.integracao, 9)
         consultar_pedidos(self.integracao, 10)
-        consultar_servicos(self.integracao, 11)
-        consultar_ordens_servico(self.integracao, 12)
-        consultar_contratos(self.integracao, 13)
-        consultar_vendedores(self.integracao, 14)
+        consultar_pedidos_compra(self.integracao, 11)
+        consultar_servicos(self.integracao, 12)
+        consultar_ordens_servico(self.integracao, 13)
+        consultar_contratos(self.integracao, 14)
+        consultar_vendedores(self.integracao, 15)
         consultar_resumo_financas(self.integracao)
         conta_extrato = ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
@@ -1467,32 +1472,59 @@ class SincronizacaoClientesOmieTests(TestCase):
             },
         )
 
-        requisicao_servicos = urlopen_mock.call_args_list[9].args[0]
+        requisicao_pedidos_compra = urlopen_mock.call_args_list[9].args[0]
+        payload_pedidos_compra = json.loads(requisicao_pedidos_compra.data)
+        self.assertTrue(
+            requisicao_pedidos_compra.full_url.endswith(
+                "/produtos/pedidocompra/"
+            )
+        )
+        self.assertEqual(payload_pedidos_compra["call"], "PesquisarPedCompra")
+        self.assertEqual(
+            payload_pedidos_compra["param"][0],
+            {
+                "nPagina": 11,
+                "nRegsPorPagina": 100,
+                "lApenasImportadoApi": "F",
+                "lExibirPedidosPendentes": "T",
+                "lExibirPedidosFaturados": "F",
+                "lExibirPedidosRecebidos": "F",
+                "lExibirPedidosCancelados": "F",
+                "lExibirPedidosEncerrados": "F",
+                "lExibirPedidosRecParciais": "F",
+                "lExibirPedidosFatParciais": "F",
+                "dDataInicial": "01/01/2026",
+                "dDataFinal": "31/12/2026",
+                "lApenasAlterados": "F",
+            },
+        )
+
+        requisicao_servicos = urlopen_mock.call_args_list[10].args[0]
         payload_servicos = json.loads(requisicao_servicos.data)
         self.assertTrue(requisicao_servicos.full_url.endswith("/servicos/servico/"))
         self.assertEqual(payload_servicos["call"], "ListarCadastroServico")
         self.assertEqual(
             payload_servicos["param"][0],
             {
-                "nPagina": 11,
+                "nPagina": 12,
                 "nRegPorPagina": 20,
             },
         )
 
-        requisicao_os = urlopen_mock.call_args_list[10].args[0]
+        requisicao_os = urlopen_mock.call_args_list[11].args[0]
         payload_os = json.loads(requisicao_os.data)
         self.assertTrue(requisicao_os.full_url.endswith("/servicos/os/"))
         self.assertEqual(payload_os["call"], "ListarOS")
         self.assertEqual(
             payload_os["param"][0],
             {
-                "pagina": 12,
+                "pagina": 13,
                 "registros_por_pagina": 50,
                 "apenas_importado_api": "N",
             },
         )
 
-        requisicao_contratos = urlopen_mock.call_args_list[11].args[0]
+        requisicao_contratos = urlopen_mock.call_args_list[12].args[0]
         payload_contratos = json.loads(requisicao_contratos.data)
         self.assertTrue(
             requisicao_contratos.full_url.endswith("/servicos/contrato/")
@@ -1501,25 +1533,25 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(
             payload_contratos["param"][0],
             {
-                "pagina": 13,
+                "pagina": 14,
                 "registros_por_pagina": 50,
                 "apenas_importado_api": "N",
             },
         )
 
-        requisicao_vendedores = urlopen_mock.call_args_list[12].args[0]
+        requisicao_vendedores = urlopen_mock.call_args_list[13].args[0]
         payload_vendedores = json.loads(requisicao_vendedores.data)
         self.assertTrue(requisicao_vendedores.full_url.endswith("/geral/vendedores/"))
         self.assertEqual(payload_vendedores["call"], "ListarVendedores")
         self.assertEqual(
             payload_vendedores["param"][0],
             {
-                "pagina": 14,
+                "pagina": 15,
                 "registros_por_pagina": 100,
                 "apenas_importado_api": "N",
             },
         )
-        requisicao_resumo = urlopen_mock.call_args_list[13].args[0]
+        requisicao_resumo = urlopen_mock.call_args_list[14].args[0]
         payload_resumo = json.loads(requisicao_resumo.data)
         self.assertTrue(requisicao_resumo.full_url.endswith("/financas/resumo/"))
         self.assertEqual(payload_resumo["call"], "ObterResumoFinancas")
@@ -1530,7 +1562,7 @@ class SincronizacaoClientesOmieTests(TestCase):
                 "lApenasResumo": True,
             },
         )
-        requisicao_extrato = urlopen_mock.call_args_list[14].args[0]
+        requisicao_extrato = urlopen_mock.call_args_list[15].args[0]
         payload_extrato = json.loads(requisicao_extrato.data)
         self.assertTrue(requisicao_extrato.full_url.endswith("/financas/extrato/"))
         self.assertEqual(payload_extrato["call"], "ListarExtrato")
@@ -1654,11 +1686,134 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(categoria.categoria_superior, categoria_superior)
         self.assertEqual(categoria.tag_conta_contabil, tag_conta_contabil)
 
+    def test_salva_pedido_de_compra_omie_com_itens(self):
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=7232170609,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            razao_social="Fornecedor compra",
+        )
+        categoria = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.01.01",
+            descricao="Compras",
+        )
+        conta = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=6904753294,
+            codigo_integracao="",
+            descricao="Conta compras",
+        )
+        produto = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=7186847863,
+            codigo="PRD00159",
+            descricao="Fonte 12V3A",
+        )
+
+        processados = _salvar_pedidos_compra(
+            self.empresa,
+            [
+                {
+                    "cabecalho_consulta": {
+                        "cCodCateg": "2.01.01",
+                        "cCodIntFor": "",
+                        "cCodIntPed": "",
+                        "cCodParc": "A15",
+                        "cContato": "ALEX",
+                        "cContrato": "",
+                        "cEtapa": "15",
+                        "cIncHora": "15:30:16",
+                        "cNumPedido": "",
+                        "cNumero": "119",
+                        "cObs": "FAVOR COLOCAR O NUMERO DO PEDIDO DE COMPRA NA NOTA FISCAL.",
+                        "cObsInt": "",
+                        "dDtPrevisao": "11/08/2026",
+                        "dIncData": "04/08/2026",
+                        "nCodCC": 6904753294,
+                        "nCodCompr": 7225449418,
+                        "nCodFor": 7232170609,
+                        "nCodIntCC": "",
+                        "nCodPed": 7232259056,
+                        "nCodProj": 0,
+                        "nQtdeParc": 0,
+                    },
+                    "caracteristicas_consulta": [],
+                    "departamentos_consulta": [],
+                    "frete_consulta": {
+                        "cTpFrete": "9",
+                        "nValFrete": 0,
+                        "nValOutras": 0,
+                        "nValSeguro": 0,
+                    },
+                    "parcelas_consulta": [
+                        {
+                            "cTipoDoc": "",
+                            "dVencto": "04/08/2026",
+                            "nDias": 15,
+                            "nParcela": 1,
+                            "nPercent": 100,
+                            "nValor": 208,
+                        }
+                    ],
+                    "produtos_consulta": [
+                        {
+                            "cCodCateg": "2.01.01",
+                            "cCodIntItem": "",
+                            "cDescricao": "Fonte 12V3A para Firewall Fortinet Fortigate 40F Entrada 127V/220V",
+                            "cEAN": "",
+                            "cNCM": "8504.40.21",
+                            "cObs": "FAVOR ENTREGAR NO ENDERECO",
+                            "cProduto": "PRD00159",
+                            "cUnidade": "UN",
+                            "codigo_local_estoque": "6906334225",
+                            "nCodItem": 7232360776,
+                            "nCodProd": 7186847863,
+                            "nDesconto": 0,
+                            "nDespesas": 0,
+                            "nFrete": 0,
+                            "nPesoBruto": 0,
+                            "nPesoLiq": 0,
+                            "nQtde": 4,
+                            "nQtdeRec": 0,
+                            "nSeguro": 0,
+                            "nValMerc": 208,
+                            "nValTot": 208,
+                            "nValUnit": 52,
+                            "nValorCofins": 0,
+                            "nValorIcms": 0,
+                            "nValorIpi": 0,
+                            "nValorPis": 0,
+                            "nValorSt": 0,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.assertEqual(processados, 1)
+        pedido = PedidoCompraOmie.objects.get(codigo_pedido=7232259056)
+        self.assertEqual(pedido.numero_pedido, "119")
+        self.assertEqual(pedido.fornecedor, fornecedor)
+        self.assertEqual(pedido.categoria_principal, categoria)
+        self.assertEqual(pedido.conta_corrente, conta)
+        self.assertEqual(pedido.data_previsao.isoformat(), "2026-08-11")
+        self.assertEqual(str(pedido.valor_total_pedido), "208.0000")
+        self.assertEqual(pedido.parcelas_consulta[0]["nValor"], 208)
+        item = PedidoCompraItemOmie.objects.get(codigo_item=7232360776)
+        self.assertEqual(item.pedido, pedido)
+        self.assertEqual(item.produto, produto)
+        self.assertEqual(item.categoria_principal, categoria)
+        self.assertEqual(str(item.quantidade), "4.0000")
+        self.assertEqual(str(item.valor_unitario), "52.0000")
+        self.assertEqual(str(item.valor_total), "208.0000")
+
     @patch("apps.empresas.omie.consultar_extrato_conta_corrente")
     @patch("apps.empresas.omie.consultar_resumo_financas")
     @patch("apps.empresas.omie.consultar_contratos")
     @patch("apps.empresas.omie.consultar_ordens_servico")
     @patch("apps.empresas.omie.consultar_servicos")
+    @patch("apps.empresas.omie.consultar_pedidos_compra")
     @patch("apps.empresas.omie.consultar_pedidos")
     @patch("apps.empresas.omie.consultar_posicoes_estoque")
     @patch("apps.empresas.omie.consultar_produtos")
@@ -1689,6 +1844,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_produtos_mock,
         consultar_posicoes_estoque_mock,
         consultar_pedidos_mock,
+        consultar_pedidos_compra_mock,
         consultar_servicos_mock,
         consultar_ordens_servico_mock,
         consultar_contratos_mock,
@@ -2447,6 +2603,13 @@ class SincronizacaoClientesOmieTests(TestCase):
                 }
             ],
         }
+        consultar_pedidos_compra_mock.return_value = {
+            "nPagina": 1,
+            "nTotPaginas": 1,
+            "nRegistros": 0,
+            "nTotRegistros": 0,
+            "pedidos_pesquisa": [],
+        }
         conta_pagar_obsoleta = ContaPagarOmie.objects.create(
             empresa=self.empresa,
             codigo_lancamento_omie=999001,
@@ -2466,7 +2629,7 @@ class SincronizacaoClientesOmieTests(TestCase):
 
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA)
-        self.assertEqual(sincronizacao.pagina_atual, 18)
+        self.assertEqual(sincronizacao.pagina_atual, 19)
         self.assertEqual(sincronizacao.registros_processados, 20)
         self.assertEqual(CadastroOmie.objects.count(), 2)
         self.assertEqual(

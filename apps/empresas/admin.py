@@ -19,6 +19,8 @@ from .models import (
     MovimentoFinanceiroOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
+    PedidoCompraItemOmie,
+    PedidoCompraOmie,
     PedidoItemOmie,
     PedidoOmie,
     PosicaoEstoqueOmie,
@@ -464,6 +466,79 @@ class PedidoItemOmieAdmin(admin.ModelAdmin):
         "sincronizado_em",
         "criado_em",
     )
+
+
+class PedidoCompraItemOmieInline(admin.TabularInline):
+    model = PedidoCompraItemOmie
+    extra = 0
+    fields = (
+        "codigo_item",
+        "codigo_produto_texto",
+        "descricao",
+        "quantidade",
+        "quantidade_recebida",
+        "valor_unitario",
+        "valor_total",
+    )
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PedidoCompraOmie)
+class PedidoCompraOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "numero_pedido",
+        "codigo_pedido",
+        "fornecedor",
+        "data_previsao",
+        "valor_total_pedido",
+        "etapa",
+        "empresa",
+    )
+    list_filter = ("empresa", "etapa", "data_previsao")
+    search_fields = (
+        "numero_pedido",
+        "codigo_pedido",
+        "codigo_pedido_integracao",
+        "fornecedor__razao_social",
+        "fornecedor__nome_fantasia",
+    )
+    readonly_fields = (
+        "cabecalho_consulta",
+        "caracteristicas_consulta",
+        "departamentos_consulta",
+        "frete_consulta",
+        "parcelas_consulta",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+    inlines = [PedidoCompraItemOmieInline]
+
+
+@admin.register(PedidoCompraItemOmie)
+class PedidoCompraItemOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "pedido",
+        "codigo_item",
+        "codigo_produto_texto",
+        "descricao",
+        "quantidade",
+        "quantidade_recebida",
+        "valor_total",
+        "empresa",
+    )
+    list_filter = ("empresa", "unidade")
+    search_fields = (
+        "pedido__numero_pedido",
+        "codigo_item",
+        "codigo_produto_texto",
+        "descricao",
+    )
+    readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
 
 
 @admin.register(CategoriaOmie)

@@ -1,5 +1,6 @@
 from django.urls import path
 
+from apps.compras import views as compras_views
 from apps.empresas import views as empresas_views
 
 from . import views
@@ -34,6 +35,11 @@ urlpatterns = [
         "parametros/sincronizacao/",
         empresas_views.sincronizacao_omie,
         name="sincronizacao_omie",
+    ),
+    path(
+        "parametros/budget/",
+        compras_views.parametros_budget,
+        name="budget",
     ),
     path(
         "parametros/dre-categorias/planilha/exportar/",
