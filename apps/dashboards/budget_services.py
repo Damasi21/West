@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from apps.compras.models import BudgetConfiguracaoCompra, BudgetLimiteCompra
 from apps.dashboards.dre_services import _formatar_moeda, _intervalo_periodo
-from apps.empresas.models import PedidoCompraItemOmie
+from apps.empresas.models import DepartamentoOmie, PedidoCompraItemOmie
 
 
 ROTULOS_DIMENSAO = dict(BudgetConfiguracaoCompra.TipoControle.choices)
@@ -65,6 +65,22 @@ def _chave_gasto(item, dimensao):
             str(pedido.codigo_projeto) if pedido.codigo_projeto is not None else "",
             projeto.nome if projeto else "",
         )
+    if dimensao == BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO:
+        for departamento in item.pedido.departamentos_consulta or []:
+            codigo = (
+                departamento.get("cCodDep")
+                or departamento.get("codigo")
+                or departamento.get("nCodDep")
+                or departamento.get("nCodDepto")
+            )
+            if codigo:
+                return str(codigo), str(
+                    departamento.get("cDesDep")
+                    or departamento.get("descricao")
+                    or departamento.get("nome")
+                    or ""
+                )
+        return "", ""
     pedido = item.pedido
     fornecedor = pedido.fornecedor
     nome_fornecedor = ""
@@ -87,7 +103,12 @@ def _gastos_por_referencia(inicio, fim, empresas_ids, dimensao):
         .order_by()
     )
     gastos = defaultdict(Decimal)
-    nomes = {}
+    nomes = {
+        departamento.codigo: departamento.descricao
+        for departamento in DepartamentoOmie.objects.filter(
+            empresa_id__in=empresas_ids,
+        )
+    } if dimensao == BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO else {}
     for item in queryset:
         codigo, nome = _chave_gasto(item, dimensao)
         if not codigo:

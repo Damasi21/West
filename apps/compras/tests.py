@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.empresas.models import (
     CadastroOmie,
+    DepartamentoOmie,
     Empresa,
     EmpresaUsuario,
     PedidoCompraItemOmie,
@@ -94,6 +95,7 @@ class BudgetComprasParametrosTests(TestCase):
         self.assertContains(response, "Budget por familia de produtos")
         self.assertContains(response, "Budget de Projetos")
         self.assertContains(response, "Teto por fornecedor")
+        self.assertContains(response, "Budget por Departamentos")
         self.assertContains(response, "Sem familia")
         self.assertContains(response, "Materia prima A")
         self.assertContains(response, "Gasto ano anterior")
@@ -207,6 +209,58 @@ class BudgetComprasParametrosTests(TestCase):
                 tipo_controle=BudgetConfiguracaoCompra.TipoControle.FORNECEDOR,
                 referencia_codigo="202",
                 limite_compra=Decimal("500"),
+            ).exists()
+        )
+
+    def test_budget_por_departamento_lista_e_salva_limite(self):
+        DepartamentoOmie.objects.create(
+            empresa=self.empresa,
+            codigo="DEP-001",
+            descricao="Administrativo",
+            estrutura="001.001",
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "definir_tipos",
+                "tipos_controle": [
+                    BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO,
+                ],
+            },
+        )
+
+        self.assertRedirects(response, self.url)
+        configuracao = BudgetConfiguracaoCompra.objects.get(empresa=self.empresa)
+        self.assertEqual(
+            configuracao.tipos_selecionados,
+            [BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO],
+        )
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, "Budget por Departamentos")
+        self.assertContains(response, "Administrativo")
+        self.assertContains(response, 'data-budget-open="departamento"')
+        self.assertContains(response, 'data-budget-panel="departamento"')
+        self.assertContains(response, 'data-budget-search="departamento"')
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "salvar_limites",
+                "limite_departamento_DEP-001": "1.500,00",
+            },
+        )
+
+        self.assertRedirects(response, self.url)
+        self.assertTrue(
+            BudgetLimiteCompra.objects.filter(
+                empresa=self.empresa,
+                tipo_controle=BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO,
+                referencia_codigo="DEP-001",
+                limite_compra=Decimal("1500"),
             ).exists()
         )
 

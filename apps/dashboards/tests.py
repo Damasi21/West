@@ -428,6 +428,67 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(response.context["budget"]["total_budget"], Decimal("1000"))
         self.assertEqual(response.context["budget"]["itens_estourados"], 1)
 
+    def test_dashboard_budget_calcula_consumo_por_departamento(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        departamento = DepartamentoOmie.objects.create(
+            empresa=self.empresa,
+            codigo="DEP-001",
+            descricao="Administrativo",
+            estrutura="001.001",
+        )
+        configuracao = BudgetConfiguracaoCompra.objects.create(
+            empresa=self.empresa,
+            tipos_controle=[BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO],
+        )
+        BudgetLimiteCompra.objects.create(
+            empresa=self.empresa,
+            configuracao=configuracao,
+            tipo_controle=BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO,
+            referencia_codigo=departamento.codigo,
+            referencia_nome=departamento.descricao,
+            limite_compra=Decimal("1000"),
+        )
+        pedido = PedidoCompraOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=520,
+            numero_pedido="PC-520",
+            data_previsao=date(ano_atual, 2, 10),
+            departamentos_consulta=[
+                {"cCodDep": departamento.codigo, "cDesDep": departamento.descricao}
+            ],
+        )
+        PedidoCompraItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=521,
+            descricao="Compra administrativa",
+            valor_total=Decimal("850"),
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "compras",
+                    "dashboard_slug": "budget",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-02",
+                "budget_dimensao": "departamento",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Dimensao: Departamento")
+        self.assertContains(response, "Administrativo")
+        self.assertContains(response, "85%")
+        self.assertEqual(response.context["budget"]["status"]["atencao"], 1)
+
     def test_dashboard_exibe_filtros_e_projetos_ativos(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
         projeto = ProjetoOmie.objects.create(

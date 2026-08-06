@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.empresas.models import (
     CadastroOmie,
+    DepartamentoOmie,
     Empresa,
     PedidoCompraItemOmie,
     ProdutoOmie,
@@ -57,6 +58,12 @@ CARDS_BUDGET = {
         "etiqueta": "Fornecedor",
         "icone": "bi-shield-check",
         "tom": "amber",
+    },
+    BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO: {
+        "titulo": "Budget por Departamentos",
+        "etiqueta": "Departamento",
+        "icone": "bi-diagram-3",
+        "tom": "cyan",
     },
 }
 QUATRO_CASAS = Decimal("0.0001")
@@ -264,11 +271,27 @@ def _linhas_fornecedores(empresa):
     ]
 
 
+def _linhas_departamentos(empresa):
+    return [
+        {
+            "codigo": str(departamento.codigo),
+            "nome": departamento.descricao or departamento.codigo,
+            "detalhe": departamento.estrutura,
+            "estoque_minimo": Decimal("0"),
+        }
+        for departamento in DepartamentoOmie.objects.filter(
+            empresa=empresa,
+            inativo=False,
+        ).order_by("estrutura", "descricao")
+    ]
+
+
 LINHAS_POR_TIPO = {
     BudgetConfiguracaoCompra.TipoControle.PRODUTO: _linhas_produtos,
     BudgetConfiguracaoCompra.TipoControle.FAMILIA_PRODUTO: _linhas_familias,
     BudgetConfiguracaoCompra.TipoControle.PROJETO: _linhas_projetos,
     BudgetConfiguracaoCompra.TipoControle.FORNECEDOR: _linhas_fornecedores,
+    BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO: _linhas_departamentos,
 }
 
 
@@ -282,6 +305,17 @@ def _codigo_gasto(item, tipo_controle):
     if tipo_controle == BudgetConfiguracaoCompra.TipoControle.PROJETO:
         codigo = item.pedido.codigo_projeto
         return str(codigo) if codigo is not None else ""
+    if tipo_controle == BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO:
+        for departamento in item.pedido.departamentos_consulta or []:
+            codigo = (
+                departamento.get("cCodDep")
+                or departamento.get("codigo")
+                or departamento.get("nCodDep")
+                or departamento.get("nCodDepto")
+            )
+            if codigo:
+                return str(codigo)
+        return ""
     codigo = item.pedido.codigo_fornecedor
     return str(codigo) if codigo is not None else ""
 
@@ -315,6 +349,7 @@ def _montar_secoes(empresa, configuracao):
         BudgetConfiguracaoCompra.TipoControle.PRODUTO,
         BudgetConfiguracaoCompra.TipoControle.PROJETO,
         BudgetConfiguracaoCompra.TipoControle.FORNECEDOR,
+        BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO,
     ]
     for tipo_controle in ordem_tipos:
         linhas_base = LINHAS_POR_TIPO[tipo_controle](empresa)
