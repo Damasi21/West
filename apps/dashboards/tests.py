@@ -25,6 +25,8 @@ from apps.empresas.models import (
     MovimentoFinanceiroOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
+    PedidoCompraItemOmie,
+    PedidoCompraOmie,
     PedidoItemOmie,
     PedidoOmie,
     PosicaoEstoqueOmie,
@@ -33,6 +35,7 @@ from apps.empresas.models import (
     ServicoOmie,
     VendedorOmie,
 )
+from apps.compras.models import BudgetConfiguracaoCompra, BudgetLimiteCompra
 
 
 class DashboardPermissaoTests(TestCase):
@@ -272,6 +275,152 @@ class DashboardPermissaoTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Faturamento")
+
+    def test_area_compras_exibe_dashboard_budget(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:area",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "compras",
+                },
+            )
+        )
+
+        self.assertContains(response, "Budget")
+        self.assertContains(response, "Compare budget")
+
+    def test_dashboard_budget_calcula_consumo_por_produto(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        configuracao = BudgetConfiguracaoCompra.objects.create(
+            empresa=self.empresa,
+            tipos_controle=[BudgetConfiguracaoCompra.TipoControle.PRODUTO],
+        )
+        produto = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=100,
+            codigo="PRD-100",
+            descricao="Acionador Manual Enderecavel AME 566",
+        )
+        BudgetLimiteCompra.objects.create(
+            empresa=self.empresa,
+            configuracao=configuracao,
+            tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+            referencia_codigo=str(produto.codigo_produto),
+            referencia_nome=produto.descricao,
+            limite_compra=Decimal("1000"),
+        )
+        pedido = PedidoCompraOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=500,
+            numero_pedido="PC-500",
+            data_previsao=date(ano_atual, 1, 15),
+        )
+        PedidoCompraItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=501,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            descricao=produto.descricao,
+            quantidade=1,
+            valor_unitario=1200,
+            valor_total=1200,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "compras",
+                    "dashboard_slug": "budget",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+                "budget_dimensao": "produto",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Orcamento total")
+        self.assertContains(response, "Gasto realizado")
+        self.assertContains(response, "Itens estourados")
+        self.assertContains(response, "Acionador Manual Enderecavel AME 566")
+        self.assertContains(response, "120%")
+        self.assertContains(response, "Dimensao: Produto")
+        self.assertContains(response, 'name="budget_dimensao"')
+        self.assertNotContains(response, "Todos os projetos")
+        self.assertNotContains(response, "Todos os departamentos")
+        self.assertEqual(response.context["budget"]["itens_estourados"], 1)
+
+    def test_dashboard_budget_mensal_considera_meses_selecionados(self):
+        ano_atual = date.today().year
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        configuracao = BudgetConfiguracaoCompra.objects.create(
+            empresa=self.empresa,
+            tipos_controle=[BudgetConfiguracaoCompra.TipoControle.PRODUTO],
+            periodicidades_controle={
+                BudgetConfiguracaoCompra.TipoControle.PRODUTO: "mensal"
+            },
+            meses_controle={BudgetConfiguracaoCompra.TipoControle.PRODUTO: [6]},
+        )
+        produto = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=100,
+            codigo="PRD-100",
+            descricao="Produto mensal",
+        )
+        BudgetLimiteCompra.objects.create(
+            empresa=self.empresa,
+            configuracao=configuracao,
+            tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+            referencia_codigo=str(produto.codigo_produto),
+            referencia_nome=produto.descricao,
+            limite_compra=Decimal("1000"),
+        )
+        pedido = PedidoCompraOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=510,
+            numero_pedido="PC-510",
+            data_previsao=date(ano_atual, 6, 10),
+        )
+        PedidoCompraItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=511,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            descricao=produto.descricao,
+            valor_total=Decimal("2000"),
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "compras",
+                    "dashboard_slug": "budget",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"ano-{ano_atual}",
+                "budget_dimensao": "produto",
+            },
+        )
+
+        self.assertEqual(response.context["budget"]["total_budget"], Decimal("1000"))
+        self.assertEqual(response.context["budget"]["itens_estourados"], 1)
 
     def test_dashboard_exibe_filtros_e_projetos_ativos(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)

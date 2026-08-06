@@ -1,0 +1,96 @@
+<section class="purchase-budget-dashboard">
+    <div class="purchase-budget-kpis">
+        <article class="purchase-budget-kpi">
+            <div>
+                <span>Orcamento total</span>
+                <strong>{{ dados.total_budget_fmt }}</strong>
+                <small>{{ dados.total_itens }} itens - {{ dados.dimensao_rotulo|lower }}</small>
+            </div>
+            <i class="bi bi-wallet2"></i>
+        </article>
+        <article class="purchase-budget-kpi">
+            <div>
+                <span>Gasto realizado</span>
+                <strong>{{ dados.total_gasto_fmt }}</strong>
+                <small>{{ dados.percentual_total_fmt }} do orcamento consumido</small>
+                <div class="purchase-budget-track">
+                    <i style="width: {{ dados.percentual_total }}%"></i>
+                </div>
+            </div>
+            <i class="bi bi-cart-check"></i>
+        </article>
+        <article class="purchase-budget-kpi purchase-budget-kpi-{{ dados.saldo_tom }}">
+            <div>
+                <span>Saldo disponivel</span>
+                <strong>{{ dados.saldo_fmt }}</strong>
+                <small>Ainda disponivel para o periodo</small>
+            </div>
+            <i class="bi bi-cash-coin"></i>
+        </article>
+        <article class="purchase-budget-kpi purchase-budget-kpi-danger">
+            <div>
+                <span>Itens estourados</span>
+                <strong>{{ dados.itens_estourados }}</strong>
+                <small>de {{ dados.total_itens }} monitorados - alerta em 80%</small>
+            </div>
+            <i class="bi bi-exclamation-octagon"></i>
+        </article>
+    </div>
+
+    <div class="purchase-budget-grid">
+        <article class="purchase-budget-card">
+            <div class="purchase-budget-card-header">
+                <div>
+                    <small>RANKING</small>
+                    <h2>Top itens por consumo - {{ dados.dimensao_rotulo }}</h2>
+                </div>
+                <button class="purchase-budget-detail-button" type="button" disabled>
+                    <i class="bi bi-arrows-fullscreen"></i>
+                </button>
+            </div>
+
+            <div class="purchase-budget-ranking">
+                {% for item in dados.top_itens %}
+                    <div class="purchase-budget-ranking-row purchase-budget-row-{{ item.tom }}">
+                        <div>
+                            <span><i></i>{{ item.nome }}</span>
+                            <strong>{{ item.percentual_fmt }}</strong>
+                        </div>
+                        <div class="purchase-budget-bar">
+                            <i style="width: {{ item.percentual }}%"></i>
+                        </div>
+                    </div>
+                {% empty %}
+                    <div class="purchase-budget-empty">
+                        Nenhum item com budget configurado para esta dimensao.
+                    </div>
+                {% endfor %}
+            </div>
+        </article>
+
+        <article class="purchase-budget-card">
+            <div class="purchase-budget-card-header">
+                <div>
+                    <small>STATUS</small>
+                    <h2>Status geral</h2>
+                </div>
+                <span>Dimensao: {{ dados.dimensao_rotulo }}</span>
+            </div>
+
+            <div class="purchase-budget-status">
+                <div>
+                    <span><i class="is-success"></i>Dentro do budget</span>
+                    <strong>{{ dados.status.ok }}</strong>
+                </div>
+                <div>
+                    <span><i class="is-warning"></i>Em atencao (>=80%)</span>
+                    <strong>{{ dados.status.atencao }}</strong>
+                </div>
+                <div>
+                    <span><i class="is-danger"></i>Estourado (>=100%)</span>
+                    <strong>{{ dados.status.estourado }}</strong>
+                </div>
+            </div>
+        </article>
+    </div>
+</section>

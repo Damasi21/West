@@ -27,6 +27,8 @@ from .models import (
     MovimentoFinanceiroOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
+    PedidoCompraItemOmie,
+    PedidoCompraOmie,
     PedidoItemOmie,
     PedidoOmie,
     PosicaoEstoqueOmie,
@@ -56,6 +58,7 @@ LANCAMENTOS_CONTA_CORRENTE_URL = (
     "https://app.omie.com.br/api/v1/financas/contacorrentelancamentos/"
 )
 PEDIDOS_URL = "https://app.omie.com.br/api/v1/produtos/pedido/"
+PEDIDOS_COMPRA_URL = "https://app.omie.com.br/api/v1/produtos/pedidocompra/"
 POSICAO_ESTOQUE_URL = "https://app.omie.com.br/api/v1/estoque/consulta/"
 SERVICOS_URL = "https://app.omie.com.br/api/v1/servicos/servico/"
 ORDENS_SERVICO_URL = "https://app.omie.com.br/api/v1/servicos/os/"
@@ -860,6 +863,65 @@ def consultar_pedidos(
         raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_pedidos_compra(
+    integracao,
+    pagina,
+    registros_por_pagina=100,
+    inicio=None,
+    fim=None,
+):
+    hoje = timezone.localdate()
+    inicio = inicio or date(hoje.year, 1, 1)
+    fim = fim or date(hoje.year, 12, 31)
+    payload = {
+        "call": "PesquisarPedCompra",
+        "param": [
+            {
+                "nPagina": pagina,
+                "nRegsPorPagina": registros_por_pagina,
+                "lApenasImportadoApi": "F",
+                "lExibirPedidosPendentes": "T",
+                "lExibirPedidosFaturados": "F",
+                "lExibirPedidosRecebidos": "F",
+                "lExibirPedidosCancelados": "F",
+                "lExibirPedidosEncerrados": "F",
+                "lExibirPedidosRecParciais": "F",
+                "lExibirPedidosFatParciais": "F",
+                "dDataInicial": inicio.strftime("%d/%m/%Y"),
+                "dDataFinal": fim.strftime("%d/%m/%Y"),
+                "lApenasAlterados": "F",
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        PEDIDOS_COMPRA_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invalida.") from exc
 
     if "faultstring" in dados:
         raise OmieAPIError(dados["faultstring"])
@@ -2680,6 +2742,201 @@ def _salvar_pedidos(empresa, itens):
     return processados
 
 
+def _salvar_pedidos_compra(empresa, itens):
+    codigos_fornecedores = {
+        codigo
+        for item in itens
+        for codigo in [
+            _inteiro_ou_none((item.get("cabecalho_consulta") or {}).get("nCodFor"))
+        ]
+        if codigo is not None
+    }
+    codigos_contas = {
+        codigo
+        for item in itens
+        for codigo in [
+            _inteiro_ou_none((item.get("cabecalho_consulta") or {}).get("nCodCC"))
+        ]
+        if codigo is not None
+    }
+    codigos_projetos = {
+        codigo
+        for item in itens
+        for codigo in [
+            _inteiro_ou_none((item.get("cabecalho_consulta") or {}).get("nCodProj"))
+        ]
+        if codigo not in (None, 0)
+    }
+    codigos_categorias = {
+        str((item.get("cabecalho_consulta") or {}).get("cCodCateg") or "").strip()
+        for item in itens
+        if str((item.get("cabecalho_consulta") or {}).get("cCodCateg") or "").strip()
+    }
+    codigos_produtos = {
+        codigo
+        for item in itens
+        for produto in item.get("produtos_consulta") or []
+        for codigo in [_inteiro_ou_none(produto.get("nCodProd"))]
+        if codigo is not None
+    }
+
+    fornecedores = {
+        fornecedor.codigo_cliente_omie: fornecedor
+        for fornecedor in CadastroOmie.objects.filter(
+            empresa=empresa,
+            codigo_cliente_omie__in=codigos_fornecedores,
+        )
+    }
+    contas_correntes = {
+        conta.codigo_omie: conta
+        for conta in ContaCorrenteOmie.objects.filter(
+            empresa=empresa,
+            codigo_omie__in=codigos_contas,
+        )
+    }
+    projetos = {
+        projeto.codigo: projeto
+        for projeto in ProjetoOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_projetos,
+        )
+    }
+    categorias = {
+        categoria.codigo: categoria
+        for categoria in CategoriaOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_categorias,
+        )
+    }
+    produtos = {
+        produto.codigo_produto: produto
+        for produto in ProdutoOmie.objects.filter(
+            empresa=empresa,
+            codigo_produto__in=codigos_produtos,
+        )
+    }
+
+    processados = 0
+    for item in itens:
+        cabecalho = item.get("cabecalho_consulta") or {}
+        frete = item.get("frete_consulta") or {}
+        codigo_pedido = _inteiro_ou_none(cabecalho.get("nCodPed"))
+        if codigo_pedido is None:
+            continue
+
+        codigo_fornecedor = _inteiro_ou_none(cabecalho.get("nCodFor"))
+        codigo_conta = _inteiro_ou_none(cabecalho.get("nCodCC"))
+        codigo_projeto = _inteiro_ou_none(cabecalho.get("nCodProj"))
+        if codigo_projeto == 0:
+            codigo_projeto = None
+        codigo_categoria = str(cabecalho.get("cCodCateg") or "").strip()
+        produtos_consulta = item.get("produtos_consulta") or []
+        valor_mercadorias = sum(
+            (_decimal(produto.get("nValMerc")) for produto in produtos_consulta),
+            Decimal("0"),
+        )
+        valor_total_pedido = sum(
+            (_decimal(produto.get("nValTot")) for produto in produtos_consulta),
+            Decimal("0"),
+        )
+
+        pedido, _criado = PedidoCompraOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_pedido=codigo_pedido,
+            defaults={
+                "codigo_pedido_integracao": str(cabecalho.get("cCodIntPed") or ""),
+                "numero_pedido": str(cabecalho.get("cNumero") or ""),
+                "numero_pedido_fornecedor": str(cabecalho.get("cNumPedido") or ""),
+                "etapa": str(cabecalho.get("cEtapa") or ""),
+                "contato": str(cabecalho.get("cContato") or ""),
+                "observacao": str(cabecalho.get("cObs") or ""),
+                "observacao_interna": str(cabecalho.get("cObsInt") or ""),
+                "codigo_fornecedor": codigo_fornecedor,
+                "fornecedor": fornecedores.get(codigo_fornecedor),
+                "codigo_comprador": _inteiro_ou_none(cabecalho.get("nCodCompr")),
+                "codigo_categoria": codigo_categoria,
+                "categoria_principal": categorias.get(codigo_categoria),
+                "codigo_conta_corrente": codigo_conta,
+                "conta_corrente": contas_correntes.get(codigo_conta),
+                "codigo_projeto": codigo_projeto,
+                "projeto": projetos.get(codigo_projeto),
+                "codigo_parcela": str(cabecalho.get("cCodParc") or ""),
+                "quantidade_parcelas": int(cabecalho.get("nQtdeParc") or 0),
+                "data_previsao": _data_omie(cabecalho.get("dDtPrevisao")),
+                "data_inclusao": _data_omie(cabecalho.get("dIncData")),
+                "hora_inclusao": str(cabecalho.get("cIncHora") or ""),
+                "valor_mercadorias": valor_mercadorias,
+                "valor_total_pedido": valor_total_pedido,
+                "valor_frete": _decimal(frete.get("nValFrete")),
+                "valor_seguro": _decimal(frete.get("nValSeguro")),
+                "valor_outras_despesas": _decimal(frete.get("nValOutras")),
+                "cabecalho_consulta": cabecalho,
+                "caracteristicas_consulta": (
+                    item.get("caracteristicas_consulta") or []
+                ),
+                "departamentos_consulta": item.get("departamentos_consulta") or [],
+                "frete_consulta": frete,
+                "parcelas_consulta": item.get("parcelas_consulta") or [],
+                "dados_originais": item,
+            },
+        )
+
+        itens_ativos = set()
+        for detalhe in produtos_consulta:
+            codigo_item = _inteiro_ou_none(detalhe.get("nCodItem"))
+            if codigo_item is None:
+                continue
+
+            codigo_produto = _inteiro_ou_none(detalhe.get("nCodProd"))
+            codigo_categoria_item = str(detalhe.get("cCodCateg") or "").strip()
+            PedidoCompraItemOmie.objects.update_or_create(
+                empresa=empresa,
+                codigo_item=codigo_item,
+                defaults={
+                    "pedido": pedido,
+                    "codigo_item_integracao": str(detalhe.get("cCodIntItem") or ""),
+                    "codigo_produto": codigo_produto,
+                    "produto": produtos.get(codigo_produto),
+                    "codigo_produto_texto": str(detalhe.get("cProduto") or ""),
+                    "descricao": str(detalhe.get("cDescricao") or ""),
+                    "unidade": str(detalhe.get("cUnidade") or ""),
+                    "ncm": str(detalhe.get("cNCM") or ""),
+                    "ean": str(detalhe.get("cEAN") or ""),
+                    "codigo_categoria": codigo_categoria_item,
+                    "categoria_principal": categorias.get(codigo_categoria_item),
+                    "codigo_local_estoque": _inteiro_ou_none(
+                        detalhe.get("codigo_local_estoque")
+                    ),
+                    "quantidade": _decimal(detalhe.get("nQtde")),
+                    "quantidade_recebida": _decimal(detalhe.get("nQtdeRec")),
+                    "valor_unitario": _decimal(detalhe.get("nValUnit")),
+                    "valor_total": _decimal(detalhe.get("nValTot")),
+                    "valor_mercadoria": _decimal(detalhe.get("nValMerc")),
+                    "valor_desconto": _decimal(detalhe.get("nDesconto")),
+                    "valor_frete": _decimal(detalhe.get("nFrete")),
+                    "valor_despesas": _decimal(detalhe.get("nDespesas")),
+                    "valor_seguro": _decimal(detalhe.get("nSeguro")),
+                    "valor_icms": _decimal(detalhe.get("nValorIcms")),
+                    "valor_ipi": _decimal(detalhe.get("nValorIpi")),
+                    "valor_pis": _decimal(detalhe.get("nValorPis")),
+                    "valor_cofins": _decimal(detalhe.get("nValorCofins")),
+                    "valor_st": _decimal(detalhe.get("nValorSt")),
+                    "peso_bruto": _decimal(detalhe.get("nPesoBruto")),
+                    "peso_liquido": _decimal(detalhe.get("nPesoLiq")),
+                    "observacao": str(detalhe.get("cObs") or ""),
+                    "dados_originais": detalhe,
+                },
+            )
+            itens_ativos.add(codigo_item)
+
+        PedidoCompraItemOmie.objects.filter(
+            empresa=empresa,
+            pedido=pedido,
+        ).exclude(codigo_item__in=itens_ativos).delete()
+        processados += 1
+    return processados
+
+
 def executar_sincronizacao_omie(sincronizacao_id):
     _fechar_conexoes_antigas_fora_de_transacao()
     sincronizacao = SincronizacaoOmie.objects.select_related(
@@ -2732,6 +2989,14 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_paginas": "nTotPaginas",
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_posicoes_estoque,
+            },
+            {
+                "nome": "Pedidos de compra",
+                "consultar": consultar_pedidos_compra,
+                "chave": "pedidos_pesquisa",
+                "chave_total_paginas": "nTotPaginas",
+                "chave_total_registros": "nTotRegistros",
+                "salvar": _salvar_pedidos_compra,
             },
             {
                 "nome": "Categorias",

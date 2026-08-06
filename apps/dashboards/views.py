@@ -6,6 +6,7 @@ from django.shortcuts import render
 from django.utils.dateparse import parse_date
 
 from apps.dashboards.analise_clientes_services import analise_clientes_comercial
+from apps.dashboards.budget_services import budget_compras
 from apps.dashboards.desempenho_vendedores_services import desempenho_vendedores
 from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import (
@@ -104,6 +105,12 @@ AREAS = {
         "imagem": "compras.png",
         "cor": "warning",
         "dashboards": [
+            {
+                "slug": "budget",
+                "titulo": "Budget",
+                "descricao": "Compare budget, compras realizadas e itens estourados.",
+                "icone": "bi-wallet2",
+            },
             {
                 "slug": "evolucao-de-compras",
                 "titulo": "Evolução de compras",
@@ -494,6 +501,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         ]
         vendedores_selecionados = [item["valor"] for item in vendedores_opcoes]
         tipos_faturamento_selecionados = list(TIPOS_FATURAMENTO)
+        budget_dimensao = "produto"
         periodo_selecionado = f"ano-{date.today().year}"
         regime_financeiro = _regime_financeiro_valido("")
         data_inicio, data_fim = "", ""
@@ -506,6 +514,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "departamentos": departamentos_selecionados,
             "vendedores": vendedores_selecionados,
             "tipos_faturamento": tipos_faturamento_selecionados,
+            "budget_dimensao": budget_dimensao,
         }
         request.session[chave_dashboard] = estado
     elif "_filtrar" in request.GET:
@@ -525,6 +534,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             request.GET.getlist("tipo_faturamento"),
             TIPOS_FATURAMENTO.keys(),
         ) or list(TIPOS_FATURAMENTO)
+        budget_dimensao = request.GET.get("budget_dimensao", "")
         periodo_selecionado = _valor_periodo_valido(
             request.GET.get("periodo", "")
         )
@@ -547,6 +557,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "departamentos": departamentos_selecionados,
             "vendedores": vendedores_selecionados,
             "tipos_faturamento": tipos_faturamento_selecionados,
+            "budget_dimensao": budget_dimensao,
         }
         request.session[chave_dashboard] = estado
     else:
@@ -566,6 +577,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             estado.get("tipos_faturamento", list(TIPOS_FATURAMENTO)),
             TIPOS_FATURAMENTO.keys(),
         ) or list(TIPOS_FATURAMENTO)
+        budget_dimensao = estado.get("budget_dimensao", "")
         fonte_periodo = estado if estado.get("periodo") else estado_modulo
         periodo_selecionado = _valor_periodo_valido(
             fonte_periodo.get("periodo") or periodo_compartilhado or ""
@@ -650,10 +662,20 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "vendedores_selecionados": vendedores_selecionados,
             "tipos_faturamento": tipos_faturamento_opcoes,
             "tipos_faturamento_selecionados": tipos_faturamento_selecionados,
+            "budget_dimensao": budget_dimensao,
             "empresas_filtro": empresas,
             "empresas_selecionadas": empresas_selecionadas,
         }
     )
+    if area_slug == "compras" and dashboard_slug == "budget":
+        contexto["budget"] = budget_compras(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            budget_dimensao,
+        )
     if area_slug == "comercial" and dashboard_slug == "faturamento":
         contexto["faturamento"] = faturamento_comercial(
             empresa,

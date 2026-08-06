@@ -1,0 +1,678 @@
+{% extends "base.html" %}
+
+{% block title %}Budget de compras | MD21 BI{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">PARAMETROS</span>
+        <h1>Budget</h1>
+        <p>Controle os limites de compra da {{ empresa.nome_fantasia }}.</p>
+    </div>
+    <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">
+        <i class="bi bi-arrow-left me-2"></i>Voltar
+    </a>
+</div>
+
+<section class="budget-settings-card">
+    <div class="budget-settings-header">
+        <div>
+            <span class="eyebrow">COMPRAS</span>
+            <h2>Controle de budget</h2>
+            <p>Escolha a vertente para configurar os limites de compras.</p>
+        </div>
+    </div>
+
+    <div class="budget-overview" data-budget-overview>
+        <form method="post" class="budget-card-form">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="definir_tipos">
+            <div class="budget-card-grid">
+                {% for secao in secoes %}
+                    <article class="budget-control-card budget-card-{{ secao.card_tom }} {% if not secao.ativo %}is-muted{% endif %}">
+                        <div class="budget-card-top">
+                            <span class="budget-card-pill">
+                                <i class="bi {{ secao.card_icone }}"></i>{{ secao.card_etiqueta }}
+                            </span>
+                            <label class="budget-card-switch">
+                                <input
+                                    type="checkbox"
+                                    name="tipos_controle"
+                                    value="{{ secao.tipo }}"
+                                    {% if secao.ativo %}checked{% endif %}
+                                >
+                                <span></span>
+                            </label>
+                        </div>
+                        <h3>{{ secao.card_titulo }}</h3>
+                        <div class="budget-card-metrics">
+                            <div>
+                                <span>Orcado</span>
+                                <strong>{{ secao.total_limite_fmt }}</strong>
+                            </div>
+                            <div>
+                                <span>Gasto anterior</span>
+                                <strong>{{ secao.total_gasto_anterior_fmt }}</strong>
+                            </div>
+                        </div>
+                        <div class="budget-card-tags">
+                            <span>{{ secao.linhas|length }} itens</span>
+                            <span>{{ secao.periodicidade|title }}</span>
+                            <span>{{ secao.modalidade|title }}</span>
+                        </div>
+                        <button
+                            class="budget-card-edit"
+                            type="button"
+                            data-budget-open="{{ secao.tipo }}"
+                        >
+                            <i class="bi bi-pencil"></i>Editar
+                        </button>
+                    </article>
+                {% endfor %}
+            </div>
+            <div class="budget-card-actions">
+                <button class="btn btn-white" type="submit">
+                    <i class="bi bi-sliders me-2"></i>Aplicar controles
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="budget-detail-view d-none" data-budget-detail-view>
+        <div class="budget-detail-heading">
+            <button class="btn btn-white" type="button" data-budget-back>
+                <i class="bi bi-arrow-left me-2"></i>Cards de budget
+            </button>
+        </div>
+
+        <form method="post" class="budget-limits-form">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="salvar_limites">
+
+            {% for secao in secoes %}
+            <div
+                class="budget-section {% if forloop.first %}is-active{% endif %}"
+                data-budget-panel="{{ secao.tipo }}"
+            >
+                <div class="budget-section-title">
+                    <h3>{{ secao.titulo }}</h3>
+                    <span>{{ secao.linhas|length }} itens</span>
+                </div>
+
+                <div class="budget-mode-panel" data-budget-mode-panel="{{ secao.tipo }}">
+                    <input
+                        type="hidden"
+                        name="modalidade_{{ secao.tipo }}"
+                        value="{{ secao.modalidade }}"
+                        data-budget-mode-value
+                    >
+                    <div class="budget-mode-toggle" role="group" aria-label="Modalidade de budget">
+                        <button
+                            class="budget-mode-button {% if secao.modalidade == 'individual' %}is-active{% endif %}"
+                            type="button"
+                            data-budget-mode-button="individual"
+                        >
+                            Individual
+                        </button>
+                        <button
+                            class="budget-mode-button {% if secao.modalidade == 'grupo' %}is-active{% endif %}"
+                            type="button"
+                            data-budget-mode-button="grupo"
+                        >
+                            Grupo
+                        </button>
+                    </div>
+                    <label class="budget-periodicity">
+                        <span>Periodicidade</span>
+                        <select
+                            class="form-select"
+                            name="periodicidade_{{ secao.tipo }}"
+                            data-budget-periodicity
+                        >
+                            <option value="anual" {% if secao.periodicidade == 'anual' %}selected{% endif %}>Anual</option>
+                            <option value="mensal" {% if secao.periodicidade == 'mensal' %}selected{% endif %}>Mensal</option>
+                        </select>
+                    </label>
+                    <div
+                        class="budget-months dashboard-filter budget-month-filter {% if secao.periodicidade != 'mensal' %}d-none{% endif %}"
+                        data-budget-months
+                        data-filter-dropdown
+                    >
+                        <span class="budget-field-label">Meses</span>
+                        <button
+                            class="filter-trigger"
+                            type="button"
+                            aria-expanded="false"
+                        >
+                            <i class="bi bi-calendar3"></i>
+                            <span data-filter-summary data-empty-label="Todos os meses">{{ secao.meses_resumo }}</span>
+                            <i class="bi bi-chevron-down filter-chevron"></i>
+                        </button>
+                        <div class="filter-popover budget-month-popover">
+                            <strong class="filter-title">Meses</strong>
+                            <p class="filter-hint">Escolha um ou varios meses.</p>
+                            <div class="filter-options">
+                                {% for mes in secao.meses %}
+                                    <label class="filter-option month-option">
+                                        <input
+                                            type="checkbox"
+                                            name="mes_{{ secao.tipo }}"
+                                            value="{{ mes.numero }}"
+                                            {% if mes.selecionado %}checked{% endif %}
+                                        >
+                                        <span>{{ mes.rotulo }}</span>
+                                    </label>
+                                {% endfor %}
+                            </div>
+                            <div class="filter-actions">
+                                <button type="button" data-select-all>Selecionar todos</button>
+                                <button type="button" data-clear-all>Limpar</button>
+                            </div>
+                        </div>
+                    </div>
+                    {% if not secao.usa_familias %}
+                        <label class="budget-group-total {% if secao.modalidade != 'grupo' %}d-none{% endif %}" data-budget-group-total>
+                            <span>Total do grupo</span>
+                            <input
+                                class="form-control"
+                                type="text"
+                                inputmode="decimal"
+                                name="total_grupo_{{ secao.tipo }}"
+                                value="{{ secao.total_grupo_input }}"
+                                data-budget-group-total-input
+                            >
+                        </label>
+                    {% endif %}
+                    <div class="budget-group-hint {% if secao.modalidade != 'grupo' %}d-none{% endif %}" data-budget-group-hint>
+                        {% if secao.usa_familias %}
+                            Abra uma familia, informe o total e marque os produtos que participam do rateio.
+                        {% else %}
+                            Marque os itens que participam do rateio. O total sera dividido igualmente entre eles.
+                        {% endif %}
+                    </div>
+                    {% if secao.tipo == 'produto' %}
+                        <button class="btn btn-primary budget-save-inline ms-auto" type="submit">
+                            <i class="bi bi-check2-circle me-2"></i>Salvar budget
+                        </button>
+                    {% endif %}
+                </div>
+
+                <div class="budget-search">
+                    <label>
+                        <span class="visually-hidden">Buscar em {{ secao.titulo }}</span>
+                        <i class="bi bi-search"></i>
+                        <input
+                            class="form-control"
+                            type="search"
+                            placeholder="Buscar por codigo, nome ou detalhe. Ex: acion%ame"
+                            data-budget-search="{{ secao.tipo }}"
+                        >
+                    </label>
+                </div>
+
+                <div class="budget-table">
+                    <div class="budget-columns">
+                        <span>Item</span>
+                        <button
+                            class="budget-sort-button"
+                            type="button"
+                            data-budget-sort="previous"
+                            aria-label="Ordenar gasto ano anterior"
+                        >
+                            <span>Gasto ano anterior</span>
+                            <i class="bi bi-arrow-down-up"></i>
+                        </button>
+                        <button
+                            class="budget-sort-button"
+                            type="button"
+                            data-budget-sort="limit"
+                            aria-label="Ordenar limite de compra"
+                        >
+                            <span>Limite de compra</span>
+                            <i class="bi bi-arrow-down-up"></i>
+                        </button>
+                    </div>
+
+                    {% if secao.usa_familias %}
+                        {% for familia in secao.familias %}
+                            <details
+                                class="budget-family"
+                                data-budget-family
+                                data-budget-family-search="{{ familia.nome }}"
+                                {% if forloop.first or familia.selecionado_grupo %}open{% endif %}
+                            >
+                                <summary class="budget-family-summary">
+                                    <div>
+                                        <strong>{{ familia.nome }}</strong>
+                                        <small>{{ familia.linhas|length }} produtos · {{ familia.total_gasto_anterior_fmt }} no ano anterior</small>
+                                    </div>
+                                    <label
+                                        class="budget-family-total {% if secao.modalidade != 'grupo' %}d-none{% endif %}"
+                                        data-budget-family-total
+                                        onclick="event.stopPropagation();"
+                                    >
+                                        <span>Total do grupo</span>
+                                        <input
+                                            class="form-control"
+                                            type="text"
+                                            inputmode="decimal"
+                                            name="total_grupo_{{ secao.tipo }}_{{ familia.codigo }}"
+                                            value="{{ familia.total_grupo_input }}"
+                                            data-budget-family-total-input
+                                        >
+                                    </label>
+                                    <span class="budget-family-count">{{ familia.linhas|length }}</span>
+                                </summary>
+                                {% for linha in familia.linhas %}
+                                    <div
+                                        class="budget-row"
+                                        data-budget-row
+                                        data-budget-previous="{{ linha.gasto_ano_anterior }}"
+                                        data-budget-search-text="{{ linha.codigo }} {{ linha.nome }} {{ linha.detalhe }} {{ familia.nome }}"
+                                    >
+                                        <div class="budget-item">
+                                            <label class="budget-group-check {% if secao.modalidade != 'grupo' %}d-none{% endif %}" data-budget-group-check>
+                                                <input
+                                                    type="checkbox"
+                                                    name="grupo_item_{{ secao.tipo }}_{{ familia.codigo }}"
+                                                    value="{{ linha.codigo }}"
+                                                    {% if linha.selecionado_grupo %}checked{% endif %}
+                                                >
+                                                <span class="visually-hidden">Incluir {{ linha.nome }} no rateio</span>
+                                            </label>
+                                            <strong>{{ linha.nome }}</strong>
+                                            <small>
+                                                Codigo {{ linha.codigo }}{% if linha.detalhe %} - {{ linha.detalhe }}{% endif %}
+                                            </small>
+                                        </div>
+                                        <span class="budget-previous-spend">{{ linha.gasto_ano_anterior_fmt }}</span>
+                                        <label class="budget-limit">
+                                            <span class="visually-hidden">Limite de compra de {{ linha.nome }}</span>
+                                            <input
+                                                type="text"
+                                                inputmode="decimal"
+                                                name="limite_{{ secao.tipo }}_{{ linha.codigo }}"
+                                                value="{{ linha.limite_compra_input }}"
+                                                class="form-control"
+                                                data-budget-limit-input
+                                                data-budget-initial-limit="{{ linha.limite_compra }}"
+                                            >
+                                        </label>
+                                    </div>
+                                {% endfor %}
+                            </details>
+                        {% empty %}
+                            <div class="budget-empty">
+                                <i class="bi bi-box-seam"></i>
+                                <strong>Nenhum item encontrado</strong>
+                                <p>Atualize os dados da OMIE para listar os itens deste controle.</p>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        {% for linha in secao.linhas %}
+                            <div
+                                class="budget-row"
+                                data-budget-row
+                                data-budget-previous="{{ linha.gasto_ano_anterior }}"
+                                data-budget-search-text="{{ linha.codigo }} {{ linha.nome }} {{ linha.detalhe }}"
+                            >
+                                <div class="budget-item">
+                                    <label class="budget-group-check {% if secao.modalidade != 'grupo' %}d-none{% endif %}" data-budget-group-check>
+                                        <input
+                                            type="checkbox"
+                                            name="grupo_item_{{ secao.tipo }}"
+                                            value="{{ linha.codigo }}"
+                                            {% if linha.selecionado_grupo %}checked{% endif %}
+                                        >
+                                        <span class="visually-hidden">Incluir {{ linha.nome }} no rateio</span>
+                                    </label>
+                                    <strong>{{ linha.nome }}</strong>
+                                    <small>
+                                        Codigo {{ linha.codigo }}{% if linha.detalhe %} - {{ linha.detalhe }}{% endif %}
+                                    </small>
+                                </div>
+                                <span class="budget-previous-spend">{{ linha.gasto_ano_anterior_fmt }}</span>
+                                <label class="budget-limit">
+                                    <span class="visually-hidden">Limite de compra de {{ linha.nome }}</span>
+                                    <input
+                                        type="text"
+                                        inputmode="decimal"
+                                        name="limite_{{ secao.tipo }}_{{ linha.codigo }}"
+                                        value="{{ linha.limite_compra_input }}"
+                                        class="form-control"
+                                        data-budget-limit-input
+                                        data-budget-initial-limit="{{ linha.limite_compra }}"
+                                    >
+                                </label>
+                            </div>
+                        {% empty %}
+                            <div class="budget-empty">
+                                <i class="bi bi-box-seam"></i>
+                                <strong>Nenhum item encontrado</strong>
+                                <p>Atualize os dados da OMIE para listar os itens deste controle.</p>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                    <div class="budget-empty d-none" data-budget-no-results>
+                        <i class="bi bi-search"></i>
+                        <strong>Nenhum resultado encontrado</strong>
+                        <p>Ajuste a busca para ver outros itens deste controle.</p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+            <div class="budget-actions">
+                <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">Cancelar</a>
+                <button class="btn btn-primary" type="submit">
+                    <i class="bi bi-check2-circle me-2"></i>Salvar budget
+                </button>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const budgetOverview = document.querySelector("[data-budget-overview]");
+    const budgetDetailView = document.querySelector("[data-budget-detail-view]");
+
+    function activateBudgetPanel(target) {
+        document.querySelectorAll("[data-budget-tab]").forEach((item) => {
+            const active = item.dataset.budgetTab === target;
+            item.classList.toggle("is-active", active);
+            item.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        document.querySelectorAll("[data-budget-panel]").forEach((panel) => {
+            panel.classList.toggle(
+                "is-active",
+                panel.dataset.budgetPanel === target
+            );
+        });
+    }
+
+    function openBudgetDetail(target) {
+        activateBudgetPanel(target);
+        budgetOverview?.classList.add("d-none");
+        budgetDetailView?.classList.remove("d-none");
+        budgetDetailView?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    document.querySelectorAll("[data-budget-open]").forEach((button) => {
+        button.addEventListener("click", () => openBudgetDetail(button.dataset.budgetOpen));
+    });
+
+    document.querySelector("[data-budget-back]")?.addEventListener("click", () => {
+        budgetDetailView?.classList.add("d-none");
+        budgetOverview?.classList.remove("d-none");
+        budgetOverview?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    function matchesBudgetSearch(text, term) {
+        if (!term) return true;
+        const parts = term.split("%").filter(Boolean);
+        if (!parts.length) return true;
+
+        let position = 0;
+        return parts.every((part) => {
+            const found = text.indexOf(part, position);
+            if (found === -1) return false;
+            position = found + part.length;
+            return true;
+        });
+    }
+
+    document.querySelectorAll("[data-budget-search]").forEach((input) => {
+        input.addEventListener("input", () => {
+            const panel = document.querySelector(
+                `[data-budget-panel="${input.dataset.budgetSearch}"]`
+            );
+            const term = input.value.trim().toLowerCase();
+            let visible = 0;
+
+            panel?.querySelectorAll("[data-budget-row]").forEach((row) => {
+                const text = row.dataset.budgetSearchText.toLowerCase();
+                const matches = matchesBudgetSearch(text, term);
+                row.classList.toggle("d-none", !matches);
+                if (matches) visible += 1;
+            });
+            panel?.querySelectorAll("[data-budget-family]").forEach((family) => {
+                const rows = [...family.querySelectorAll("[data-budget-row]")];
+                const hasVisibleRows = rows.some((row) => !row.classList.contains("d-none"));
+                const familyMatches = matchesBudgetSearch(
+                    family.dataset.budgetFamilySearch.toLowerCase(),
+                    term
+                );
+                family.classList.toggle("d-none", !hasVisibleRows && !familyMatches);
+                if (term && (hasVisibleRows || familyMatches)) {
+                    family.open = true;
+                }
+            });
+
+            const noResults = panel?.querySelector("[data-budget-no-results]");
+            noResults?.classList.toggle("d-none", visible !== 0);
+        });
+    });
+
+    function parseBudgetNumber(value) {
+        const normalized = (value || "").replace(/\./g, "").replace(",", ".").trim();
+        const number = Number(normalized || "0");
+        return Number.isFinite(number) ? Math.max(number, 0) : 0;
+    }
+
+    function formatBudgetNumber(value) {
+        return value.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    }
+
+    function budgetSortValue(row, key) {
+        if (key === "previous") {
+            return Number(String(row.dataset.budgetPrevious || "0").replace(",", ".")) || 0;
+        }
+        const input = row.querySelector("[data-budget-limit-input]");
+        return parseBudgetNumber(input?.value);
+    }
+
+    function applyBudgetSort(panel, key, direction) {
+        const families = [...panel.querySelectorAll("[data-budget-family]")];
+        const sortRows = (rows, container, beforeNode = null) => {
+            rows.sort((a, b) => {
+                const difference = budgetSortValue(a, key) - budgetSortValue(b, key);
+                if (difference === 0) {
+                    return a.dataset.budgetSearchText.localeCompare(b.dataset.budgetSearchText);
+                }
+                return direction === "asc" ? difference : -difference;
+            });
+            rows.forEach((row) => {
+                if (beforeNode) {
+                    container.insertBefore(row, beforeNode);
+                } else {
+                    container.appendChild(row);
+                }
+            });
+        };
+
+        if (families.length) {
+            families.forEach((family) => {
+                sortRows([...family.querySelectorAll("[data-budget-row]")], family);
+            });
+            return;
+        }
+
+        const noResults = panel.querySelector("[data-budget-no-results]");
+        sortRows([...panel.querySelectorAll("[data-budget-row]")], panel.querySelector(".budget-table"), noResults);
+    }
+
+    function distributeBudgetScope(scope, total) {
+        const checks = [...scope.querySelectorAll("[data-budget-group-check] input")];
+        let manualTotal = 0;
+        const automaticInputs = [];
+
+        checks.forEach((check) => {
+            const row = check.closest("[data-budget-row]");
+            const input = row?.querySelector("[data-budget-limit-input]");
+            if (!input) return;
+
+            input.readOnly = !check.checked;
+            if (!check.checked) {
+                input.value = "0,00";
+                delete input.dataset.budgetManual;
+                return;
+            }
+
+            if (input.dataset.budgetManual === "true") {
+                manualTotal += parseBudgetNumber(input.value);
+            } else {
+                automaticInputs.push(input);
+            }
+        });
+
+        const remaining = Math.max(total - manualTotal, 0);
+        const automaticValue = automaticInputs.length
+            ? remaining / automaticInputs.length
+            : 0;
+        automaticInputs.forEach((input) => {
+            input.value = formatBudgetNumber(automaticValue);
+        });
+    }
+
+    document.querySelectorAll("[data-budget-sort]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const panel = button.closest("[data-budget-panel]");
+            if (!panel) return;
+
+            const key = button.dataset.budgetSort;
+            const currentDirection = button.dataset.budgetDirection || "asc";
+            const direction = currentDirection === "desc" ? "asc" : "desc";
+
+            panel.querySelectorAll("[data-budget-sort]").forEach((item) => {
+                item.classList.toggle("is-active", item === button);
+                item.dataset.budgetDirection = item === button ? direction : "";
+                const icon = item.querySelector("i");
+                if (!icon) return;
+                icon.className = item === button
+                    ? direction === "desc"
+                        ? "bi bi-sort-down"
+                        : "bi bi-sort-up"
+                    : "bi bi-arrow-down-up";
+            });
+            applyBudgetSort(panel, key, direction);
+        });
+    });
+
+    function syncGroupInputs(panel) {
+        const mode = panel.querySelector("[data-budget-mode-value]")?.value;
+        const groupMode = mode === "grupo";
+        const checks = [...panel.querySelectorAll("[data-budget-group-check] input")];
+        checks.forEach((check) => {
+            const row = check.closest("[data-budget-row]");
+            const input = row?.querySelector("[data-budget-limit-input]");
+            if (!input) return;
+            input.readOnly = groupMode && !check.checked;
+            if (groupMode && !check.checked) {
+                input.value = "0,00";
+                delete input.dataset.budgetManual;
+            }
+        });
+    }
+
+    function updateGroupDistribution(panel) {
+        const mode = panel.querySelector("[data-budget-mode-value]")?.value;
+        if (mode !== "grupo") {
+            syncGroupInputs(panel);
+            return;
+        }
+
+        const total = parseBudgetNumber(
+            panel.querySelector("[data-budget-group-total-input]")?.value
+        );
+        const families = [...panel.querySelectorAll("[data-budget-family]")];
+        if (families.length) {
+            families.forEach((family) => {
+                const familyTotal = parseBudgetNumber(
+                    family.querySelector("[data-budget-family-total-input]")?.value
+                );
+                distributeBudgetScope(family, familyTotal);
+            });
+            return;
+        }
+
+        distributeBudgetScope(panel, total);
+    }
+
+    document.querySelectorAll("[data-budget-mode-panel]").forEach((panel) => {
+        const modeInput = panel.querySelector("[data-budget-mode-value]");
+        const total = panel.querySelector("[data-budget-group-total]");
+        const hint = panel.querySelector("[data-budget-group-hint]");
+        const periodicity = panel.querySelector("[data-budget-periodicity]");
+        const months = panel.querySelector("[data-budget-months]");
+        const section = panel.closest("[data-budget-panel]");
+
+        function updateMonthsVisibility() {
+            months?.classList.toggle("d-none", periodicity?.value !== "mensal");
+        }
+
+        function setMode(mode, options = {}) {
+            modeInput.value = mode;
+            panel.querySelectorAll("[data-budget-mode-button]").forEach((button) => {
+                button.classList.toggle("is-active", button.dataset.budgetModeButton === mode);
+            });
+            const groupMode = mode === "grupo";
+            total?.classList.toggle("d-none", !groupMode);
+            hint?.classList.toggle("d-none", !groupMode);
+            section?.querySelectorAll("[data-budget-family-total]").forEach((item) => {
+                item.classList.toggle("d-none", !groupMode);
+            });
+            section?.querySelectorAll("[data-budget-group-check]").forEach((check) => {
+                check.classList.toggle("d-none", !groupMode);
+            });
+            section?.querySelectorAll("[data-budget-limit-input]").forEach((input) => {
+                if (!groupMode) {
+                    input.readOnly = false;
+                    delete input.dataset.budgetManual;
+                }
+            });
+            if (groupMode && options.preserveValues) {
+                syncGroupInputs(section);
+            } else {
+                updateGroupDistribution(section);
+            }
+        }
+
+        periodicity?.addEventListener("change", updateMonthsVisibility);
+        panel.querySelectorAll("[data-budget-mode-button]").forEach((button) => {
+            button.addEventListener("click", () => setMode(button.dataset.budgetModeButton));
+        });
+        panel.querySelector("[data-budget-group-total-input]")?.addEventListener(
+            "input",
+            () => updateGroupDistribution(section)
+        );
+        section?.querySelectorAll("[data-budget-family-total-input]").forEach((input) => {
+            input.addEventListener("input", () => updateGroupDistribution(section));
+        });
+        section?.querySelectorAll("[data-budget-group-check] input").forEach((check) => {
+            check.addEventListener("change", () => {
+                const row = check.closest("[data-budget-row]");
+                const input = row?.querySelector("[data-budget-limit-input]");
+                if (input) delete input.dataset.budgetManual;
+                updateGroupDistribution(section);
+            });
+        });
+        section?.querySelectorAll("[data-budget-limit-input]").forEach((input) => {
+            input.addEventListener("input", () => {
+                if (modeInput.value !== "grupo") return;
+                const row = input.closest("[data-budget-row]");
+                const check = row?.querySelector("[data-budget-group-check] input");
+                if (!check?.checked) return;
+                input.dataset.budgetManual = "true";
+                updateGroupDistribution(section);
+            });
+        });
+        setMode(modeInput.value || "individual", { preserveValues: true });
+        updateMonthsVisibility();
+    });
+</script>
+{% endblock %}
