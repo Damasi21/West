@@ -434,7 +434,7 @@ class ServicoOmie(models.Model):
     codigo = models.CharField(max_length=60, blank=True)
     descricao = models.CharField(max_length=255, blank=True)
     descricao_completa = models.TextField(blank=True)
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -524,7 +524,7 @@ class OrdemServicoOmie(models.Model):
         decimal_places=4,
         default=0,
     )
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -614,7 +614,7 @@ class OrdemServicoItemOmie(models.Model):
         blank=True,
     )
     descricao = models.TextField(blank=True)
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -699,7 +699,7 @@ class ContratoOmie(models.Model):
     vigencia_final = models.DateField(null=True, blank=True)
     dia_faturamento = models.PositiveIntegerField(default=0)
     valor_total_mes = models.DecimalField(max_digits=18, decimal_places=4, default=0)
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -707,7 +707,7 @@ class ContratoOmie(models.Model):
         null=True,
         blank=True,
     )
-    codigo_categoria_reembolso = models.CharField(max_length=20, blank=True)
+    codigo_categoria_reembolso = models.CharField(max_length=80, blank=True)
     categoria_reembolso = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -792,7 +792,7 @@ class ContratoItemOmie(models.Model):
         blank=True,
     )
     descricao = models.TextField(blank=True)
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -886,7 +886,7 @@ class PedidoOmie(models.Model):
     importado_api = models.BooleanField(default=False)
     quantidade_itens = models.PositiveIntegerField(default=0)
     quantidade_parcelas = models.PositiveIntegerField(default=0)
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -994,7 +994,7 @@ class PedidoItemOmie(models.Model):
     unidade = models.CharField(max_length=10, blank=True)
     ncm = models.CharField(max_length=20, blank=True)
     cfop = models.CharField(max_length=10, blank=True)
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -1073,7 +1073,7 @@ class PedidoCompraOmie(models.Model):
         blank=True,
     )
     codigo_comprador = models.BigIntegerField(null=True, blank=True)
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -1175,7 +1175,7 @@ class PedidoCompraItemOmie(models.Model):
     unidade = models.CharField(max_length=10, blank=True)
     ncm = models.CharField(max_length=20, blank=True)
     ean = models.CharField(max_length=30, blank=True)
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         "CategoriaOmie",
         on_delete=models.SET_NULL,
@@ -1240,8 +1240,8 @@ class CategoriaOmie(models.Model):
         on_delete=models.CASCADE,
         related_name="categorias_omie",
     )
-    codigo = models.CharField(max_length=50)
-    categoria_superior = models.CharField(max_length=50, blank=True)
+    codigo = models.CharField(max_length=80)
+    categoria_superior = models.CharField(max_length=80, blank=True)
     descricao = models.CharField(max_length=100, blank=True)
     descricao_padrao = models.CharField(max_length=50, blank=True)
     codigo_dre = models.CharField(max_length=10, blank=True)
@@ -1416,7 +1416,7 @@ class ContaPagarOmie(models.Model):
         null=True,
         blank=True,
     )
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         CategoriaOmie,
         on_delete=models.SET_NULL,
@@ -1513,7 +1513,7 @@ class ContaReceberOmie(models.Model):
         null=True,
         blank=True,
     )
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         CategoriaOmie,
         on_delete=models.SET_NULL,
@@ -1611,7 +1611,7 @@ class LancamentoContaCorrenteOmie(models.Model):
         decimal_places=2,
         default=0,
     )
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         CategoriaOmie,
         on_delete=models.SET_NULL,
@@ -1733,7 +1733,7 @@ class MovimentoFinanceiroOmie(models.Model):
         null=True,
         blank=True,
     )
-    codigo_categoria = models.CharField(max_length=50, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
     categoria_principal = models.ForeignKey(
         CategoriaOmie,
         on_delete=models.SET_NULL,

@@ -7,6 +7,7 @@ class BudgetConfiguracaoCompra(models.Model):
         FAMILIA_PRODUTO = "familia_produto", "Familia de produto"
         PROJETO = "projeto", "Projeto"
         FORNECEDOR = "fornecedor", "Fornecedor"
+        DEPARTAMENTO = "departamento", "Departamento"
 
     empresa = models.OneToOneField(
         "empresas.Empresa",
