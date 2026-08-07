@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.db.models.functions import Trim, Upper
 from django.utils.dateparse import parse_date
 
@@ -18,7 +18,11 @@ from apps.dashboards.fluxo_caixa_services import (
     STATUS_FECHADOS_RECEBER,
 )
 from apps.dashboards.models import AprovacaoPagamento
-from apps.empresas.omie import OmieAPIError, alterar_conta_pagar
+from apps.empresas.omie import (
+    OmieAPIError,
+    alterar_conta_pagar,
+    consultar_conta_pagar,
+)
 from apps.dashboards.visao_geral_services import _formatar_moeda_curta
 from apps.empresas.models import (
     ContaCorrenteOmie,
@@ -90,6 +94,35 @@ def _contas_pagar_do_periodo(inicio, fim, empresas_ids, projetos):
         queryset,
         "id_conta_corrente",
     ).select_related("empresa", "fornecedor", "categoria_principal")
+
+
+def _contas_pagar_historico(inicio, fim, empresas_ids, projetos):
+    queryset = ContaPagarOmie.objects.filter(
+        empresa_id__in=empresas_ids,
+        ativo_omie=True,
+    ).filter(
+        Q(data_previsao__gte=inicio, data_previsao__lte=fim)
+        | Q(
+            aprovacao_pagamento__data_previsao_original__gte=inicio,
+            aprovacao_pagamento__data_previsao_original__lte=fim,
+        )
+        | Q(
+            aprovacao_pagamento__data_previsao_aprovada__gte=inicio,
+            aprovacao_pagamento__data_previsao_aprovada__lte=fim,
+        )
+    )
+    if projetos:
+        queryset = queryset.filter(codigo_projeto__in=projetos)
+    return registros_com_conta_visivel_financeiro(
+        queryset,
+        "id_conta_corrente",
+    ).select_related(
+        "empresa",
+        "fornecedor",
+        "categoria_principal",
+        "aprovacao_pagamento",
+        "aprovacao_pagamento__aprovado_por",
+    ).distinct()
 
 
 def _contas_receber_do_periodo(inicio, fim, empresas_ids, projetos):
@@ -196,6 +229,8 @@ def painel_aprovacao_pagamentos(
     projetos_selecionados=None,
     periodo_inicio=None,
     periodo_fim=None,
+    historico_inicio=None,
+    historico_fim=None,
     abrir_modal="",
 ):
     empresas_ids = empresas_ids or [empresa.pk]
@@ -209,6 +244,8 @@ def painel_aprovacao_pagamentos(
 
     periodo_inicio = periodo_inicio or date.today()
     periodo_fim = periodo_fim or periodo_inicio
+    historico_inicio = historico_inicio or periodo_inicio
+    historico_fim = historico_fim or periodo_fim
     saldo_atual = _saldo_contas_correntes(empresas_ids)
     contas_pagar = _contas_pagar_do_periodo(
         periodo_inicio,
@@ -222,8 +259,15 @@ def painel_aprovacao_pagamentos(
         empresas_ids,
         projetos,
     )
+    contas_historico = _contas_pagar_historico(
+        historico_inicio,
+        historico_fim,
+        empresas_ids,
+        projetos,
+    )
     pagamentos = _linhas_pagamentos(contas_pagar)
     recebimentos = _linhas_recebimentos(contas_receber)
+    historico_pagamentos = _linhas_pagamentos(contas_historico)
     total_pagar = sum((linha["valor"] for linha in pagamentos), Decimal("0"))
     total_receber = sum(
         (
@@ -255,6 +299,13 @@ def painel_aprovacao_pagamentos(
         "periodo_fim": periodo_fim,
         "periodo_inicio_iso": periodo_inicio.isoformat(),
         "periodo_fim_iso": periodo_fim.isoformat(),
+        "historico_inicio_iso": historico_inicio.isoformat(),
+        "historico_fim_iso": historico_fim.isoformat(),
+        "historico_periodo_rotulo": (
+            historico_inicio.strftime("%d/%m/%Y")
+            if historico_inicio == historico_fim
+            else f"{historico_inicio:%d/%m/%Y} a {historico_fim:%d/%m/%Y}"
+        ),
         "periodo_rotulo": (
             periodo_inicio.strftime("%d/%m/%Y")
             if periodo_inicio == periodo_fim
@@ -278,6 +329,8 @@ def painel_aprovacao_pagamentos(
         "reagendados_count": reagendados_count,
         "pagamentos": pagamentos,
         "recebimentos": recebimentos,
+        "historico_pagamentos": historico_pagamentos,
+        "historico_count": len(historico_pagamentos),
         "categorias": _categorias_pagamentos(pagamentos),
     }
 
@@ -303,6 +356,32 @@ def _dados_alteracao_conta_pagar(conta, nova_previsao):
             + ", ".join(faltando)
         )
     return obrigatorios
+
+
+def _dados_aprovacao_conta_pagar(dados_omie):
+    dados_alteracao = dict(dados_omie or {})
+    if not dados_alteracao.get("codigo_lancamento_omie"):
+        raise ValueError("Lancamento Omie nao retornou codigo_lancamento_omie.")
+    for chave in (
+        "acao",
+        "aprendizado_rateio",
+        "baixa_bloqueada",
+        "baixar_documento",
+        "bloqueado",
+        "bloquear_exclusao",
+        "cnab_integracao_bancaria",
+        "conciliar_documento",
+        "importado_api",
+        "info",
+        "nsu",
+        "operacao",
+        "pagamento",
+        "status_titulo",
+        "valor_pag",
+    ):
+        dados_alteracao.pop(chave, None)
+    dados_alteracao["observacao"] = "APROVADO"
+    return dados_alteracao
 
 
 def _erro_omie_temporario(mensagem):
@@ -357,7 +436,44 @@ def salvar_aprovacoes_pagamentos(empresa, usuario, itens):
         aprovacao.aprovado_por = usuario
         aprovacao.erro_omie = ""
         aprovacao.resposta_omie = {}
-        if status == "rescheduled":
+        if status == "approved":
+            if not integracao:
+                aprovacao.status = AprovacaoPagamento.Status.ERRO_OMIE
+                aprovacao.erro_omie = "Integracao Omie ativa nao encontrada."
+                aprovacao.data_previsao_aprovada = conta.data_previsao
+                aprovacao.save()
+                erros.append({"id": conta.pk, "erro": aprovacao.erro_omie})
+                continue
+            try:
+                dados_omie = consultar_conta_pagar(
+                    integracao,
+                    conta.codigo_lancamento_omie,
+                )
+                dados_alteracao = _dados_aprovacao_conta_pagar(dados_omie)
+                resposta = alterar_conta_pagar(integracao, dados_alteracao)
+            except (OmieAPIError, ValueError) as exc:
+                aprovacao.status = AprovacaoPagamento.Status.ERRO_OMIE
+                aprovacao.erro_omie = str(exc)
+                aprovacao.data_previsao_aprovada = conta.data_previsao
+                aprovacao.save()
+                erros.append(
+                    {
+                        "id": conta.pk,
+                        "erro": str(exc),
+                        "temporario": _erro_omie_temporario(exc),
+                    }
+                )
+                continue
+
+            conta.dados_originais = {
+                **(conta.dados_originais or {}),
+                **(dados_omie or {}),
+                "observacao": "APROVADO",
+            }
+            conta.save(update_fields=["dados_originais", "sincronizado_em"])
+            aprovacao.data_previsao_aprovada = conta.data_previsao
+            aprovacao.resposta_omie = resposta
+        elif status == "rescheduled":
             if not nova_previsao:
                 aprovacao.status = AprovacaoPagamento.Status.ERRO_OMIE
                 aprovacao.erro_omie = "Nova previsao nao informada."
@@ -408,7 +524,7 @@ def salvar_aprovacoes_pagamentos(empresa, usuario, itens):
             conta.save(update_fields=["data_previsao", "dados_originais", "sincronizado_em"])
             aprovacao.data_previsao_aprovada = nova_previsao
             aprovacao.resposta_omie = resposta
-        else:
+        elif status == "pending":
             aprovacao.data_previsao_aprovada = conta.data_previsao
 
         aprovacao.save()
@@ -421,7 +537,11 @@ def salvar_aprovacoes_pagamentos(empresa, usuario, itens):
                     if aprovacao.data_previsao_aprovada
                     else ""
                 ),
-                "omie": "alterado" if status == "rescheduled" else "nao_aplicavel",
+                "omie": (
+                    "alterado"
+                    if status in {"approved", "rescheduled"}
+                    else "nao_aplicavel"
+                ),
             }
         )
 

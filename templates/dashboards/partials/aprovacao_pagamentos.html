@@ -103,6 +103,9 @@
         <button type="button" class="btn btn-white" data-open-receipts-modal>
             <i class="bi bi-search me-2"></i>Consultar recebimentos do dia
         </button>
+        <button type="button" class="btn btn-white payment-history-action" data-open-history-modal>
+            <i class="bi bi-clock-history me-2"></i>Historico
+        </button>
     </div>
 
     <div class="payment-modal" data-payment-modal hidden>
@@ -264,6 +267,82 @@
                     </div>
                 {% empty %}
                     <div class="payment-empty">Sem contas a receber vencendo no periodo selecionado.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="payment-modal" data-history-modal hidden>
+        <div class="payment-dialog payment-history-dialog" role="dialog" aria-modal="true" aria-labelledby="history-modal-title">
+            <header class="payment-dialog-header">
+                <h2 id="history-modal-title">Historico de aprovacao</h2>
+                <button type="button" class="payment-icon-button" data-close-history-modal aria-label="Fechar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </header>
+            <form class="payment-history-period-form" method="get">
+                <input type="hidden" name="modal" value="historico">
+                <input type="hidden" name="aprovacao_inicio" value="{{ dados.periodo_inicio_iso }}">
+                <input type="hidden" name="aprovacao_fim" value="{{ dados.periodo_fim_iso }}">
+                <div>
+                    <span>Periodo do historico</span>
+                    <strong>{{ dados.historico_periodo_rotulo }}</strong>
+                </div>
+                <label>
+                    <span>Data inicial</span>
+                    <input type="date" name="historico_inicio" value="{{ dados.historico_inicio_iso }}">
+                </label>
+                <label>
+                    <span>Data final</span>
+                    <input type="date" name="historico_fim" value="{{ dados.historico_fim_iso }}">
+                </label>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search me-2"></i>Consultar
+                </button>
+            </form>
+            <div class="payment-dialog-summary payment-history-summary">
+                <div>
+                    <span>Lancamentos</span>
+                    <strong>{{ dados.historico_count }}</strong>
+                </div>
+                <div>
+                    <span>Periodo</span>
+                    <strong>{{ dados.historico_periodo_rotulo }}</strong>
+                </div>
+                <div>
+                    <span>Origem</span>
+                    <strong>Contas a pagar</strong>
+                </div>
+            </div>
+            <div class="payment-table-wrap">
+                <div class="payment-row payment-history-row payment-head">
+                    <span>Empresa</span>
+                    <span>Fornecedor / categoria</span>
+                    <span>Previsao</span>
+                    <span>Valor</span>
+                    <span>Status</span>
+                </div>
+                {% for pagamento in dados.historico_pagamentos %}
+                    <div class="payment-row payment-history-row">
+                        <span>{{ pagamento.empresa }}</span>
+                        <span>
+                            <strong>{{ pagamento.nome }}</strong>
+                            <small>{{ pagamento.categoria }}</small>
+                        </span>
+                        <span>
+                            <b>{{ pagamento.previsao_fmt }}</b>
+                            <small>Venc. {{ pagamento.vencimento_fmt }}</small>
+                        </span>
+                        <strong>{{ pagamento.valor_fmt }}</strong>
+                        <span>
+                            <em
+                                class="payment-status payment-status-{{ pagamento.status_classe }}"
+                                title="{{ pagamento.erro_omie }}"
+                            >{{ pagamento.status }}</em>
+                        </span>
+                    </div>
+                {% empty %}
+                    <div class="payment-empty">Sem contas a pagar no periodo selecionado.</div>
                 {% endfor %}
             </div>
         </div>

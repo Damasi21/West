@@ -1880,7 +1880,7 @@ class DashboardPermissaoTests(TestCase):
             descricao="Conta principal",
             saldo_atual=297182,
         )
-        ContaPagarOmie.objects.create(
+        conta_atual = ContaPagarOmie.objects.create(
             empresa=self.empresa,
             codigo_lancamento_omie=61001,
             fornecedor=fornecedor,
@@ -1890,6 +1890,14 @@ class DashboardPermissaoTests(TestCase):
             valor_documento=12500,
             valor_a_pagar=12500,
             status_titulo="A VENCER",
+        )
+        AprovacaoPagamento.objects.create(
+            conta_pagar=conta_atual,
+            status=AprovacaoPagamento.Status.APROVADO,
+            data_previsao_original=hoje,
+            data_previsao_aprovada=hoje,
+            aprovado_por=self.usuario,
+            resposta_omie={"codigo_status": "0"},
         )
         ContaPagarOmie.objects.create(
             empresa=self.empresa,
@@ -1952,10 +1960,18 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Aprovacao de pagamentos")
         self.assertContains(response, "Abrir aprovacao de pagamentos")
         self.assertContains(response, "Consultar recebimentos do dia")
+        self.assertContains(response, "Historico")
+        self.assertContains(response, "Historico de aprovacao")
+        self.assertContains(response, 'data-history-modal')
+        self.assertContains(response, 'name="historico_inicio"')
+        self.assertContains(response, 'name="historico_fim"')
         self.assertContains(response, "Amazon AWS")
         self.assertContains(response, "Servicos em nuvem")
         self.assertNotContains(response, "Lancamento removido Omie")
-        self.assertNotContains(response, "DATATEM SOLUCOES")
+        pagamentos_contexto = response.context["aprovacao_pagamentos"]["pagamentos"]
+        nomes_pagamentos = [pagamento["nome"] for pagamento in pagamentos_contexto]
+        self.assertIn("Amazon AWS", nomes_pagamentos)
+        self.assertNotIn("DATATEM SOLUCOES", nomes_pagamentos)
         self.assertContains(response, 'data-payment-value="12500.00"')
         self.assertContains(response, "Aprovar")
         self.assertContains(response, "Reagendar")
@@ -1976,7 +1992,6 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, 'data-payment-status-detail-title')
         self.assertContains(response, "Operacao concluida")
         self.assertNotContains(response, "AWS anterior")
-        self.assertNotContains(response, "DATATEM SOLUCOES")
 
         response = self.client.get(
             reverse(
@@ -1996,14 +2011,41 @@ class DashboardPermissaoTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "AWS anterior")
-        self.assertNotContains(response, "DATATEM SOLUCOES")
         self.assertContains(response, 'name="aprovacao_inicio"')
         self.assertContains(response, 'data-payment-open-initial="pagamentos"')
+        pagamentos_contexto = response.context["aprovacao_pagamentos"]["pagamentos"]
+        nomes_pagamentos = [pagamento["nome"] for pagamento in pagamentos_contexto]
+        self.assertIn("AWS anterior", nomes_pagamentos)
+        self.assertNotIn("DATATEM SOLUCOES", nomes_pagamentos)
 
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "aprovacao-de-pagamentos",
+                },
+            ),
+            {
+                "modal": "historico",
+                "historico_inicio": (hoje - timedelta(days=7)).isoformat(),
+                "historico_fim": hoje.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-payment-open-initial="historico"')
+        self.assertContains(response, "AWS anterior")
+        self.assertContains(response, "Aprovado")
+        self.assertContains(response, "Pendente")
+
+    @patch("apps.dashboards.aprovacao_pagamentos_services.consultar_conta_pagar")
     @patch("apps.dashboards.aprovacao_pagamentos_services.alterar_conta_pagar")
     def test_salvar_aprovacao_pagamentos_persiste_e_reagenda_na_omie(
         self,
         alterar_conta_pagar_mock,
+        consultar_conta_pagar_mock,
     ):
         hoje = date.today()
         nova_previsao = hoje + timedelta(days=5)
@@ -2062,6 +2104,16 @@ class DashboardPermissaoTests(TestCase):
             "codigo_status": "0",
             "descricao_status": "Lancamento alterado com sucesso!",
         }
+        consultar_conta_pagar_mock.return_value = {
+            "codigo_lancamento_omie": conta_aprovada.codigo_lancamento_omie,
+            "codigo_cliente_fornecedor": fornecedor.codigo_cliente_omie,
+            "data_vencimento": hoje.strftime("%d/%m/%Y"),
+            "valor_documento": 100,
+            "codigo_categoria": categoria.codigo,
+            "data_previsao": hoje.strftime("%d/%m/%Y"),
+            "id_conta_corrente": conta_corrente.codigo_omie,
+            "observacao": "",
+        }
         self.client.force_login(self.usuario)
 
         response = self.client.post(
@@ -2088,6 +2140,15 @@ class DashboardPermissaoTests(TestCase):
         dados_resposta = response.json()
         self.assertIn(
             {
+                "id": conta_aprovada.pk,
+                "status": "approved",
+                "data_previsao": hoje.isoformat(),
+                "omie": "alterado",
+            },
+            dados_resposta["resultados"],
+        )
+        self.assertIn(
+            {
                 "id": conta_reagendada.pk,
                 "status": "rescheduled",
                 "data_previsao": nova_previsao.isoformat(),
@@ -2109,12 +2170,25 @@ class DashboardPermissaoTests(TestCase):
             aprovacao_reagendada.status,
             AprovacaoPagamento.Status.REAGENDADO,
         )
-        alterar_conta_pagar_mock.assert_called_once()
-        _, payload = alterar_conta_pagar_mock.call_args.args
-        self.assertEqual(payload["codigo_lancamento_omie"], 71002)
-        self.assertEqual(payload["data_previsao"], nova_previsao.strftime("%d/%m/%Y"))
+        consultar_conta_pagar_mock.assert_called_once_with(
+            integracao,
+            conta_aprovada.codigo_lancamento_omie,
+        )
+        self.assertEqual(alterar_conta_pagar_mock.call_count, 2)
+        _, payload_aprovacao = alterar_conta_pagar_mock.call_args_list[0].args
+        self.assertEqual(payload_aprovacao["codigo_lancamento_omie"], 71001)
+        self.assertEqual(payload_aprovacao["observacao"], "APROVADO")
+        _, payload_reagendamento = alterar_conta_pagar_mock.call_args_list[1].args
+        self.assertEqual(payload_reagendamento["codigo_lancamento_omie"], 71002)
+        self.assertEqual(
+            payload_reagendamento["data_previsao"],
+            nova_previsao.strftime("%d/%m/%Y"),
+        )
+        conta_aprovada.refresh_from_db()
+        self.assertEqual(conta_aprovada.dados_originais["observacao"], "APROVADO")
 
         alterar_conta_pagar_mock.reset_mock()
+        consultar_conta_pagar_mock.reset_mock()
         response = self.client.post(
             reverse(
                 "dashboards:salvar_aprovacao_pagamentos",
@@ -2140,6 +2214,7 @@ class DashboardPermissaoTests(TestCase):
             "Lancamento ja enviado ao Omie. Altere somente no Omie.",
         )
         alterar_conta_pagar_mock.assert_not_called()
+        consultar_conta_pagar_mock.assert_not_called()
 
     def test_fluxo_de_caixa_usa_apenas_lancamentos_realizados(self):
         ano_atual = date.today().year

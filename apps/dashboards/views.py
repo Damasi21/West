@@ -351,6 +351,18 @@ def _periodo_aprovacao_pagamentos(request):
     return inicio, fim
 
 
+def _periodo_historico_aprovacao_pagamentos(request, periodo_inicio, periodo_fim):
+    inicio = parse_date(request.GET.get("historico_inicio", ""))
+    fim = parse_date(request.GET.get("historico_fim", ""))
+    if not inicio and not fim:
+        return periodo_inicio, periodo_fim
+    inicio = inicio or fim
+    fim = fim or inicio
+    if inicio > fim:
+        inicio, fim = fim, inicio
+    return inicio, fim
+
+
 def _chave_empresas_inicio(empresa):
     return f"filtros_inicio:{empresa.pk}:empresas"
 
@@ -781,16 +793,23 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         )
     if area_slug == "financeiro" and dashboard_slug == "aprovacao-de-pagamentos":
         aprovacao_inicio, aprovacao_fim = _periodo_aprovacao_pagamentos(request)
-        aprovacao_modal = request.GET.get("modal", "")
-        if aprovacao_modal not in {"pagamentos", "recebimentos"}:
-            aprovacao_modal = ""
-        contexto["aprovacao_pagamentos"] = painel_aprovacao_pagamentos(
-            empresa,
-            empresas_consulta_ids,
-            projetos_consulta,
+        historico_inicio, historico_fim = _periodo_historico_aprovacao_pagamentos(
+            request,
             aprovacao_inicio,
             aprovacao_fim,
-            aprovacao_modal,
+        )
+        aprovacao_modal = request.GET.get("modal", "")
+        if aprovacao_modal not in {"pagamentos", "recebimentos", "historico"}:
+            aprovacao_modal = ""
+        contexto["aprovacao_pagamentos"] = painel_aprovacao_pagamentos(
+            empresa=empresa,
+            empresas_ids=empresas_consulta_ids,
+            projetos_selecionados=projetos_consulta,
+            periodo_inicio=aprovacao_inicio,
+            periodo_fim=aprovacao_fim,
+            historico_inicio=historico_inicio,
+            historico_fim=historico_fim,
+            abrir_modal=aprovacao_modal,
         )
     return render(request, "dashboards/dashboard.html", contexto)
 

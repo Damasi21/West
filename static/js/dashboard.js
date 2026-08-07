@@ -1283,6 +1283,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (paymentApproval) {
         const paymentModal = paymentApproval.querySelector("[data-payment-modal]");
         const receiptsModal = paymentApproval.querySelector("[data-receipts-modal]");
+        const historyModal = paymentApproval.querySelector("[data-history-modal]");
         const successModal = paymentApproval.querySelector("[data-payment-success-modal]");
         const statusDetailModal = paymentApproval.querySelector("[data-payment-status-detail-modal]");
         const statusDetailTitle = paymentApproval.querySelector("[data-payment-status-detail-title]");
@@ -1541,13 +1542,19 @@ document.addEventListener("DOMContentLoaded", () => {
         paymentApproval.querySelector("[data-close-receipts-modal]")?.addEventListener("click", () => {
             setModalVisible(receiptsModal, false);
         });
+        paymentApproval.querySelector("[data-open-history-modal]")?.addEventListener("click", () => {
+            setModalVisible(historyModal, true);
+        });
+        paymentApproval.querySelector("[data-close-history-modal]")?.addEventListener("click", () => {
+            setModalVisible(historyModal, false);
+        });
         paymentApproval.querySelector("[data-close-payment-success-modal]")?.addEventListener("click", () => {
             setModalVisible(successModal, false);
         });
         paymentApproval.querySelector("[data-close-payment-status-detail]")?.addEventListener("click", () => {
             setModalVisible(statusDetailModal, false);
         });
-        [paymentModal, receiptsModal, successModal, statusDetailModal].forEach((modal) => {
+        [paymentModal, receiptsModal, historyModal, successModal, statusDetailModal].forEach((modal) => {
             modal?.addEventListener("click", (event) => {
                 if (event.target === modal) setModalVisible(modal, false);
             });
@@ -1556,6 +1563,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (event.key !== "Escape") return;
             setModalVisible(paymentModal, false);
             setModalVisible(receiptsModal, false);
+            setModalVisible(historyModal, false);
             setModalVisible(successModal, false);
             setModalVisible(statusDetailModal, false);
         });
@@ -1704,6 +1712,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (paymentApproval.dataset.paymentOpenInitial === "recebimentos") {
             setModalVisible(receiptsModal, true);
+        }
+        if (paymentApproval.dataset.paymentOpenInitial === "historico") {
+            setModalVisible(historyModal, true);
         }
         setupPaymentStatusChart();
         updateBulkActions();
