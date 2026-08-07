@@ -1243,7 +1243,7 @@ class CategoriaOmie(models.Model):
     codigo = models.CharField(max_length=80)
     categoria_superior = models.CharField(max_length=80, blank=True)
     descricao = models.CharField(max_length=100, blank=True)
-    descricao_padrao = models.CharField(max_length=50, blank=True)
+    descricao_padrao = models.CharField(max_length=80, blank=True)
     codigo_dre = models.CharField(max_length=10, blank=True)
     conta_despesa = models.BooleanField(default=False)
     conta_inativa = models.BooleanField(default=False)
