@@ -35,6 +35,7 @@ def _decimal(valor):
 def _query_carteira(inicio, fim, empresas_ids, projetos):
     queryset = ContaReceberOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_vencimento__gte=inicio,
         data_vencimento__lte=fim,
     ).exclude(status_titulo__in=STATUS_CANCELADOS)
@@ -81,6 +82,7 @@ def _dso(carteira):
 def _recuperado(inicio, fim, empresas_ids, projetos):
     queryset = LancamentoContaCorrenteOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_lancamento__gte=inicio,
         data_lancamento__lte=fim,
         natureza="R",
@@ -101,6 +103,7 @@ def _tendencia(meses, empresas_ids, projetos):
         fim_mes = _fim_mes(mes["ano"], mes["mes"])
         carteira = ContaReceberOmie.objects.filter(
             empresa_id__in=empresas_ids,
+            ativo_omie=True,
             data_vencimento__lte=fim_mes,
         ).exclude(status_titulo__in=STATUS_CANCELADOS)
         if projetos:

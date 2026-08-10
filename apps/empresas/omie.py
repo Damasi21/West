@@ -118,6 +118,40 @@ def _eh_pagina_sem_registros_omie(detalhe):
     )
 
 
+def _eh_conta_corrente_nao_cadastrada_omie(detalhe):
+    detalhe_normalizado = str(detalhe or "").casefold()
+    return "conta corrente" in detalhe_normalizado and (
+        "nao cadastrada" in detalhe_normalizado
+        or "não cadastrada" in detalhe_normalizado
+        or "nÃ£o cadastrada" in detalhe_normalizado
+    )
+
+
+def _presenca_omie(agora):
+    return {
+        "ativo_omie": True,
+        "ultima_presenca_omie": agora,
+    }
+
+
+def _desativar_registros_ausentes_na_omie(
+    modelo,
+    empresa,
+    inicio_sincronizacao,
+):
+    return (
+        modelo.objects.filter(
+            empresa=empresa,
+            ativo_omie=True,
+        )
+        .filter(
+            Q(ultima_presenca_omie__isnull=True)
+            | Q(ultima_presenca_omie__lt=inicio_sincronizacao)
+        )
+        .update(ativo_omie=False)
+    )
+
+
 def _pagina_requisicao_omie(request):
     try:
         payload = json.loads(request.data.decode("utf-8"))
@@ -1141,6 +1175,7 @@ def _valores_cadastro(item):
 
 
 def _salvar_clientes(empresa, itens):
+    agora = timezone.now()
     processados = 0
     for item in itens:
         codigo = item.get("codigo_cliente_omie")
@@ -1149,13 +1184,17 @@ def _salvar_clientes(empresa, itens):
         CadastroOmie.objects.update_or_create(
             empresa=empresa,
             codigo_cliente_omie=int(codigo),
-            defaults=_valores_cadastro(item),
+            defaults={
+                **_valores_cadastro(item),
+                **_presenca_omie(agora),
+            },
         )
         processados += 1
     return processados
 
 
 def _salvar_projetos(empresa, itens):
+    agora = timezone.now()
     processados = 0
     for item in itens:
         codigo = item.get("codigo")
@@ -1172,6 +1211,7 @@ def _salvar_projetos(empresa, itens):
                 "inativo": _sim_nao(item.get("inativo")),
                 "info": item.get("info") or {},
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -1179,6 +1219,7 @@ def _salvar_projetos(empresa, itens):
 
 
 def _salvar_departamentos(empresa, itens):
+    agora = timezone.now()
     processados = 0
     for item in itens:
         codigo = str(item.get("codigo") or "").strip()
@@ -1193,6 +1234,7 @@ def _salvar_departamentos(empresa, itens):
                 "inativo": _sim_nao(item.get("inativo")),
                 "nivel_totalizador": _sim_nao(item.get("nivel_totalizador")),
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -1200,6 +1242,7 @@ def _salvar_departamentos(empresa, itens):
 
 
 def _salvar_vendedores(empresa, itens):
+    agora = timezone.now()
     processados = 0
     for item in itens:
         codigo = _inteiro_ou_none(item.get("codigo"))
@@ -1217,6 +1260,7 @@ def _salvar_vendedores(empresa, itens):
                 "visualiza_pedido": _sim_nao(item.get("visualiza_pedido")),
                 "inativo": _sim_nao(item.get("inativo")),
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -1224,6 +1268,7 @@ def _salvar_vendedores(empresa, itens):
 
 
 def _salvar_produtos(empresa, itens):
+    agora = timezone.now()
     processados = 0
     for item in itens:
         codigo_produto = _inteiro_ou_none(item.get("codigo_produto"))
@@ -1267,6 +1312,7 @@ def _salvar_produtos(empresa, itens):
                 "info": item.get("info") or {},
                 "recomendacoes_fiscais": item.get("recomendacoes_fiscais") or {},
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -1274,6 +1320,7 @@ def _salvar_produtos(empresa, itens):
 
 
 def _salvar_posicoes_estoque(empresa, itens):
+    agora = timezone.now()
     codigos_produtos = {
         codigo
         for item in itens
@@ -1312,6 +1359,7 @@ def _salvar_posicoes_estoque(empresa, itens):
                 "cmc": _decimal(item.get("nCMC")),
                 "preco_unitario": _decimal(item.get("nPrecoUnitario")),
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -1319,6 +1367,7 @@ def _salvar_posicoes_estoque(empresa, itens):
 
 
 def _salvar_servicos(empresa, itens):
+    agora = timezone.now()
     codigos_categorias = {
         str((item.get("cabecalho") or {}).get("cCodCateg") or "").strip()
         for item in itens
@@ -1381,6 +1430,7 @@ def _salvar_servicos(empresa, itens):
                 "info": info,
                 "int_listar": int_listar,
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -1388,6 +1438,7 @@ def _salvar_servicos(empresa, itens):
 
 
 def _salvar_ordens_servico(empresa, itens):
+    agora = timezone.now()
     codigos_clientes = {
         codigo
         for item in itens
@@ -1503,6 +1554,7 @@ def _salvar_ordens_servico(empresa, itens):
                 "parcelas": item.get("Parcelas") or [],
                 "servicos_prestados": item.get("ServicosPrestados") or [],
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
 
@@ -1560,6 +1612,7 @@ def _salvar_ordens_servico(empresa, itens):
                     "deduz_iss": bool(impostos.get("lDeduzISS")),
                     "impostos": impostos,
                     "dados_originais": servico_item,
+                    **_presenca_omie(agora),
                 },
             )
             itens_ativos.add(codigo_item)
@@ -1567,12 +1620,14 @@ def _salvar_ordens_servico(empresa, itens):
         OrdemServicoItemOmie.objects.filter(
             empresa=empresa,
             ordem_servico=ordem_servico,
-        ).exclude(codigo_item__in=itens_ativos).delete()
+            ativo_omie=True,
+        ).exclude(codigo_item__in=itens_ativos).update(ativo_omie=False)
         processados += 1
     return processados
 
 
 def _salvar_contratos(empresa, itens):
+    agora = timezone.now()
     codigos_clientes = {
         codigo
         for item in itens
@@ -1705,6 +1760,7 @@ def _salvar_contratos(empresa, itens):
                 "observacoes": item.get("observacoes") or {},
                 "venc_textos": item.get("vencTextos") or {},
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
 
@@ -1770,6 +1826,7 @@ def _salvar_contratos(empresa, itens):
                     "item_impostos": item_impostos,
                     "item_lei_transparencia": detalhe.get("itemLeiTranspImp") or {},
                     "dados_originais": detalhe,
+                    **_presenca_omie(agora),
                 },
             )
             itens_ativos.add(codigo_item)
@@ -1777,12 +1834,14 @@ def _salvar_contratos(empresa, itens):
         ContratoItemOmie.objects.filter(
             empresa=empresa,
             contrato=contrato,
-        ).exclude(codigo_item__in=itens_ativos).delete()
+            ativo_omie=True,
+        ).exclude(codigo_item__in=itens_ativos).update(ativo_omie=False)
         processados += 1
     return processados
 
 
 def _salvar_categorias(empresa, itens):
+    agora = timezone.now()
     processados = 0
     for item in itens:
         codigo = str(item.get("codigo") or "").strip()
@@ -1811,6 +1870,7 @@ def _salvar_categorias(empresa, itens):
                 "transferencia": _sim_nao(item.get("transferencia")),
                 "dados_dre": item.get("dadosDRE") or {},
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -1818,6 +1878,7 @@ def _salvar_categorias(empresa, itens):
 
 
 def _salvar_tipos_conta_corrente(empresa, itens):
+    agora = timezone.now()
     processados = 0
     for item in itens:
         codigo = str(item.get("cCodigo") or "").strip()
@@ -1830,6 +1891,7 @@ def _salvar_tipos_conta_corrente(empresa, itens):
                 "descricao": str(item.get("cDescricao") or ""),
                 "grupo": str(item.get("cGrupo") or ""),
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -1837,6 +1899,7 @@ def _salvar_tipos_conta_corrente(empresa, itens):
 
 
 def _salvar_contas_correntes(empresa, itens):
+    agora = timezone.now()
     processados = 0
     for item in itens:
         codigo = item.get("nCodCC")
@@ -1875,6 +1938,7 @@ def _salvar_contas_correntes(empresa, itens):
                 "inativo": _sim_nao(item.get("inativo")),
                 "observacao": str(item.get("observacao") or ""),
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -1896,6 +1960,7 @@ def _saldo_provisorio_extrato(dados):
 def _atualizar_saldos_extrato_contas_correntes(empresa, integracao):
     contas = ContaCorrenteOmie.objects.filter(
         empresa=empresa,
+        ativo_omie=True,
         inativo=False,
     )
     processados = 0
@@ -2079,16 +2144,15 @@ def _salvar_contas_pagar(empresa, itens):
 
 
 def _desativar_contas_pagar_ausentes_na_omie(empresa, inicio_sincronizacao):
-    return ContaPagarOmie.objects.filter(
-        empresa=empresa,
-        ativo_omie=True,
-    ).filter(
-        Q(ultima_presenca_omie__isnull=True)
-        | Q(ultima_presenca_omie__lt=inicio_sincronizacao)
-    ).update(ativo_omie=False)
+    return _desativar_registros_ausentes_na_omie(
+        ContaPagarOmie,
+        empresa,
+        inicio_sincronizacao,
+    )
 
 
 def _salvar_contas_receber(empresa, itens):
+    agora = timezone.now()
     codigos_clientes = {
         codigo
         for item in itens
@@ -2207,6 +2271,7 @@ def _salvar_contas_receber(empresa, itens):
                 "distribuicao": item.get("distribuicao") or [],
                 "info": item.get("info") or {},
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -2214,6 +2279,7 @@ def _salvar_contas_receber(empresa, itens):
 
 
 def _salvar_lancamentos_conta_corrente(empresa, itens):
+    agora = timezone.now()
     codigos_contas = {
         codigo
         for item in itens
@@ -2372,6 +2438,7 @@ def _salvar_lancamentos_conta_corrente(empresa, itens):
                 "transferencia": transferencia,
                 "info": info,
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -2379,6 +2446,7 @@ def _salvar_lancamentos_conta_corrente(empresa, itens):
 
 
 def _salvar_movimentos_financeiros(empresa, itens):
+    agora = timezone.now()
     codigos_clientes = {
         codigo
         for item in itens
@@ -2507,6 +2575,7 @@ def _salvar_movimentos_financeiros(empresa, itens):
                 "detalhes": detalhes,
                 "resumo": resumo,
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
         processados += 1
@@ -2514,6 +2583,7 @@ def _salvar_movimentos_financeiros(empresa, itens):
 
 
 def _salvar_pedidos(empresa, itens):
+    agora = timezone.now()
     codigos_clientes = {
         codigo
         for item in itens
@@ -2672,6 +2742,7 @@ def _salvar_pedidos(empresa, itens):
                 "observacoes": item.get("observacoes") or {},
                 "total_pedido": total,
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
 
@@ -2731,18 +2802,22 @@ def _salvar_pedidos(empresa, itens):
                     "imposto": detalhe.get("imposto") or {},
                     "inf_adic": inf_adic,
                     "dados_originais": detalhe,
+                    **_presenca_omie(agora),
                 },
             )
             itens_ativos.add(codigo_item)
 
-        PedidoItemOmie.objects.filter(empresa=empresa, pedido=pedido).exclude(
-            codigo_item__in=itens_ativos
-        ).delete()
+        PedidoItemOmie.objects.filter(
+            empresa=empresa,
+            pedido=pedido,
+            ativo_omie=True,
+        ).exclude(codigo_item__in=itens_ativos).update(ativo_omie=False)
         processados += 1
     return processados
 
 
 def _salvar_pedidos_compra(empresa, itens):
+    agora = timezone.now()
     codigos_fornecedores = {
         codigo
         for item in itens
@@ -2878,6 +2953,7 @@ def _salvar_pedidos_compra(empresa, itens):
                 "frete_consulta": frete,
                 "parcelas_consulta": item.get("parcelas_consulta") or [],
                 "dados_originais": item,
+                **_presenca_omie(agora),
             },
         )
 
@@ -2925,6 +3001,7 @@ def _salvar_pedidos_compra(empresa, itens):
                     "peso_liquido": _decimal(detalhe.get("nPesoLiq")),
                     "observacao": str(detalhe.get("cObs") or ""),
                     "dados_originais": detalhe,
+                    **_presenca_omie(agora),
                 },
             )
             itens_ativos.add(codigo_item)
@@ -2932,7 +3009,8 @@ def _salvar_pedidos_compra(empresa, itens):
         PedidoCompraItemOmie.objects.filter(
             empresa=empresa,
             pedido=pedido,
-        ).exclude(codigo_item__in=itens_ativos).delete()
+            ativo_omie=True,
+        ).exclude(codigo_item__in=itens_ativos).update(ativo_omie=False)
         processados += 1
     return processados
 
@@ -2957,30 +3035,35 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "consultar": consultar_clientes,
                 "chave": "clientes_cadastro",
                 "salvar": _salvar_clientes,
+                "modelo": CadastroOmie,
             },
             {
                 "nome": "Projetos",
                 "consultar": consultar_projetos,
                 "chave": "cadastro",
                 "salvar": _salvar_projetos,
+                "modelo": ProjetoOmie,
             },
             {
                 "nome": "Departamentos",
                 "consultar": consultar_departamentos,
                 "chave": "departamentos",
                 "salvar": _salvar_departamentos,
+                "modelo": DepartamentoOmie,
             },
             {
                 "nome": "Vendedores",
                 "consultar": consultar_vendedores,
                 "chave": "cadastro",
                 "salvar": _salvar_vendedores,
+                "modelo": VendedorOmie,
             },
             {
                 "nome": "Produtos",
                 "consultar": consultar_produtos,
                 "chave": "produto_servico_cadastro",
                 "salvar": _salvar_produtos,
+                "modelo": ProdutoOmie,
             },
             {
                 "nome": "Posicoes de estoque",
@@ -2989,6 +3072,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_paginas": "nTotPaginas",
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_posicoes_estoque,
+                "modelo": PosicaoEstoqueOmie,
             },
             {
                 "nome": "Pedidos de compra",
@@ -2997,12 +3081,14 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_paginas": "nTotPaginas",
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_pedidos_compra,
+                "modelo": PedidoCompraOmie,
             },
             {
                 "nome": "Categorias",
                 "consultar": consultar_categorias,
                 "chave": "categoria_cadastro",
                 "salvar": _salvar_categorias,
+                "modelo": CategoriaOmie,
             },
             {
                 "nome": "Servicos",
@@ -3011,42 +3097,49 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_paginas": "nTotPaginas",
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_servicos,
+                "modelo": ServicoOmie,
             },
             {
                 "nome": "Tipos de conta corrente",
                 "consultar": consultar_tipos_conta_corrente,
                 "chave": "cadastros",
                 "salvar": _salvar_tipos_conta_corrente,
+                "modelo": TipoContaCorrenteOmie,
             },
             {
                 "nome": "Contas correntes",
                 "consultar": consultar_contas_correntes,
                 "chave": "ListarContasCorrentes",
                 "salvar": _salvar_contas_correntes,
+                "modelo": ContaCorrenteOmie,
             },
             {
                 "nome": "Contratos",
                 "consultar": consultar_contratos,
                 "chave": "contratoCadastro",
                 "salvar": _salvar_contratos,
+                "modelo": ContratoOmie,
             },
             {
                 "nome": "Ordens de servico",
                 "consultar": consultar_ordens_servico,
                 "chave": "osCadastro",
                 "salvar": _salvar_ordens_servico,
+                "modelo": OrdemServicoOmie,
             },
             {
                 "nome": "Contas a pagar",
                 "consultar": consultar_contas_pagar,
                 "chave": "conta_pagar_cadastro",
                 "salvar": _salvar_contas_pagar,
+                "modelo": ContaPagarOmie,
             },
             {
                 "nome": "Contas a receber",
                 "consultar": consultar_contas_receber,
                 "chave": "conta_receber_cadastro",
                 "salvar": _salvar_contas_receber,
+                "modelo": ContaReceberOmie,
             },
             {
                 "nome": "Movimentos financeiros",
@@ -3055,6 +3148,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_paginas": "nTotPaginas",
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_movimentos_financeiros,
+                "modelo": MovimentoFinanceiroOmie,
             },
             {
                 "nome": "Lançamentos de conta corrente",
@@ -3063,20 +3157,34 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_paginas": "nTotPaginas",
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_lancamentos_conta_corrente,
+                "modelo": LancamentoContaCorrenteOmie,
             },
             {
                 "nome": "Pedidos",
                 "consultar": consultar_pedidos,
                 "chave": "pedido_venda_produto",
                 "salvar": _salvar_pedidos,
+                "modelo": PedidoOmie,
+                "ignorar_conta_corrente_ausente": True,
             },
         ]
+        avisos = []
 
         for recurso in recursos:
             contexto_atual = f"Consultando {recurso['nome']}"
             sincronizacao.mensagem = f"{contexto_atual}..."
             sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
-            recurso["primeira_resposta"] = recurso["consultar"](integracao, 1)
+            try:
+                recurso["primeira_resposta"] = recurso["consultar"](integracao, 1)
+            except OmieAPIError as exc:
+                if recurso.get("ignorar_conta_corrente_ausente") and _eh_conta_corrente_nao_cadastrada_omie(exc):
+                    avisos.append(f"{recurso['nome']}: pagina 1 ignorada: {exc}")
+                    recurso["primeira_resposta"] = {}
+                    recurso["total_paginas"] = 0
+                    recurso["total_registros"] = 0
+                    recurso["sincronizacao_incompleta"] = True
+                    continue
+                raise
             chave_total_paginas = recurso.get(
                 "chave_total_paginas",
                 "total_de_paginas",
@@ -3113,11 +3221,28 @@ def executar_sincronizacao_omie(sincronizacao_id):
             inicio_recurso = timezone.now()
             for pagina in range(1, recurso["total_paginas"] + 1):
                 contexto_atual = f"{recurso['nome']}: pagina {pagina}"
-                resposta = (
-                    recurso["primeira_resposta"]
-                    if pagina == 1
-                    else recurso["consultar"](integracao, pagina)
-                )
+                try:
+                    resposta = (
+                        recurso["primeira_resposta"]
+                        if pagina == 1
+                        else recurso["consultar"](integracao, pagina)
+                    )
+                except OmieAPIError as exc:
+                    if recurso.get("ignorar_conta_corrente_ausente") and _eh_conta_corrente_nao_cadastrada_omie(exc):
+                        avisos.append(f"{contexto_atual} ignorada: {exc}")
+                        recurso["sincronizacao_incompleta"] = True
+                        pagina_global += 1
+                        sincronizacao.pagina_atual = pagina_global
+                        sincronizacao.mensagem = f"{contexto_atual} ignorada por erro cadastral no Omie."
+                        sincronizacao.save(
+                            update_fields=[
+                                "pagina_atual",
+                                "mensagem",
+                                "atualizada_em",
+                            ]
+                        )
+                        continue
+                    raise
                 itens = resposta.get(recurso["chave"]) or []
 
                 with transaction.atomic():
@@ -3137,13 +3262,14 @@ def executar_sincronizacao_omie(sincronizacao_id):
                             "atualizada_em",
                         ]
                     )
-            if recurso["salvar"] == _salvar_contas_pagar:
-                desativados = _desativar_contas_pagar_ausentes_na_omie(
+            if recurso.get("modelo") and not recurso.get("sincronizacao_incompleta"):
+                desativados = _desativar_registros_ausentes_na_omie(
+                    recurso["modelo"],
                     sincronizacao.empresa,
                     inicio_recurso,
                 )
                 sincronizacao.mensagem = (
-                    f"{recurso['nome']}: {desativados} lancamento(s) obsoleto(s)."
+                    f"{recurso['nome']}: {desativados} registro(s) obsoleto(s)."
                 )
                 sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
 
@@ -3180,9 +3306,11 @@ def executar_sincronizacao_omie(sincronizacao_id):
         sincronizacao.mensagem = (
             f"{sincronizacao.registros_processados} registros atualizados."
         )
-        sincronizacao.save(
-            update_fields=["status", "finalizada_em", "mensagem", "atualizada_em"]
-        )
+        update_fields = ["status", "finalizada_em", "mensagem", "atualizada_em"]
+        if avisos:
+            sincronizacao.erro = "\n".join(avisos)[:2000]
+            update_fields.append("erro")
+        sincronizacao.save(update_fields=update_fields)
     except Exception as exc:
         sincronizacao.status = SincronizacaoOmie.Status.ERRO
         sincronizacao.finalizada_em = timezone.now()

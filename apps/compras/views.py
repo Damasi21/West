@@ -209,6 +209,7 @@ def _linhas_produtos(empresa):
         }
         for produto in ProdutoOmie.objects.filter(
             empresa=empresa,
+            ativo_omie=True,
             inativo=False,
         ).order_by("descricao", "codigo")
     ]
@@ -225,6 +226,7 @@ def _linhas_familias(empresa):
         for familia in (
             ProdutoOmie.objects.filter(
                 empresa=empresa,
+                ativo_omie=True,
                 inativo=False,
                 codigo_familia__isnull=False,
             )
@@ -248,6 +250,7 @@ def _linhas_projetos(empresa):
         }
         for projeto in ProjetoOmie.objects.filter(
             empresa=empresa,
+            ativo_omie=True,
             inativo=False,
         ).order_by("nome", "codigo")
     ]
@@ -265,6 +268,7 @@ def _linhas_fornecedores(empresa):
         }
         for fornecedor in CadastroOmie.objects.filter(
             empresa=empresa,
+            ativo_omie=True,
             inativo=False,
             tipo__in=[CadastroOmie.Tipo.FORNECEDOR, CadastroOmie.Tipo.AMBOS],
         ).order_by("razao_social", "nome_fantasia")
@@ -281,6 +285,7 @@ def _linhas_departamentos(empresa):
         }
         for departamento in DepartamentoOmie.objects.filter(
             empresa=empresa,
+            ativo_omie=True,
             inativo=False,
         ).order_by("estrutura", "descricao")
     ]
@@ -326,6 +331,8 @@ def _gastos_ano_anterior(empresa, tipo_controle):
     itens = (
         PedidoCompraItemOmie.objects.filter(
             empresa=empresa,
+            ativo_omie=True,
+            pedido__ativo_omie=True,
             pedido__data_previsao__year=ano,
         )
         .select_related("pedido", "produto")

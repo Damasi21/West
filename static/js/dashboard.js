@@ -213,6 +213,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const detailClose = cashflow.querySelector("[data-cashflow-detail-close]");
         const detailSortDate = cashflow.querySelector("[data-cashflow-sort-date]");
         const detailSortValue = cashflow.querySelector("[data-cashflow-sort-value]");
+        const horizontalModal = cashflow.querySelector("[data-cashflow-horizontal-modal]");
+        const horizontalMode = cashflow.querySelector("[data-cashflow-horizontal-mode]");
+        const horizontalPanels = [...cashflow.querySelectorAll("[data-cashflow-horizontal-panel]")];
         let pendingDetail = null;
         let currentDetailRows = [];
         let currentDetailSortField = "valor";
@@ -224,6 +227,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const closeCashflowDetails = () => {
             if (detailModal) detailModal.hidden = true;
+        };
+
+        const closeCashflowHorizontal = () => {
+            if (horizontalModal) horizontalModal.hidden = true;
         };
 
         const openCashflowDetails = (detail) => {
@@ -327,6 +334,15 @@ document.addEventListener("DOMContentLoaded", () => {
             pendingDetail = null;
         });
         detailClose?.addEventListener("click", closeCashflowDetails);
+        cashflow.querySelector("[data-cashflow-horizontal-open]")?.addEventListener("click", () => {
+            if (horizontalModal) horizontalModal.hidden = false;
+        });
+        cashflow.querySelector("[data-cashflow-horizontal-close]")?.addEventListener("click", closeCashflowHorizontal);
+        horizontalMode?.addEventListener("change", () => {
+            horizontalPanels.forEach((panel) => {
+                panel.hidden = panel.dataset.cashflowHorizontalPanel !== horizontalMode.value;
+            });
+        });
         detailSortDate?.addEventListener("click", () => {
             currentDetailSort = currentDetailSortField === "data" && currentDetailSort === "desc" ? "asc" : "desc";
             currentDetailSortField = "data";
@@ -348,10 +364,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 closeCashflowDetails();
             }
         });
+        horizontalModal?.addEventListener("click", (event) => {
+            if (event.target === horizontalModal) {
+                closeCashflowHorizontal();
+            }
+        });
         document.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;
             closeCashflowConfirm();
             closeCashflowDetails();
+            closeCashflowHorizontal();
         });
 
         const mainCanvas = cashflow.querySelector("[data-cashflow-chart]");

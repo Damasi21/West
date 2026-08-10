@@ -46,6 +46,7 @@ def _periodo_anterior(inicio, fim):
 def _query_pedidos(inicio, fim, empresas_ids, projetos):
     queryset = PedidoOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelado=False,
         faturado=True,
         data_faturamento__gte=inicio,
@@ -67,6 +68,7 @@ def _mapear_cmc_por_produto(itens):
     posicoes_por_produto = {}
     for posicao in PosicaoEstoqueOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         codigo_produto__in=codigos_produtos,
     ).order_by("codigo_local_estoque"):
         chave_produto = (posicao.empresa_id, posicao.codigo_produto)
@@ -116,7 +118,7 @@ def _itens_agregados(pedidos):
         }
     )
     itens = list(
-        PedidoItemOmie.objects.filter(pedido__in=pedidos)
+        PedidoItemOmie.objects.filter(pedido__in=pedidos, ativo_omie=True)
         .select_related("produto")
         .order_by("codigo_produto", "codigo_produto_texto", "descricao")
     )

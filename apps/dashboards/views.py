@@ -454,14 +454,17 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
 
     projetos = ProjetoOmie.objects.filter(
         empresa_id__in=empresas_consulta_ids,
+        ativo_omie=True,
         inativo=False,
     ).select_related("empresa")
     departamentos = DepartamentoOmie.objects.filter(
         empresa_id__in=empresas_consulta_ids,
+        ativo_omie=True,
         inativo=False,
     ).select_related("empresa")
     vendedores = VendedorOmie.objects.filter(
         empresa_id__in=empresas_consulta_ids,
+        ativo_omie=True,
         inativo=False,
     ).select_related("empresa")
 

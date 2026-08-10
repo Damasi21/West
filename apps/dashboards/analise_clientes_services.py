@@ -59,6 +59,7 @@ def _media(total, quantidade):
 def _query_pedidos_faturados(inicio, fim, empresas_ids, projetos):
     queryset = PedidoOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelado=False,
         faturado=True,
         data_faturamento__gte=inicio,
@@ -72,6 +73,7 @@ def _query_pedidos_faturados(inicio, fim, empresas_ids, projetos):
 def _query_ordens_faturadas(inicio, fim, empresas_ids):
     return OrdemServicoOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelada=False,
         faturada=True,
         data_faturamento__gte=inicio,
@@ -244,6 +246,7 @@ def analise_clientes_comercial(
     clientes = list(
         CadastroOmie.objects.filter(
             empresa_id__in=empresas_ids,
+            ativo_omie=True,
             tipo__in=[CadastroOmie.Tipo.CLIENTE, CadastroOmie.Tipo.AMBOS],
         )
     )
@@ -277,6 +280,7 @@ def analise_clientes_comercial(
     clientes_ativos = sum(1 for cliente in clientes if not cliente.inativo)
     novos_periodo = CadastroOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         tipo__in=[CadastroOmie.Tipo.CLIENTE, CadastroOmie.Tipo.AMBOS],
         criado_em__date__gte=inicio,
         criado_em__date__lte=fim,

@@ -8,6 +8,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from .categorias import excluir_categorias_transferencia
 from .models import CategoriaOmie, ContaDRE
 
 
@@ -206,7 +207,10 @@ def exportar_categorias(empresa):
     ws.column_dimensions["B"].width = 48
 
     categorias = list(
-        CategoriaOmie.objects.filter(empresa=empresa, conta_inativa=False)
+        excluir_categorias_transferencia(
+            CategoriaOmie.objects.filter(empresa=empresa, conta_inativa=False)
+            .filter(ativo_omie=True)
+        )
         .select_related("conta_dre")
         .order_by("codigo")
     )
@@ -262,7 +266,10 @@ def importar_categorias(arquivo, empresa):
         )
 
     categorias = list(
-        CategoriaOmie.objects.filter(empresa=empresa, conta_inativa=False)
+        excluir_categorias_transferencia(
+            CategoriaOmie.objects.filter(empresa=empresa, conta_inativa=False)
+            .filter(ativo_omie=True)
+        )
         .order_by("codigo")
     )
     por_rotulo = {

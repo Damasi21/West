@@ -156,6 +156,7 @@ def _mapa_lancamentos_caixa(fim, meses, empresas_ids, projetos):
     data_inicio_consulta = date(ano_primeiro, mes_primeiro, 1)
     queryset = LancamentoContaCorrenteOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_lancamento__gte=data_inicio_consulta,
         data_lancamento__lte=fim,
         categoria_principal__conta_dre__isnull=False,
@@ -191,6 +192,7 @@ def _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos):
         data_referencia=Coalesce("data_registro", "data_previsao", "data_emissao"),
     ).filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_referencia__gte=data_inicio_consulta,
         data_referencia__lte=fim,
         categoria_principal__conta_dre__isnull=False,
@@ -199,6 +201,7 @@ def _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos):
         data_referencia=Coalesce("data_entrada", "data_previsao", "data_vencimento"),
     ).filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_referencia__gte=data_inicio_consulta,
         data_referencia__lte=fim,
         categoria_principal__conta_dre__isnull=False,
@@ -339,6 +342,7 @@ def _classificar_indicadores(linhas_pai):
 def _fornecedores_caixa(conta, inicio, fim, empresas_ids, receitas_mes, meses):
     base = LancamentoContaCorrenteOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_lancamento__gte=inicio,
         data_lancamento__lte=fim,
         categoria_principal__conta_dre=conta,
@@ -422,6 +426,7 @@ def _pessoas_competencia(
                 data_referencia=Coalesce("data_registro", "data_previsao", "data_emissao"),
             ).filter(
                 empresa_id__in=empresas_ids,
+                ativo_omie=True,
                 data_referencia__gte=inicio,
                 data_referencia__lte=fim,
                 categoria_principal__conta_dre=conta,
@@ -434,6 +439,7 @@ def _pessoas_competencia(
                 data_referencia=Coalesce("data_entrada", "data_previsao", "data_vencimento"),
             ).filter(
                 empresa_id__in=empresas_ids,
+                ativo_omie=True,
                 data_referencia__gte=inicio,
                 data_referencia__lte=fim,
                 categoria_principal__conta_dre=conta,

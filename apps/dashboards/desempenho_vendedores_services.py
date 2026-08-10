@@ -82,6 +82,7 @@ def _meta_por_vendedor(empresas_ids, vendedores, meses):
 def _vendedores_ativos(empresas_ids, vendedores):
     queryset = VendedorOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         inativo=False,
     ).select_related("empresa")
     if vendedores:
@@ -92,6 +93,7 @@ def _vendedores_ativos(empresas_ids, vendedores):
 def _pedidos_faturados(inicio, fim, empresas_ids, projetos, vendedores):
     queryset = PedidoOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelado=False,
         faturado=True,
         data_faturamento__gte=inicio,
@@ -109,6 +111,7 @@ def _pedidos_abertos(inicio, fim, empresas_ids, projetos, vendedores):
         data_referencia=Coalesce("data_inclusao", "data_previsao"),
     ).filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelado=False,
         faturado=False,
         data_referencia__gte=inicio,
@@ -124,6 +127,7 @@ def _pedidos_abertos(inicio, fim, empresas_ids, projetos, vendedores):
 def _ordens_faturadas(inicio, fim, empresas_ids, vendedores):
     queryset = OrdemServicoOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelada=False,
         faturada=True,
         data_faturamento__gte=inicio,
@@ -139,6 +143,7 @@ def _ordens_abertas(inicio, fim, empresas_ids, vendedores):
         data_referencia=Coalesce("data_inclusao", "data_previsao"),
     ).filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelada=False,
         faturada=False,
         data_referencia__gte=inicio,
