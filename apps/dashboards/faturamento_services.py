@@ -87,6 +87,7 @@ def _query_pedidos_emitidos(inicio, fim, empresas_ids, projetos, vendedores):
         data_referencia=Coalesce("data_inclusao", "data_previsao"),
     ).filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelado=False,
         data_referencia__gte=inicio,
         data_referencia__lte=fim,
@@ -101,6 +102,7 @@ def _query_pedidos_emitidos(inicio, fim, empresas_ids, projetos, vendedores):
 def _query_pedidos_faturados(inicio, fim, empresas_ids, projetos, vendedores):
     queryset = PedidoOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelado=False,
         faturado=True,
         data_faturamento__gte=inicio,
@@ -118,6 +120,7 @@ def _query_ordens_emitidas(inicio, fim, empresas_ids, vendedores):
         data_referencia=Coalesce("data_inclusao", "data_previsao"),
     ).filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelada=False,
         data_referencia__gte=inicio,
         data_referencia__lte=fim,
@@ -130,6 +133,7 @@ def _query_ordens_emitidas(inicio, fim, empresas_ids, vendedores):
 def _query_ordens_faturadas(inicio, fim, empresas_ids, vendedores):
     queryset = OrdemServicoOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         cancelada=False,
         faturada=True,
         data_faturamento__gte=inicio,
@@ -158,12 +162,15 @@ def _totais_por_mes(queryset, campo_data, campo_valor):
 
 def _ranking_produtos(queryset, queryset_anterior, total_periodo):
     linhas = (
-        PedidoItemOmie.objects.filter(pedido__in=queryset)
+        PedidoItemOmie.objects.filter(pedido__in=queryset, ativo_omie=True)
         .values("produto__descricao", "descricao", "codigo_produto_texto")
         .annotate(quantidade=Sum("quantidade"), total=Sum("valor_total"))
         .order_by("-total")[:5]
     )
-    anterior_base = PedidoItemOmie.objects.filter(pedido__in=queryset_anterior)
+    anterior_base = PedidoItemOmie.objects.filter(
+        pedido__in=queryset_anterior,
+        ativo_omie=True,
+    )
     itens = []
     for item in linhas:
         nome = (
@@ -201,14 +208,18 @@ def _ranking_servicos(queryset, queryset_anterior, total_periodo):
         output_field=DecimalField(max_digits=18, decimal_places=4),
     )
     linhas = (
-        OrdemServicoItemOmie.objects.filter(ordem_servico__in=queryset)
+        OrdemServicoItemOmie.objects.filter(
+            ordem_servico__in=queryset,
+            ativo_omie=True,
+        )
         .annotate(valor_calculado=valor_item)
         .values("servico__descricao", "descricao", "codigo_servico")
         .annotate(quantidade=Sum("quantidade"), total=Sum("valor_calculado"))
         .order_by("-total")[:5]
     )
     anterior_base = OrdemServicoItemOmie.objects.filter(
-        ordem_servico__in=queryset_anterior
+        ordem_servico__in=queryset_anterior,
+        ativo_omie=True,
     ).annotate(valor_calculado=valor_item)
     itens = []
     for item in linhas:

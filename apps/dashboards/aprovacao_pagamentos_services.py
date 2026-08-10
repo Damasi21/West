@@ -70,6 +70,7 @@ def _saldo_contas_correntes(empresas_ids):
     total = contas_correntes_visiveis_financeiro(
         ContaCorrenteOmie.objects.filter(
             empresa_id__in=empresas_ids,
+            ativo_omie=True,
             inativo=False,
             saldo_atual__isnull=False,
         )
@@ -128,6 +129,7 @@ def _contas_pagar_historico(inicio, fim, empresas_ids, projetos):
 def _contas_receber_do_periodo(inicio, fim, empresas_ids, projetos):
     queryset = ContaReceberOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_vencimento__gte=inicio,
         data_vencimento__lte=fim,
     ).exclude(status_titulo__in=STATUS_FECHADOS_RECEBER)
@@ -395,6 +397,7 @@ def salvar_aprovacoes_pagamentos(empresa, usuario, itens):
         conta.pk: conta
         for conta in ContaPagarOmie.objects.filter(
             empresa=empresa,
+            ativo_omie=True,
             pk__in=ids,
         )
     }

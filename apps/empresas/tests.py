@@ -969,6 +969,11 @@ class CategoriasOmieTests(TestCase):
             descricao="Categoria inativa",
             conta_inativa=True,
         )
+        self.categoria_transferencia = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="9.99.01",
+            descricao="Entrada de Transferencia",
+        )
 
     def test_exibe_apenas_ativas_com_regras_visuais_e_seletor_na_filha(self):
         self.client.force_login(self.administrador)
@@ -978,6 +983,7 @@ class CategoriasOmieTests(TestCase):
         self.assertContains(response, self.categoria_pai.codigo)
         self.assertContains(response, self.categoria_filha.codigo)
         self.assertNotContains(response, self.categoria_inativa.descricao)
+        self.assertNotContains(response, self.categoria_transferencia.descricao)
         self.assertContains(response, "is-revenue")
         self.assertContains(response, "is-expense")
         self.assertContains(response, "is-parent")
@@ -1091,6 +1097,11 @@ class CategoriasOmieTests(TestCase):
             f"{self.categoria_pai.codigo} - {self.categoria_pai.descricao}",
         )
         self.assertEqual(ws["B3"].value, self.conta_dre.nome)
+        valores_categoria = [cell.value for cell in ws["A"] if cell.value]
+        self.assertNotIn(
+            f"{self.categoria_transferencia.codigo} - {self.categoria_transferencia.descricao}",
+            valores_categoria,
+        )
         self.assertTrue(ws.data_validations.dataValidation)
 
     def test_importa_associacoes_de_categorias_pela_planilha(self):
@@ -1121,6 +1132,31 @@ class CategoriasOmieTests(TestCase):
         self.assertRedirects(response, self.url)
         self.categoria_filha.refresh_from_db()
         self.assertEqual(self.categoria_filha.conta_dre, self.conta_dre)
+
+    def test_importacao_ignora_categoria_de_transferencia_no_de_para(self):
+        self.client.force_login(self.administrador)
+        planilha = arquivo_xlsx(
+            "Categorias",
+            ("Categoria", "Conta DRE"),
+            (
+                (
+                    f"{self.categoria_transferencia.codigo} - {self.categoria_transferencia.descricao}",
+                    self.conta_dre.nome,
+                ),
+            ),
+        )
+
+        response = self.client.post(
+            reverse(
+                "dashboards:importar_planilha_categorias",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            {"planilha": planilha},
+        )
+
+        self.assertRedirects(response, self.url)
+        self.categoria_transferencia.refresh_from_db()
+        self.assertIsNone(self.categoria_transferencia.conta_dre)
 
 
 class SincronizacaoClientesOmieTests(TestCase):
@@ -1807,6 +1843,63 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(str(item.quantidade), "4.0000")
         self.assertEqual(str(item.valor_unitario), "52.0000")
         self.assertEqual(str(item.valor_total), "208.0000")
+
+    def test_sincronizacao_ignora_pedidos_com_conta_corrente_ausente_no_omie(self):
+        respostas_vazias = {
+            "consultar_clientes": {"total_de_paginas": 1, "total_de_registros": 0, "clientes_cadastro": []},
+            "consultar_projetos": {"total_de_paginas": 1, "total_de_registros": 0, "cadastro": []},
+            "consultar_departamentos": {"total_de_paginas": 1, "total_de_registros": 0, "departamentos": []},
+            "consultar_vendedores": {"total_de_paginas": 1, "total_de_registros": 0, "cadastro": []},
+            "consultar_produtos": {"total_de_paginas": 1, "total_de_registros": 0, "produto_servico_cadastro": []},
+            "consultar_posicoes_estoque": {"nTotPaginas": 1, "nTotRegistros": 0, "produtos": []},
+            "consultar_pedidos_compra": {"nTotPaginas": 1, "nTotRegistros": 0, "pedidos_pesquisa": []},
+            "consultar_categorias": {"total_de_paginas": 1, "total_de_registros": 0, "categoria_cadastro": []},
+            "consultar_servicos": {"nTotPaginas": 1, "nTotRegistros": 0, "cadastros": []},
+            "consultar_tipos_conta_corrente": {"total_de_paginas": 1, "total_de_registros": 0, "cadastros": []},
+            "consultar_contas_correntes": {"total_de_paginas": 1, "total_de_registros": 0, "ListarContasCorrentes": []},
+            "consultar_contratos": {"total_de_paginas": 1, "total_de_registros": 0, "contratoCadastro": []},
+            "consultar_ordens_servico": {"total_de_paginas": 1, "total_de_registros": 0, "osCadastro": []},
+            "consultar_contas_pagar": {"total_de_paginas": 1, "total_de_registros": 0, "conta_pagar_cadastro": []},
+            "consultar_contas_receber": {"total_de_paginas": 1, "total_de_registros": 0, "conta_receber_cadastro": []},
+            "consultar_movimentos_financeiros": {"nTotPaginas": 1, "nTotRegistros": 0, "movimentos": []},
+            "consultar_lancamentos_conta_corrente": {"nTotPaginas": 1, "nTotRegistros": 0, "listaLancamentos": []},
+            "consultar_resumo_financas": {},
+        }
+        patchers = [
+            patch(f"apps.empresas.omie.{nome}", return_value=resposta)
+            for nome, resposta in respostas_vazias.items()
+        ]
+        patchers.append(
+            patch(
+                "apps.empresas.omie.consultar_pedidos",
+                side_effect=OmieAPIError(
+                    "OMIE respondeu HTTP 500: ERROR: Conta Corrente não cadastrada "
+                    "para o Código [9611370589] ! - tag: [nCodCC]"
+                ),
+            )
+        )
+        for patcher in patchers:
+            patcher.start()
+        self.addCleanup(lambda: [patcher.stop() for patcher in patchers])
+        pedido_existente = PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=9611370589,
+            numero_pedido="Pedido com conta ausente",
+            ativo_omie=True,
+        )
+        PedidoOmie.objects.filter(pk=pedido_existente.pk).update(
+            ultima_presenca_omie=timezone.now() - timedelta(days=2)
+        )
+        sincronizacao = SincronizacaoOmie.objects.create(empresa=self.empresa)
+
+        executar_sincronizacao_omie(sincronizacao.pk)
+
+        sincronizacao.refresh_from_db()
+        self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA)
+        self.assertIn("Pedidos: pagina 1 ignorada", sincronizacao.erro)
+        self.assertIn("Conta Corrente", sincronizacao.erro)
+        pedido_existente.refresh_from_db()
+        self.assertTrue(pedido_existente.ativo_omie)
 
     @patch("apps.empresas.omie.consultar_extrato_conta_corrente")
     @patch("apps.empresas.omie.consultar_resumo_financas")
@@ -2623,6 +2716,19 @@ class SincronizacaoClientesOmieTests(TestCase):
         ContaPagarOmie.objects.filter(pk=conta_pagar_obsoleta.pk).update(
             ultima_presenca_omie=timezone.now() - timedelta(days=2)
         )
+        conta_receber_obsoleta = ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=999002,
+            data_previsao=timezone.localdate(),
+            data_vencimento=timezone.localdate(),
+            valor_documento=100,
+            valor_a_receber=100,
+            status_titulo="A VENCER",
+            ativo_omie=True,
+        )
+        ContaReceberOmie.objects.filter(pk=conta_receber_obsoleta.pk).update(
+            ultima_presenca_omie=timezone.now() - timedelta(days=2)
+        )
         sincronizacao = SincronizacaoOmie.objects.create(empresa=self.empresa)
 
         executar_sincronizacao_omie(sincronizacao.pk)
@@ -2822,9 +2928,13 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(str(conta_receber.valor_documento), "500.00")
         self.assertEqual(str(conta_receber.valor_a_receber), "500.00")
         self.assertEqual(conta_receber.status_titulo, "CANCELADO")
+        self.assertTrue(conta_receber.ativo_omie)
+        self.assertIsNotNone(conta_receber.ultima_presenca_omie)
         self.assertEqual(conta_receber.boleto["cGerado"], "N")
         self.assertEqual(conta_receber.codigo_pedido_omie, 3037850626)
         self.assertEqual(conta_receber.tipo_agrupamento, "I")
+        conta_receber_obsoleta.refresh_from_db()
+        self.assertFalse(conta_receber_obsoleta.ativo_omie)
         lancamento = LancamentoContaCorrenteOmie.objects.get(
             codigo_lancamento_omie=4353703652
         )

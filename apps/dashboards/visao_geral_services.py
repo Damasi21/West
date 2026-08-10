@@ -47,6 +47,7 @@ def _query_receber(inicio, fim, empresas_ids, projetos):
         data_referencia=Coalesce("data_registro", "data_previsao", "data_emissao"),
     ).filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_referencia__gte=inicio,
         data_referencia__lte=fim,
     )
@@ -60,6 +61,7 @@ def _query_pagar(inicio, fim, empresas_ids, projetos):
         data_referencia=Coalesce("data_entrada", "data_previsao", "data_vencimento"),
     ).filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_referencia__gte=inicio,
         data_referencia__lte=fim,
     )
@@ -71,6 +73,7 @@ def _query_pagar(inicio, fim, empresas_ids, projetos):
 def _query_caixa(inicio, fim, empresas_ids, projetos, natureza):
     queryset = LancamentoContaCorrenteOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_lancamento__gte=inicio,
         data_lancamento__lte=fim,
         natureza=natureza,

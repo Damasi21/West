@@ -33,6 +33,7 @@ from .models import (
     EmpresaUsuario,
 )
 from .omie import iniciar_sincronizacao_omie
+from .categorias import excluir_categorias_transferencia
 from .planilhas import (
     PlanilhaInvalida,
     exportar_categorias,
@@ -355,10 +356,11 @@ def metas(request, empresa_slug):
     mes_selecionado = min(max(mes_selecionado, 1), 12)
     ano_selecionado = min(max(ano_selecionado, hoje.year - 5), hoje.year + 5)
     vendedores = list(
-        VendedorOmie.objects.filter(empresa=empresa, inativo=False).order_by(
-            "nome",
-            "codigo",
-        )
+        VendedorOmie.objects.filter(
+            empresa=empresa,
+            ativo_omie=True,
+            inativo=False,
+        ).order_by("nome", "codigo")
     )
     metas_atuais = {
         meta.vendedor_id: meta
@@ -546,9 +548,12 @@ def categorias(request, empresa_slug):
     empresa = _obter_empresa_administravel(empresa_slug)
     _exigir_administrador_empresa(request, empresa)
     categorias_ativas = list(
-        CategoriaOmie.objects.filter(
-            empresa=empresa,
-            conta_inativa=False,
+        excluir_categorias_transferencia(
+            CategoriaOmie.objects.filter(
+                empresa=empresa,
+                ativo_omie=True,
+                conta_inativa=False,
+            )
         )
         .select_related("conta_dre")
         .order_by("codigo")
@@ -710,6 +715,7 @@ def importar_planilha_categorias(request, empresa_slug):
             categoria.pk: categoria
             for categoria in CategoriaOmie.objects.filter(
                 empresa=empresa,
+                ativo_omie=True,
                 pk__in=alteracoes,
             )
         }

@@ -1822,12 +1822,26 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "data-cashflow-out-pie")
         self.assertContains(response, "Quer detalhar as contas?")
         self.assertContains(response, "data-cashflow-detail-modal")
+        self.assertContains(response, "Fluxo de caixa horizontal")
+        self.assertContains(response, "data-cashflow-horizontal-modal")
+        self.assertContains(response, "data-cashflow-horizontal-panel=\"diario\"")
+        self.assertContains(response, "data-cashflow-horizontal-panel=\"semanal\"")
+        self.assertContains(response, "data-cashflow-horizontal-panel=\"mensal\"")
         detalhes = response.context["fluxo_caixa"]["detalhes_lancamentos"][f"{ano_atual}-01"]
         self.assertEqual(detalhes["entradas"][0]["data"], f"20/01/{ano_atual}")
         self.assertEqual(detalhes["entradas"][0]["nome"], "Cliente Critico")
         self.assertEqual(detalhes["entradas"][0]["categoria"], "Assinaturas")
         self.assertEqual(detalhes["entradas"][0]["valor_fmt"], "R$ 900,00")
         self.assertEqual(detalhes["saidas"][0]["nome"], "Fornecedor Critico")
+        horizontal = response.context["fluxo_caixa"]["horizontal"]
+        self.assertIn("diario", horizontal)
+        self.assertIn("semanal", horizontal)
+        self.assertIn("mensal", horizontal)
+        self.assertEqual(horizontal["diario"]["periodos"][0]["rotulo"], f"01/01")
+        self.assertEqual(horizontal["diario"]["receitas"][9]["previsao"], "R$ 7.000,00")
+        self.assertEqual(horizontal["diario"]["receitas"][19]["realizado"], "R$ 900,00")
+        self.assertEqual(horizontal["diario"]["despesas"][14]["previsao"], "R$ 2.500,00")
+        self.assertEqual(horizontal["diario"]["despesas"][20]["realizado"], "R$ 300,00")
 
     def test_aprovacao_de_pagamentos_exibe_painel_e_modal_do_dia(self):
         hoje = date.today()

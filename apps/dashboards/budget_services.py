@@ -96,6 +96,8 @@ def _gastos_por_referencia(inicio, fim, empresas_ids, dimensao):
     queryset = (
         PedidoCompraItemOmie.objects.filter(
             empresa_id__in=empresas_ids,
+            ativo_omie=True,
+            pedido__ativo_omie=True,
             pedido__data_previsao__gte=inicio,
             pedido__data_previsao__lte=fim,
         )
@@ -107,6 +109,7 @@ def _gastos_por_referencia(inicio, fim, empresas_ids, dimensao):
         departamento.codigo: departamento.descricao
         for departamento in DepartamentoOmie.objects.filter(
             empresa_id__in=empresas_ids,
+            ativo_omie=True,
         )
     } if dimensao == BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO else {}
     for item in queryset:

@@ -7,6 +7,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
+from .categorias import eh_categoria_transferencia
+
 
 def ano_atual():
     return timezone.localdate().year
@@ -168,6 +170,8 @@ class CadastroOmie(models.Model):
     tags = models.JSONField(default=list, blank=True)
     info = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -202,6 +206,8 @@ class ProjetoOmie(models.Model):
     inativo = models.BooleanField(default=False)
     info = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -235,6 +241,8 @@ class DepartamentoOmie(models.Model):
     inativo = models.BooleanField(default=False)
     nivel_totalizador = models.BooleanField(default=False)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -271,6 +279,8 @@ class VendedorOmie(models.Model):
     visualiza_pedido = models.BooleanField(default=False)
     inativo = models.BooleanField(default=False)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -336,6 +346,8 @@ class ProdutoOmie(models.Model):
     info = models.JSONField(default=dict, blank=True)
     recomendacoes_fiscais = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -395,6 +407,8 @@ class PosicaoEstoqueOmie(models.Model):
     cmc = models.DecimalField(max_digits=18, decimal_places=4, default=0)
     preco_unitario = models.DecimalField(max_digits=18, decimal_places=4, default=0)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -469,6 +483,8 @@ class ServicoOmie(models.Model):
     info = models.JSONField(default=dict, blank=True)
     int_listar = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -560,6 +576,8 @@ class OrdemServicoOmie(models.Model):
     parcelas = models.JSONField(default=list, blank=True)
     servicos_prestados = models.JSONField(default=list, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -604,6 +622,8 @@ class OrdemServicoItemOmie(models.Model):
         related_name="itens",
     )
     codigo_item = models.BigIntegerField()
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sequencia = models.PositiveIntegerField(default=0)
     codigo_servico = models.BigIntegerField(null=True, blank=True)
     servico = models.ForeignKey(
@@ -742,6 +762,8 @@ class ContratoOmie(models.Model):
     observacoes = models.JSONField(default=dict, blank=True)
     venc_textos = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -782,6 +804,8 @@ class ContratoItemOmie(models.Model):
         related_name="itens",
     )
     codigo_item = models.BigIntegerField()
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sequencia = models.PositiveIntegerField(default=0)
     codigo_servico = models.BigIntegerField(null=True, blank=True)
     servico = models.ForeignKey(
@@ -936,6 +960,8 @@ class PedidoOmie(models.Model):
     observacoes = models.JSONField(default=dict, blank=True)
     total_pedido = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -980,6 +1006,8 @@ class PedidoItemOmie(models.Model):
         related_name="itens",
     )
     codigo_item = models.BigIntegerField()
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     codigo_item_integracao = models.CharField(max_length=100, blank=True)
     codigo_produto = models.BigIntegerField(null=True, blank=True)
     produto = models.ForeignKey(
@@ -1117,6 +1145,8 @@ class PedidoCompraOmie(models.Model):
     frete_consulta = models.JSONField(default=dict, blank=True)
     parcelas_consulta = models.JSONField(default=list, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -1161,6 +1191,8 @@ class PedidoCompraItemOmie(models.Model):
         related_name="itens",
     )
     codigo_item = models.BigIntegerField()
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     codigo_item_integracao = models.CharField(max_length=100, blank=True)
     codigo_produto = models.BigIntegerField(null=True, blank=True)
     produto = models.ForeignKey(
@@ -1258,6 +1290,8 @@ class CategoriaOmie(models.Model):
     transferencia = models.BooleanField(default=False)
     dados_dre = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     conta_dre = models.ForeignKey(
         "ContaDRE",
         on_delete=models.SET_NULL,
@@ -1298,7 +1332,10 @@ class CategoriaOmie(models.Model):
 
     @property
     def permite_vinculo_dre(self):
-        return re.fullmatch(r"\d+\.\d{2}\.\d{2}", self.codigo) is not None
+        return (
+            re.fullmatch(r"\d+\.\d{2}\.\d{2}", self.codigo) is not None
+            and not eh_categoria_transferencia(self)
+        )
 
 
 class TipoContaCorrenteOmie(models.Model):
@@ -1311,6 +1348,8 @@ class TipoContaCorrenteOmie(models.Model):
     descricao = models.CharField(max_length=40)
     grupo = models.CharField(max_length=2, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -1364,6 +1403,8 @@ class ContaCorrenteOmie(models.Model):
     inativo = models.BooleanField(default=False)
     observacao = models.TextField(blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -1560,6 +1601,8 @@ class ContaReceberOmie(models.Model):
     distribuicao = models.JSONField(default=list, blank=True)
     info = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -1677,6 +1720,8 @@ class LancamentoContaCorrenteOmie(models.Model):
     transferencia = models.JSONField(default=dict, blank=True)
     info = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -1788,6 +1833,8 @@ class MovimentoFinanceiroOmie(models.Model):
     detalhes = models.JSONField(default=dict, blank=True)
     resumo = models.JSONField(default=dict, blank=True)
     dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
     sincronizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 

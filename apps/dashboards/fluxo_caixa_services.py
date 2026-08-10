@@ -1,7 +1,8 @@
 """Calculos do dashboard Fluxo de Caixa."""
 
+from calendar import monthrange
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Sum
@@ -50,6 +51,7 @@ def _decimal(valor):
 def _query_receber_aberto(inicio, fim, empresas_ids, projetos):
     queryset = ContaReceberOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
     ).exclude(status_titulo__in=STATUS_FECHADOS_RECEBER)
     if inicio:
         queryset = queryset.filter(data_vencimento__gte=inicio)
@@ -63,6 +65,7 @@ def _query_receber_aberto(inicio, fim, empresas_ids, projetos):
 def _query_pagar_aberto(inicio, fim, empresas_ids, projetos):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
     ).exclude(status_titulo__in=STATUS_FECHADOS_PAGAR)
     if inicio:
         queryset = queryset.filter(data_previsao__gte=inicio)
@@ -76,6 +79,7 @@ def _query_pagar_aberto(inicio, fim, empresas_ids, projetos):
 def _query_pagar_aberto_por_vencimento(inicio, fim, empresas_ids, projetos):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
     ).exclude(status_titulo__in=STATUS_FECHADOS_PAGAR)
     if inicio:
         queryset = queryset.filter(data_vencimento__gte=inicio)
@@ -89,6 +93,7 @@ def _query_pagar_aberto_por_vencimento(inicio, fim, empresas_ids, projetos):
 def _query_receber_previsto_omie(hoje, empresas_ids, projetos):
     queryset = ContaReceberOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_previsao__lte=hoje,
     ).exclude(status_titulo__in=STATUS_FECHADOS_RECEBER)
     if projetos:
@@ -99,6 +104,7 @@ def _query_receber_previsto_omie(hoje, empresas_ids, projetos):
 def _query_pagar_previsto_omie(hoje, empresas_ids, projetos):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_vencimento__lte=hoje,
     ).exclude(status_titulo__in=STATUS_FECHADOS_PAGAR)
     if projetos:
@@ -109,6 +115,7 @@ def _query_pagar_previsto_omie(hoje, empresas_ids, projetos):
 def _query_movimentos_pagar_previstos_omie(hoje, empresas_ids, projetos):
     queryset = MovimentoFinanceiroOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         grupo="CONTA_A_PAGAR",
         natureza="P",
         liquidado=False,
@@ -122,6 +129,7 @@ def _query_movimentos_pagar_previstos_omie(hoje, empresas_ids, projetos):
 def _query_lancamentos(inicio, fim, empresas_ids, projetos, natureza):
     queryset = LancamentoContaCorrenteOmie.objects.filter(
         empresa_id__in=empresas_ids,
+        ativo_omie=True,
         data_lancamento__gte=inicio,
         data_lancamento__lte=fim,
         natureza=natureza,
@@ -136,6 +144,7 @@ def _saldo_contas_correntes(empresas_ids):
         contas_correntes_visiveis_financeiro(
             ContaCorrenteOmie.objects.filter(
                 empresa_id__in=empresas_ids,
+                ativo_omie=True,
                 inativo=False,
                 saldo_atual__isnull=False,
             )
@@ -162,6 +171,7 @@ def _saldo_abertura_extrato_contas_correntes(empresas_ids, inicio):
     contas = contas_correntes_visiveis_financeiro(
         ContaCorrenteOmie.objects.filter(
             empresa_id__in=empresas_ids,
+            ativo_omie=True,
             inativo=False,
         )
     )
@@ -223,6 +233,232 @@ def _totais_por_mes(queryset, data_field, valor_field):
     for item in linhas:
         totais[f"{item['ano']}-{item['mes']:02d}"] = abs(_decimal(item["total"]))
     return totais
+
+
+def _formatar_data_curta(valor):
+    return valor.strftime("%d/%m") if valor else "-"
+
+
+def _periodos_horizontais(inicio, fim):
+    mes_inicio = date(inicio.year, inicio.month, 1)
+    mes_fim = date(inicio.year, inicio.month, monthrange(inicio.year, inicio.month)[1])
+
+    dias = [
+        {
+            "chave": f"dia-{dia.day:02d}",
+            "rotulo": dia.strftime("%d/%m"),
+            "inicio": dia,
+            "fim": dia,
+        }
+        for dia in (date(inicio.year, inicio.month, numero) for numero in range(1, mes_fim.day + 1))
+    ]
+
+    semanas = []
+    atual = mes_inicio
+    indice = 1
+    while atual <= mes_fim:
+        fim_semana = min(atual + timedelta(days=6 - atual.weekday()), mes_fim)
+        semanas.append(
+            {
+                "chave": f"semana-{indice}",
+                "rotulo": f"Sem {indice}",
+                "subrotulo": f"{_formatar_data_curta(atual)} a {_formatar_data_curta(fim_semana)}",
+                "inicio": atual,
+                "fim": fim_semana,
+            }
+        )
+        if fim_semana >= mes_fim:
+            break
+        atual = fim_semana + timedelta(days=1)
+        indice += 1
+
+    meses = [
+        {
+            "chave": item["chave"],
+            "rotulo": item["rotulo"],
+            "inicio": date(item["ano"], item["mes"], 1),
+            "fim": date(item["ano"], item["mes"], monthrange(item["ano"], item["mes"])[1]),
+        }
+        for item in _meses_do_intervalo(inicio, fim)
+    ]
+    return {"diario": dias, "semanal": semanas, "mensal": meses}
+
+
+def _somar_por_periodo(queryset, periodos, data_field, valor_fn):
+    totais = {item["chave"]: Decimal("0") for item in periodos}
+    for registro in queryset:
+        data = data_field(registro) if callable(data_field) else getattr(registro, data_field, None)
+        if not data:
+            continue
+        for periodo in periodos:
+            if periodo["inicio"] <= data <= periodo["fim"]:
+                totais[periodo["chave"]] += abs(valor_fn(registro))
+                break
+    return totais
+
+
+def _valor_pagar(conta):
+    return _decimal(conta.valor_a_pagar or conta.valor_documento)
+
+
+def _valor_lancamento(lancamento):
+    return _decimal(lancamento.valor_lancamento)
+
+
+def _data_previsao_titulo(conta):
+    return conta.data_previsao or conta.data_vencimento
+
+
+def _saldo_inicial_conta(conta, inicio, hoje):
+    data_inicio = inicio.strftime("%d/%m/%Y")
+    extrato = (conta.dados_originais or {}).get("extrato") or {}
+    if extrato.get("dPeriodoInicial") == data_inicio:
+        return _decimal(extrato.get("nSaldoAnterior"))
+    saldo = _decimal(conta.saldo_atual)
+    if inicio > hoje:
+        return saldo
+    lancamentos = LancamentoContaCorrenteOmie.objects.filter(
+        empresa=conta.empresa,
+        ativo_omie=True,
+        codigo_conta_corrente=conta.codigo_omie,
+        data_lancamento__gte=inicio,
+        data_lancamento__lte=hoje,
+    )
+    lancamentos = registros_com_conta_visivel_financeiro(
+        lancamentos,
+        "codigo_conta_corrente",
+    )
+    entradas = _movimento_lancamentos(lancamentos.filter(natureza="R"))
+    saidas = _movimento_lancamentos(lancamentos.filter(natureza="P"))
+    return saldo - entradas + saidas
+
+
+def _valores_horizontais(totais, periodos):
+    return [
+        {
+            "previsao": _formatar_moeda(totais["previsao"].get(periodo["chave"], Decimal("0"))),
+            "realizado": _formatar_moeda(totais["realizado"].get(periodo["chave"], Decimal("0"))),
+        }
+        for periodo in periodos
+    ]
+
+
+def _fluxo_horizontal(inicio, fim, empresas_ids, projetos):
+    hoje = date.today()
+    periodos_por_modo = _periodos_horizontais(inicio, fim)
+    contas = list(
+        contas_correntes_visiveis_financeiro(
+            ContaCorrenteOmie.objects.filter(
+                empresa_id__in=empresas_ids,
+                ativo_omie=True,
+                inativo=False,
+            )
+        ).order_by("descricao", "codigo_omie")
+    )
+    receber = _query_receber_aberto(None, None, empresas_ids, projetos)
+    pagar = _query_pagar_aberto(None, None, empresas_ids, projetos)
+    lanc_recebidos = LancamentoContaCorrenteOmie.objects.filter(
+        empresa_id__in=empresas_ids,
+        ativo_omie=True,
+        natureza="R",
+    )
+    lanc_pagos = LancamentoContaCorrenteOmie.objects.filter(
+        empresa_id__in=empresas_ids,
+        ativo_omie=True,
+        natureza="P",
+    )
+    if projetos:
+        lanc_recebidos = lanc_recebidos.filter(codigo_projeto__in=projetos)
+        lanc_pagos = lanc_pagos.filter(codigo_projeto__in=projetos)
+    lanc_recebidos = registros_com_conta_visivel_financeiro(
+        lanc_recebidos,
+        "codigo_conta_corrente",
+    )
+    lanc_pagos = registros_com_conta_visivel_financeiro(
+        lanc_pagos,
+        "codigo_conta_corrente",
+    )
+
+    modos = {}
+    for modo, periodos in periodos_por_modo.items():
+        inicio_modo = periodos[0]["inicio"]
+        fim_modo = periodos[-1]["fim"]
+        receber_periodo = receber
+        pagar_periodo = pagar
+        recebidos_periodo = lanc_recebidos.filter(data_lancamento__gte=inicio_modo, data_lancamento__lte=fim_modo)
+        pagos_periodo = lanc_pagos.filter(data_lancamento__gte=inicio_modo, data_lancamento__lte=fim_modo)
+
+        receitas = {
+            "previsao": _somar_por_periodo(receber_periodo, periodos, _data_previsao_titulo, _valor_liquido_receber),
+            "realizado": _somar_por_periodo(recebidos_periodo, periodos, "data_lancamento", _valor_lancamento),
+        }
+        despesas = {
+            "previsao": _somar_por_periodo(pagar_periodo, periodos, _data_previsao_titulo, _valor_pagar),
+            "realizado": _somar_por_periodo(pagos_periodo, periodos, "data_lancamento", _valor_lancamento),
+        }
+        saldo_inicial_total = {"previsao": {}, "realizado": {}}
+        saldo_rows = []
+        for conta in contas:
+            valores = {"previsao": {}, "realizado": {}}
+            for periodo in periodos:
+                saldo = _saldo_inicial_conta(conta, periodo["inicio"], hoje)
+                valores["previsao"][periodo["chave"]] = saldo
+                valores["realizado"][periodo["chave"]] = saldo
+                saldo_inicial_total["previsao"][periodo["chave"]] = (
+                    saldo_inicial_total["previsao"].get(periodo["chave"], Decimal("0")) + saldo
+                )
+                saldo_inicial_total["realizado"][periodo["chave"]] = (
+                    saldo_inicial_total["realizado"].get(periodo["chave"], Decimal("0")) + saldo
+                )
+            saldo_rows.append(
+                {
+                    "nome": conta.descricao or str(conta.codigo_omie),
+                    "valores": _valores_horizontais(valores, periodos),
+                }
+            )
+
+        resultado = {"previsao": {}, "realizado": {}}
+        for periodo in periodos:
+            chave = periodo["chave"]
+            for tipo in ("previsao", "realizado"):
+                resultado[tipo][chave] = (
+                    saldo_inicial_total[tipo].get(chave, Decimal("0"))
+                    + receitas[tipo].get(chave, Decimal("0"))
+                    - despesas[tipo].get(chave, Decimal("0"))
+                )
+
+        modos[modo] = {
+            "periodos": periodos,
+            "colspan": (len(periodos) * 2) + 1,
+            "saldo_contas": saldo_rows,
+            "receitas": _valores_horizontais(receitas, periodos),
+            "despesas": _valores_horizontais(despesas, periodos),
+            "resultado": _valores_horizontais(resultado, periodos),
+            "limite_rotulo": (
+                f"{meses_nome(inicio_modo.month)} de {inicio_modo.year}"
+                if modo in {"diario", "semanal"}
+                else f"{_formatar_data_curta(inicio_modo)} a {_formatar_data_curta(fim_modo)}"
+            ),
+        }
+    return modos
+
+
+def meses_nome(numero):
+    nomes = (
+        "Janeiro",
+        "Fevereiro",
+        "Marco",
+        "Abril",
+        "Maio",
+        "Junho",
+        "Julho",
+        "Agosto",
+        "Setembro",
+        "Outubro",
+        "Novembro",
+        "Dezembro",
+    )
+    return nomes[numero - 1]
 
 
 def _composicao(queryset, valor_field):
@@ -509,4 +745,5 @@ def fluxo_de_caixa(
         "criticos": _criticos(receber_aberto, pagar_aberto),
         "composicao_entradas": _composicao(lanc_recebidos, "valor_lancamento"),
         "composicao_saidas": _composicao(lanc_pagos, "valor_lancamento"),
+        "horizontal": _fluxo_horizontal(inicio, fim, empresas_ids, projetos),
     }
