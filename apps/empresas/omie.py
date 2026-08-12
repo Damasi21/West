@@ -53,6 +53,7 @@ CONTAS_PAGAR_URL = "https://app.omie.com.br/api/v1/financas/contapagar/"
 CONTAS_RECEBER_URL = "https://app.omie.com.br/api/v1/financas/contareceber/"
 EXTRATO_CONTA_CORRENTE_URL = "https://app.omie.com.br/api/v1/financas/extrato/"
 RESUMO_FINANCAS_URL = "https://app.omie.com.br/api/v1/financas/resumo/"
+ORCAMENTOS_CAIXA_URL = "https://app.omie.com.br/api/v1/financas/caixa/"
 MOVIMENTOS_FINANCEIROS_URL = "https://app.omie.com.br/api/v1/financas/mf/"
 LANCAMENTOS_CONTA_CORRENTE_URL = (
     "https://app.omie.com.br/api/v1/financas/contacorrentelancamentos/"
@@ -926,6 +927,45 @@ def consultar_resumo_financas(integracao, dia=None):
         raise OmieAPIError(f"Não foi possível conectar à OMIE: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise OmieAPIError("A OMIE retornou uma resposta inválida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_orcamentos_categorias(integracao, ano, mes):
+    payload = {
+        "call": "ListarOrcamentos",
+        "param": [
+            {
+                "nAno": int(ano),
+                "nMes": int(mes),
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        ORCAMENTOS_CAIXA_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invalida.") from exc
 
     if "faultstring" in dados:
         raise OmieAPIError(dados["faultstring"])

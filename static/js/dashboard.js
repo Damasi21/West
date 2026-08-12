@@ -213,9 +213,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const detailClose = cashflow.querySelector("[data-cashflow-detail-close]");
         const detailSortDate = cashflow.querySelector("[data-cashflow-sort-date]");
         const detailSortValue = cashflow.querySelector("[data-cashflow-sort-value]");
-        const horizontalModal = cashflow.querySelector("[data-cashflow-horizontal-modal]");
-        const horizontalMode = cashflow.querySelector("[data-cashflow-horizontal-mode]");
-        const horizontalPanels = [...cashflow.querySelectorAll("[data-cashflow-horizontal-panel]")];
         let pendingDetail = null;
         let currentDetailRows = [];
         let currentDetailSortField = "valor";
@@ -227,10 +224,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const closeCashflowDetails = () => {
             if (detailModal) detailModal.hidden = true;
-        };
-
-        const closeCashflowHorizontal = () => {
-            if (horizontalModal) horizontalModal.hidden = true;
         };
 
         const openCashflowDetails = (detail) => {
@@ -334,15 +327,6 @@ document.addEventListener("DOMContentLoaded", () => {
             pendingDetail = null;
         });
         detailClose?.addEventListener("click", closeCashflowDetails);
-        cashflow.querySelector("[data-cashflow-horizontal-open]")?.addEventListener("click", () => {
-            if (horizontalModal) horizontalModal.hidden = false;
-        });
-        cashflow.querySelector("[data-cashflow-horizontal-close]")?.addEventListener("click", closeCashflowHorizontal);
-        horizontalMode?.addEventListener("change", () => {
-            horizontalPanels.forEach((panel) => {
-                panel.hidden = panel.dataset.cashflowHorizontalPanel !== horizontalMode.value;
-            });
-        });
         detailSortDate?.addEventListener("click", () => {
             currentDetailSort = currentDetailSortField === "data" && currentDetailSort === "desc" ? "asc" : "desc";
             currentDetailSortField = "data";
@@ -364,16 +348,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 closeCashflowDetails();
             }
         });
-        horizontalModal?.addEventListener("click", (event) => {
-            if (event.target === horizontalModal) {
-                closeCashflowHorizontal();
-            }
-        });
         document.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;
             closeCashflowConfirm();
             closeCashflowDetails();
-            closeCashflowHorizontal();
         });
 
         const mainCanvas = cashflow.querySelector("[data-cashflow-chart]");
@@ -601,6 +579,89 @@ document.addEventListener("DOMContentLoaded", () => {
 
         renderPie(cashflow.querySelector("[data-cashflow-in-pie]"), pieIn);
         renderPie(cashflow.querySelector("[data-cashflow-out-pie]"), pieOut);
+    }
+
+    const cashflowHorizontalPage = document.querySelector("[data-cashflow-horizontal-page]");
+    if (cashflowHorizontalPage) {
+        const modeSelect = document.querySelector("[data-cashflow-horizontal-page-mode]");
+        const filterForm = document.querySelector("[data-cashflow-horizontal-filter]");
+        const monthFilter = document.querySelector("[data-cashflow-horizontal-month-filter]");
+        const submitHorizontalFilter = () => {
+            filterForm?.requestSubmit();
+        };
+        modeSelect?.addEventListener("change", () => {
+            if (monthFilter) monthFilter.hidden = modeSelect.value === "anual";
+            submitHorizontalFilter();
+        });
+        document.querySelectorAll("[data-cashflow-horizontal-auto-submit]").forEach((select) => {
+            select.addEventListener("change", submitHorizontalFilter);
+        });
+
+        const hideDescendants = (rowId) => {
+            cashflowHorizontalPage
+                .querySelectorAll(`[data-horizontal-parent="${CSS.escape(rowId)}"]`)
+                .forEach((child) => {
+                    child.hidden = true;
+                    const childId = child.dataset.horizontalRowId;
+                    const button = child.querySelector("[data-horizontal-toggle]");
+                    if (button) {
+                        button.setAttribute("aria-expanded", "false");
+                        button.querySelector("i").className = "bi bi-chevron-right";
+                    }
+                    if (childId) hideDescendants(childId);
+                });
+        };
+
+        cashflowHorizontalPage.querySelectorAll("[data-horizontal-toggle]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const target = button.dataset.horizontalTarget;
+                const expanded = button.getAttribute("aria-expanded") === "true";
+                button.setAttribute("aria-expanded", String(!expanded));
+                button.querySelector("i").className = expanded ? "bi bi-chevron-right" : "bi bi-chevron-down";
+                cashflowHorizontalPage
+                    .querySelectorAll(`[data-horizontal-parent="${CSS.escape(target)}"]`)
+                    .forEach((child) => {
+                        child.hidden = expanded;
+                        if (expanded && child.dataset.horizontalRowId) {
+                            hideDescendants(child.dataset.horizontalRowId);
+                        }
+                    });
+            });
+        });
+
+        const activeHorizontalPanel = () =>
+            cashflowHorizontalPage.querySelector("[data-cashflow-horizontal-page-panel]:not([hidden])")
+            || cashflowHorizontalPage;
+
+        const setHorizontalButton = (button, expanded) => {
+            button.setAttribute("aria-expanded", String(expanded));
+            const icon = button.querySelector("i");
+            if (icon) icon.className = expanded ? "bi bi-chevron-down" : "bi bi-chevron-right";
+        };
+
+        cashflowHorizontalPage.querySelectorAll("[data-horizontal-expand-all]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const panel = activeHorizontalPanel();
+                panel.querySelectorAll("[data-horizontal-toggle]").forEach((toggle) => {
+                    setHorizontalButton(toggle, true);
+                });
+                panel.querySelectorAll("[data-horizontal-parent]").forEach((row) => {
+                    row.hidden = false;
+                });
+            });
+        });
+
+        cashflowHorizontalPage.querySelectorAll("[data-horizontal-collapse-all]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const panel = activeHorizontalPanel();
+                panel.querySelectorAll("[data-horizontal-toggle]").forEach((toggle) => {
+                    setHorizontalButton(toggle, false);
+                });
+                panel.querySelectorAll("[data-horizontal-parent]").forEach((row) => {
+                    row.hidden = true;
+                });
+            });
+        });
     }
 
     const delinquency = document.querySelector("[data-delinquency-dashboard]");

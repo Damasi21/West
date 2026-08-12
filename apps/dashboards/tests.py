@@ -1731,14 +1731,26 @@ class DashboardPermissaoTests(TestCase):
             tipo=CadastroOmie.Tipo.FORNECEDOR,
             nome_fantasia="Fornecedor Critico",
         )
+        categoria_receita_pai = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.03",
+            descricao="Receitas recorrentes",
+        )
         categoria_receita = CategoriaOmie.objects.create(
             empresa=self.empresa,
             codigo="1.03.01",
+            categoria_superior="1.03",
             descricao="Assinaturas",
+        )
+        categoria_despesa_pai = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.03",
+            descricao="Despesas operacionais",
         )
         categoria_despesa = CategoriaOmie.objects.create(
             empresa=self.empresa,
             codigo="2.03.01",
+            categoria_superior="2.03",
             descricao="Operacional",
         )
         ContaCorrenteOmie.objects.create(
@@ -1747,6 +1759,11 @@ class DashboardPermissaoTests(TestCase):
             descricao="Conta principal",
             saldo_inicial=15000,
             saldo_atual=15000,
+        )
+        projeto_horizontal = ProjetoOmie.objects.create(
+            empresa=self.empresa,
+            codigo=90901,
+            nome="Projeto horizontal",
         )
         ContaReceberOmie.objects.create(
             empresa=self.empresa,
@@ -1788,7 +1805,75 @@ class DashboardPermissaoTests(TestCase):
             natureza="P",
             valor_lancamento=300,
         )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=14001,
+            cliente_fornecedor=cliente,
+            codigo_conta_corrente=101,
+            codigo_categoria=categoria_receita.codigo,
+            categoria_principal=categoria_receita,
+            grupo="CONTA_A_RECEBER",
+            natureza="R",
+            status="ABERTO",
+            data_previsao=date(ano_atual, 1, 10),
+            data_vencimento=date(ano_atual, 1, 10),
+            valor_titulo=7000,
+            valor_liquido=7000,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=14002,
+            cliente_fornecedor=cliente,
+            codigo_conta_corrente=101,
+            codigo_categoria=categoria_receita.codigo,
+            categoria_principal=categoria_receita,
+            grupo="CONTA_A_RECEBER",
+            natureza="R",
+            status="PAGO",
+            data_previsao=date(ano_atual, 1, 20),
+            data_pagamento=date(ano_atual, 1, 20),
+            data_vencimento=date(ano_atual, 1, 20),
+            valor_titulo=900,
+            valor_liquido=900,
+            valor_pago=900,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=14003,
+            cliente_fornecedor=fornecedor,
+            codigo_conta_corrente=101,
+            codigo_categoria=categoria_despesa.codigo,
+            categoria_principal=categoria_despesa,
+            grupo="CONTA_A_PAGAR",
+            natureza="P",
+            status="ABERTO",
+            data_previsao=date(ano_atual, 1, 15),
+            data_vencimento=date(ano_atual, 1, 15),
+            valor_titulo=2500,
+            valor_liquido=2500,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=14004,
+            cliente_fornecedor=fornecedor,
+            codigo_conta_corrente=101,
+            codigo_categoria=categoria_despesa.codigo,
+            categoria_principal=categoria_despesa,
+            grupo="CONTA_A_PAGAR",
+            natureza="P",
+            status="PAGO",
+            data_previsao=date(ano_atual, 1, 21),
+            data_vencimento=date(ano_atual, 1, 21),
+            valor_titulo=300,
+            valor_liquido=300,
+            valor_pago=300,
+        )
         self.client.force_login(self.usuario)
+        session = self.client.session
+        session[f"filtros_dashboard:{self.empresa.pk}:financeiro:fluxo-de-caixa"] = {
+            "projetos": [f"{self.empresa.pk}:{projeto_horizontal.codigo}"],
+        }
+        session.save()
 
         response = self.client.get(
             reverse(
@@ -1823,25 +1908,66 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Quer detalhar as contas?")
         self.assertContains(response, "data-cashflow-detail-modal")
         self.assertContains(response, "Fluxo de caixa horizontal")
-        self.assertContains(response, "data-cashflow-horizontal-modal")
-        self.assertContains(response, "data-cashflow-horizontal-panel=\"diario\"")
-        self.assertContains(response, "data-cashflow-horizontal-panel=\"semanal\"")
-        self.assertContains(response, "data-cashflow-horizontal-panel=\"mensal\"")
+        self.assertContains(response, "fluxo-de-caixa/horizontal/")
         detalhes = response.context["fluxo_caixa"]["detalhes_lancamentos"][f"{ano_atual}-01"]
         self.assertEqual(detalhes["entradas"][0]["data"], f"20/01/{ano_atual}")
         self.assertEqual(detalhes["entradas"][0]["nome"], "Cliente Critico")
         self.assertEqual(detalhes["entradas"][0]["categoria"], "Assinaturas")
         self.assertEqual(detalhes["entradas"][0]["valor_fmt"], "R$ 900,00")
         self.assertEqual(detalhes["saidas"][0]["nome"], "Fornecedor Critico")
-        horizontal = response.context["fluxo_caixa"]["horizontal"]
+        response_horizontal = self.client.get(
+            reverse(
+                "dashboards:fluxo_caixa_horizontal",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            {
+                "modo": "diario",
+                "ano": ano_atual,
+                "mes": 1,
+            },
+        )
+
+        self.assertEqual(response_horizontal.status_code, 200)
+        horizontal = response_horizontal.context["fluxo_horizontal"]["modos"]
         self.assertIn("diario", horizontal)
-        self.assertIn("semanal", horizontal)
-        self.assertIn("mensal", horizontal)
+        self.assertNotIn("semanal", horizontal)
+        self.assertNotIn("anual", horizontal)
         self.assertEqual(horizontal["diario"]["periodos"][0]["rotulo"], f"01/01")
         self.assertEqual(horizontal["diario"]["receitas"][9]["previsao"], "R$ 7.000,00")
         self.assertEqual(horizontal["diario"]["receitas"][19]["realizado"], "R$ 900,00")
         self.assertEqual(horizontal["diario"]["despesas"][14]["previsao"], "R$ 2.500,00")
         self.assertEqual(horizontal["diario"]["despesas"][20]["realizado"], "R$ 300,00")
+        self.assertContains(response_horizontal, "data-cashflow-horizontal-page")
+        self.assertContains(response_horizontal, 'name="ano"')
+        self.assertContains(response_horizontal, 'name="mes"')
+        self.assertContains(response_horizontal, "data-horizontal-expand-all")
+        self.assertContains(response_horizontal, "data-horizontal-collapse-all")
+        self.assertContains(response_horizontal, "Saldo inicial")
+        self.assertContains(response_horizontal, 'data-horizontal-parent="diario-saldo-root"')
+        self.assertNotContains(response_horizontal, "app-sidebar")
+        self.assertNotContains(response_horizontal, "app-shell")
+        self.assertContains(response_horizontal, "Receitas recorrentes")
+        self.assertContains(response_horizontal, "Assinaturas")
+        self.assertContains(response_horizontal, "Despesas operacionais")
+        self.assertContains(response_horizontal, "Operacional")
+        self.assertContains(response_horizontal, 'data-horizontal-parent="diario-receitas-root"')
+        self.assertContains(response_horizontal, "R$ 7.000,00")
+        self.assertContains(response_horizontal, "R$ 900,00")
+
+        response_anual = self.client.get(
+            reverse(
+                "dashboards:fluxo_caixa_horizontal",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            {
+                "modo": "anual",
+                "ano": ano_atual,
+            },
+        )
+
+        self.assertEqual(response_anual.status_code, 200)
+        self.assertContains(response_anual, "Visao anual")
+        self.assertContains(response_anual, 'data-cashflow-horizontal-month-filter hidden')
 
     def test_aprovacao_de_pagamentos_exibe_painel_e_modal_do_dia(self):
         hoje = date.today()
@@ -2407,6 +2533,117 @@ class DashboardPermissaoTests(TestCase):
             natureza="R",
             valor_lancamento=700,
         )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=34001,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_previsao=date(ano_atual, 1, 10),
+            data_vencimento=date(ano_atual, 1, 10),
+            grupo="CONTA_A_RECEBER",
+            natureza="R",
+            status="ABERTO",
+            valor_titulo=100,
+            valor_liquido=100,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=34002,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_previsao=date(ano_atual, 2, 10),
+            data_vencimento=date(ano_atual, 2, 10),
+            grupo="CONTA_A_RECEBER",
+            natureza="R",
+            status="ABERTO",
+            valor_titulo=60,
+            valor_liquido=60,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=34003,
+            codigo_conta_corrente=conta_omitida.codigo_omie,
+            conta_corrente=conta_omitida,
+            data_previsao=date(ano_atual, 1, 11),
+            data_vencimento=date(ano_atual, 1, 11),
+            grupo="CONTA_A_RECEBER",
+            natureza="R",
+            status="ABERTO",
+            valor_titulo=900,
+            valor_liquido=900,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=34004,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_previsao=date(ano_atual, 1, 20),
+            data_pagamento=date(ano_atual, 1, 20),
+            data_vencimento=date(ano_atual, 1, 20),
+            grupo="CONTA_A_RECEBER",
+            natureza="R",
+            status="PAGO",
+            valor_titulo=25,
+            valor_liquido=25,
+            valor_pago=25,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=34005,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            codigo_categoria=categoria_transferencia.codigo,
+            categoria_principal=categoria_transferencia,
+            data_previsao=date(ano_atual, 1, 22),
+            data_pagamento=date(ano_atual, 1, 22),
+            data_vencimento=date(ano_atual, 1, 22),
+            grupo="CONTA_A_RECEBER",
+            natureza="R",
+            status="PAGO",
+            valor_titulo=700,
+            valor_liquido=700,
+            valor_pago=700,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=34006,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_previsao=date(ano_atual, 1, 15),
+            data_vencimento=date(ano_atual, 1, 15),
+            grupo="CONTA_A_PAGAR",
+            natureza="P",
+            status="ABERTO",
+            valor_titulo=40,
+            valor_liquido=40,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=34007,
+            codigo_conta_corrente=conta_omitida.codigo_omie,
+            conta_corrente=conta_omitida,
+            data_previsao=date(ano_atual, 1, 16),
+            data_vencimento=date(ano_atual, 1, 16),
+            grupo="CONTA_A_PAGAR",
+            natureza="P",
+            status="ABERTO",
+            valor_titulo=400,
+            valor_liquido=400,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=34008,
+            codigo_conta_corrente=conta_visivel.codigo_omie,
+            conta_corrente=conta_visivel,
+            data_previsao=date(ano_atual, 1, 21),
+            data_vencimento=date(ano_atual, 1, 21),
+            grupo="CONTA_A_PAGAR",
+            natureza="P",
+            status="PAGO",
+            valor_titulo=15,
+            valor_liquido=15,
+            valor_pago=15,
+        )
 
         contexto = fluxo_de_caixa(
             self.empresa,
@@ -2419,15 +2656,15 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(contexto["saldo_acumulado"], [0.0])
         self.assertEqual(
             contexto["indicadores"][1]["valor_completo"],
-            "R$ 1.050,00",
+            "R$ 125,00",
         )
         self.assertEqual(
             contexto["indicadores"][2]["valor_completo"],
-            "R$ 540,00",
+            "R$ 55,00",
         )
 
     def test_fluxo_de_caixa_usa_valor_aberto_dos_movimentos_financeiros(self):
-        ContaCorrenteOmie.objects.create(
+        conta = ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
             codigo_omie=701,
             descricao="Conta principal",
@@ -2445,10 +2682,14 @@ class DashboardPermissaoTests(TestCase):
         MovimentoFinanceiroOmie.objects.create(
             empresa=self.empresa,
             codigo_titulo=71001,
+            codigo_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
             grupo="CONTA_A_PAGAR",
             natureza="P",
             status="PAGO",
             liquidado=False,
+            data_previsao=date.today(),
+            data_pagamento=date.today(),
             data_vencimento=date.today(),
             valor_titulo=10000,
             valor_aberto=5000,
@@ -2458,11 +2699,15 @@ class DashboardPermissaoTests(TestCase):
         MovimentoFinanceiroOmie.objects.create(
             empresa=self.empresa,
             codigo_titulo=71002,
+            codigo_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
             grupo="CONTA_A_PAGAR",
             natureza="P",
             status="PAGO",
             liquidado=True,
-            data_vencimento=date.today(),
+            data_previsao=date.today() + timedelta(days=40),
+            data_pagamento=date.today() + timedelta(days=40),
+            data_vencimento=date.today() + timedelta(days=40),
             valor_titulo=900,
             valor_aberto=900,
             valor_liquido=900,
@@ -2480,7 +2725,7 @@ class DashboardPermissaoTests(TestCase):
             "R$ 5.000,00",
         )
 
-    def test_fluxo_de_caixa_prefere_totais_do_resumo_financeiro_omie(self):
+    def test_fluxo_de_caixa_usa_movimentos_em_vez_do_resumo_financeiro_omie(self):
         self.empresa.resumo_financeiro_omie = {
             "contaReceber": {
                 "nTotal": 72,
@@ -2521,11 +2766,11 @@ class DashboardPermissaoTests(TestCase):
 
         self.assertEqual(
             contexto["indicadores"][1]["valor_completo"],
-            "R$ 17.971,01",
+            "R$ 0,00",
         )
         self.assertEqual(
             contexto["indicadores"][2]["valor_completo"],
-            "R$ 759.831,78",
+            "R$ 0,00",
         )
 
     def test_fluxo_de_caixa_reconstroi_saldo_inicial_por_movimentos_realizados(self):
@@ -2748,6 +2993,11 @@ class DashboardPermissaoTests(TestCase):
             nao_fluxo=True,
             nao_resumo=True,
         )
+        conta_adiantamento = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=503,
+            descricao=" Adiantamento de Cliente ",
+        )
         ContaReceberOmie.objects.create(
             empresa=self.empresa,
             codigo_lancamento_omie=51001,
@@ -2776,6 +3026,15 @@ class DashboardPermissaoTests(TestCase):
             data_registro=date(ano_atual, 1, 12),
             valor_documento=800,
         )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=51004,
+            id_conta_corrente=conta_adiantamento.codigo_omie,
+            conta_corrente=conta_adiantamento,
+            categoria_principal=categoria,
+            data_registro=date(ano_atual, 1, 13),
+            valor_documento=700,
+        )
 
         contexto = dre_gerencial(
             self.empresa,
@@ -2786,6 +3045,108 @@ class DashboardPermissaoTests(TestCase):
         linha_vendas = next(linha for linha in contexto["linhas"] if linha["nome"] == "Vendas")
 
         self.assertEqual(linha_vendas["total"], Decimal("100"))
+
+    def test_dre_gerencial_calcula_contas_de_resultado_em_cascata(self):
+        ano_atual = date.today().year
+        receita = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Receita Bruta",
+            ordem=1,
+        )
+        vendas = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Vendas",
+            conta_pai=receita,
+            ordem=1,
+        )
+        deducoes = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Deducoes",
+            sinal=ContaDRE.Sinal.SUBTRACAO,
+            ordem=2,
+        )
+        impostos = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Impostos",
+            conta_pai=deducoes,
+            sinal=ContaDRE.Sinal.SUBTRACAO,
+            ordem=1,
+        )
+        resultado_bruto = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Resultado bruto",
+            sinal=ContaDRE.Sinal.RESULTADO,
+            ordem=3,
+        )
+        despesas = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Despesas",
+            sinal=ContaDRE.Sinal.SUBTRACAO,
+            ordem=4,
+        )
+        administrativas = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Administrativas",
+            conta_pai=despesas,
+            sinal=ContaDRE.Sinal.SUBTRACAO,
+            ordem=1,
+        )
+        resultado_final = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Resultado final",
+            sinal=ContaDRE.Sinal.RESULTADO,
+            ordem=5,
+        )
+        categoria_vendas = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.10.01",
+            descricao="Vendas",
+            conta_dre=vendas,
+        )
+        categoria_impostos = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.10.01",
+            descricao="Impostos",
+            conta_dre=impostos,
+        )
+        categoria_despesas = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.20.01",
+            descricao="Administrativas",
+            conta_dre=administrativas,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=52001,
+            categoria_principal=categoria_vendas,
+            data_lancamento=date(ano_atual, 1, 10),
+            valor_lancamento=1000,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=52002,
+            categoria_principal=categoria_impostos,
+            data_lancamento=date(ano_atual, 1, 11),
+            valor_lancamento=200,
+        )
+        LancamentoContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=52003,
+            categoria_principal=categoria_despesas,
+            data_lancamento=date(ano_atual, 1, 12),
+            valor_lancamento=300,
+        )
+
+        contexto = dre_gerencial(
+            self.empresa,
+            f"mes-{ano_atual}-01",
+            empresas_ids=[self.empresa.pk],
+            regime_financeiro="caixa",
+        )
+
+        linhas = {linha["nome"]: linha for linha in contexto["linhas"]}
+        self.assertEqual(linhas[resultado_bruto.nome]["total"], Decimal("800"))
+        self.assertEqual(linhas[resultado_final.nome]["total"], Decimal("500"))
 
     def test_inadimplencia_exibe_indicadores_graficos_e_top_devedores(self):
         ano_atual = date.today().year

@@ -19,7 +19,10 @@ from apps.dashboards.faturamento_services import (
     TIPOS_FATURAMENTO,
     faturamento_comercial,
 )
-from apps.dashboards.fluxo_caixa_services import fluxo_de_caixa
+from apps.dashboards.fluxo_caixa_services import (
+    fluxo_de_caixa,
+    fluxo_de_caixa_horizontal,
+)
 from apps.dashboards.inadimplencia_services import inadimplencia
 from apps.dashboards.margem_rentabilidade_services import (
     margem_rentabilidade_comercial,
@@ -815,6 +818,135 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             abrir_modal=aprovacao_modal,
         )
     return render(request, "dashboards/dashboard.html", contexto)
+
+
+@login_required
+def fluxo_caixa_horizontal(request, empresa_slug):
+    contexto = _contexto_base(request, empresa_slug)
+    empresa = contexto["empresa"]
+    if not usuario_pode_acessar_dashboard(
+        request.user,
+        empresa,
+        "financeiro",
+        "fluxo-de-caixa",
+    ):
+        raise Http404("Dashboard nao encontrado.")
+
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+    empresas_selecionadas = _empresas_inicio_selecionadas(
+        request,
+        empresa,
+        empresas,
+    )
+    empresas_consulta_ids = empresas_selecionadas or [
+        str(item.pk) for item in empresas
+    ]
+    chave_dashboard = f"filtros_dashboard:{empresa.pk}:financeiro:fluxo-de-caixa"
+    estado = request.session.get(chave_dashboard, {})
+
+    from apps.empresas.models import ProjetoOmie
+
+    projetos = ProjetoOmie.objects.filter(
+        empresa_id__in=empresas_consulta_ids,
+        ativo_omie=True,
+        inativo=False,
+    ).select_related("empresa")
+    projetos_opcoes = [
+        {
+            "valor": f"{projeto.empresa_id}:{projeto.codigo}",
+            "nome": projeto.nome,
+            "empresa": projeto.empresa.nome_fantasia,
+        }
+        for projeto in projetos
+    ]
+    if request.GET.getlist("projeto"):
+        projetos_selecionados = _valores_validos(
+            request.GET.getlist("projeto"),
+            (item["valor"] for item in projetos_opcoes),
+        )
+    else:
+        projetos_selecionados = _valores_validos(
+            estado.get("projetos", []),
+            (item["valor"] for item in projetos_opcoes),
+        )
+    projetos_consulta = _valores_para_consulta(
+        projetos_selecionados,
+        projetos_opcoes,
+    )
+
+    hoje = date.today()
+    modo = request.GET.get("modo") or "diario"
+    if modo not in {"diario", "semanal", "anual"}:
+        modo = "diario"
+    try:
+        ano_selecionado = int(request.GET.get("ano") or hoje.year)
+    except (TypeError, ValueError):
+        ano_selecionado = hoje.year
+    ano_selecionado = min(max(ano_selecionado, hoje.year - 5), hoje.year + 1)
+    try:
+        mes_selecionado = int(request.GET.get("mes") or hoje.month)
+    except (TypeError, ValueError):
+        mes_selecionado = hoje.month
+    mes_selecionado = min(max(mes_selecionado, 1), 12)
+    if modo == "anual":
+        periodo_selecionado = f"ano-{ano_selecionado}"
+        data_inicio, data_fim = "", ""
+    else:
+        periodo_selecionado = f"mes-{ano_selecionado}-{mes_selecionado:02d}"
+        data_inicio, data_fim = "", ""
+    anos_filtro = list(range(hoje.year + 1, hoje.year - 6, -1))
+    meses_filtro = [
+        {"valor": indice, "nome": nome}
+        for indice, nome in enumerate(
+            (
+                "Janeiro",
+                "Fevereiro",
+                "Marco",
+                "Abril",
+                "Maio",
+                "Junho",
+                "Julho",
+                "Agosto",
+                "Setembro",
+                "Outubro",
+                "Novembro",
+                "Dezembro",
+            ),
+            start=1,
+        )
+    ]
+
+    contexto.update(
+        {
+            "area_slug": "financeiro",
+            "area_atual": AREAS["financeiro"],
+            "dashboard_slug": "fluxo-de-caixa-horizontal",
+            "dashboard_atual": {
+                "titulo": "Fluxo de caixa horizontal",
+                "descricao": "Pagamentos e recebimentos por periodo.",
+            },
+            "periodo_rotulo": _rotulo_periodo(
+                periodo_selecionado,
+                data_inicio,
+                data_fim,
+            ),
+            "modo_horizontal": modo,
+            "ano_horizontal": ano_selecionado,
+            "mes_horizontal": mes_selecionado,
+            "anos_horizontal": anos_filtro,
+            "meses_horizontal": meses_filtro,
+            "fluxo_horizontal": fluxo_de_caixa_horizontal(
+                empresa,
+                periodo_selecionado,
+                data_inicio,
+                data_fim,
+                empresas_consulta_ids,
+                projetos_consulta,
+                modo,
+            ),
+        }
+    )
+    return render(request, "dashboards/fluxo_caixa_horizontal.html", contexto)
 
 
 @login_required

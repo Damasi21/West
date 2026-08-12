@@ -8,6 +8,7 @@ class BudgetConfiguracaoCompra(models.Model):
         PROJETO = "projeto", "Projeto"
         FORNECEDOR = "fornecedor", "Fornecedor"
         DEPARTAMENTO = "departamento", "Departamento"
+        CATEGORIA = "categoria", "Categoria"
 
     empresa = models.OneToOneField(
         "empresas.Empresa",
@@ -79,6 +80,7 @@ class BudgetLimiteCompra(models.Model):
     )
     referencia_codigo = models.CharField(max_length=120)
     referencia_nome = models.CharField(max_length=255, blank=True)
+    mes = models.PositiveSmallIntegerField(default=0)
     estoque_minimo = models.DecimalField(max_digits=18, decimal_places=4, default=0)
     limite_compra = models.DecimalField(max_digits=18, decimal_places=4, default=0)
     criado_em = models.DateTimeField(auto_now_add=True)
@@ -88,14 +90,14 @@ class BudgetLimiteCompra(models.Model):
         ordering = ["referencia_nome", "referencia_codigo"]
         constraints = [
             models.UniqueConstraint(
-                fields=["empresa", "tipo_controle", "referencia_codigo"],
-                name="budget_limite_empresa_tipo_ref_unico",
+                fields=["empresa", "tipo_controle", "referencia_codigo", "mes"],
+                name="budget_limite_empresa_tipo_ref_mes_unico",
             )
         ]
         indexes = [
             models.Index(
-                fields=["empresa", "tipo_controle"],
-                name="budget_limite_emp_tipo_idx",
+                fields=["empresa", "tipo_controle", "mes"],
+                name="budget_limite_emp_tipo_mes_idx",
             )
         ]
         verbose_name = "limite de budget de compras"

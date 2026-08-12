@@ -86,6 +86,11 @@ urlpatterns = [
         views.salvar_aprovacao_pagamentos,
         name="salvar_aprovacao_pagamentos",
     ),
+    path(
+        "financeiro/fluxo-de-caixa/horizontal/",
+        views.fluxo_caixa_horizontal,
+        name="fluxo_caixa_horizontal",
+    ),
     path("<slug:area_slug>/", views.area, name="area"),
     path(
         "<slug:area_slug>/<slug:dashboard_slug>/",
