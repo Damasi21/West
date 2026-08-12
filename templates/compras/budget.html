@@ -23,7 +23,7 @@
         </div>
     </div>
 
-    <div class="budget-overview" data-budget-overview>
+    <div class="budget-overview {% if budget_tipo_ativo %}d-none{% endif %}" data-budget-overview>
         <form method="post" class="budget-card-form">
             {% csrf_token %}
             <input type="hidden" name="acao" value="definir_tipos">
@@ -78,20 +78,52 @@
         </form>
     </div>
 
-    <div class="budget-detail-view d-none" data-budget-detail-view>
+    <div class="budget-detail-view {% if not budget_tipo_ativo %}d-none{% endif %}" data-budget-detail-view>
         <div class="budget-detail-heading">
             <button class="btn btn-white" type="button" data-budget-back>
                 <i class="bi bi-arrow-left me-2"></i>Cards de budget
             </button>
         </div>
 
+        <form method="post" id="budget-category-forecast-form" class="d-none" data-budget-forecast-form>
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="buscar_previsto_realizado_categoria">
+            <input type="hidden" name="periodicidade_categoria" value="" data-budget-forecast-periodicity>
+            <span data-budget-forecast-months></span>
+        </form>
+        {% for secao in secoes %}
+            <form method="post" id="budget-revert-form-{{ secao.tipo }}" class="d-none">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="reverter_budget">
+                <input type="hidden" name="tipo_controle" value="{{ secao.tipo }}">
+            </form>
+            <form method="post" id="budget-replicate-form-{{ secao.tipo }}" class="d-none">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="replicar_budget_mensal">
+                <input type="hidden" name="tipo_controle" value="{{ secao.tipo }}">
+                <input type="hidden" name="mes_origem" value="{{ secao.mes_edicao }}" data-budget-replicate-month>
+            </form>
+            <form method="post" id="budget-month-go-form-{{ secao.tipo }}" class="d-none">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="selecionar_mes_budget">
+                <input type="hidden" name="tipo_controle" value="{{ secao.tipo }}">
+                <input type="hidden" name="mes_edicao" value="{{ secao.mes_edicao }}" data-budget-go-month>
+            </form>
+        {% endfor %}
+
         <form method="post" class="budget-limits-form">
             {% csrf_token %}
             <input type="hidden" name="acao" value="salvar_limites">
+            <input
+                type="hidden"
+                name="tipo_ativo"
+                value="{{ budget_tipo_ativo|default:'' }}"
+                data-budget-active-input
+            >
 
             {% for secao in secoes %}
             <div
-                class="budget-section {% if forloop.first %}is-active{% endif %}"
+                class="budget-section {% if budget_tipo_ativo == secao.tipo or not budget_tipo_ativo and forloop.first %}is-active{% endif %}"
                 data-budget-panel="{{ secao.tipo }}"
             >
                 <div class="budget-section-title">
@@ -111,6 +143,7 @@
                             class="budget-mode-button {% if secao.modalidade == 'individual' %}is-active{% endif %}"
                             type="button"
                             data-budget-mode-button="individual"
+                            {% if secao.modalidade_bloqueada and secao.modalidade_bloqueada != 'individual' %}disabled title="Reverta o budget salvo para trocar a modalidade"{% endif %}
                         >
                             Individual
                         </button>
@@ -118,10 +151,21 @@
                             class="budget-mode-button {% if secao.modalidade == 'grupo' %}is-active{% endif %}"
                             type="button"
                             data-budget-mode-button="grupo"
+                            {% if secao.modalidade_bloqueada and secao.modalidade_bloqueada != 'grupo' %}disabled title="Reverta o budget salvo para trocar a modalidade"{% endif %}
                         >
                             Grupo
                         </button>
                     </div>
+                    {% if secao.tem_budget_salvo %}
+                        <button
+                            class="btn btn-white budget-revert-button"
+                            type="submit"
+                            form="budget-revert-form-{{ secao.tipo }}"
+                            data-budget-revert
+                        >
+                            <i class="bi bi-arrow-counterclockwise me-2"></i>Reverter/Zerar
+                        </button>
+                    {% endif %}
                     <label class="budget-periodicity">
                         <span>Periodicidade</span>
                         <select
@@ -133,43 +177,47 @@
                             <option value="mensal" {% if secao.periodicidade == 'mensal' %}selected{% endif %}>Mensal</option>
                         </select>
                     </label>
-                    <div
-                        class="budget-months dashboard-filter budget-month-filter {% if secao.periodicidade != 'mensal' %}d-none{% endif %}"
+                    <label
+                        class="budget-months budget-month-select {% if secao.periodicidade != 'mensal' %}d-none{% endif %}"
                         data-budget-months
-                        data-filter-dropdown
                     >
-                        <span class="budget-field-label">Meses</span>
-                        <button
-                            class="filter-trigger"
-                            type="button"
-                            aria-expanded="false"
+                        <span>Mes</span>
+                        <select
+                            class="form-select"
+                            name="mes_edicao_{{ secao.tipo }}"
+                            data-budget-month-edit
                         >
-                            <i class="bi bi-calendar3"></i>
-                            <span data-filter-summary data-empty-label="Todos os meses">{{ secao.meses_resumo }}</span>
-                            <i class="bi bi-chevron-down filter-chevron"></i>
+                            {% for mes in secao.meses %}
+                                <option value="{{ mes.numero }}" {% if mes.selecionado %}selected{% endif %}>{{ mes.rotulo }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <button
+                        class="btn btn-white budget-month-go-button {% if secao.periodicidade != 'mensal' %}d-none{% endif %}"
+                        type="submit"
+                        form="budget-month-go-form-{{ secao.tipo }}"
+                        data-budget-month-go="{{ secao.tipo }}"
+                    >
+                        Ir
+                    </button>
+                    <button
+                        class="btn btn-white budget-replicate-button {% if secao.periodicidade != 'mensal' %}d-none{% endif %}"
+                        type="submit"
+                        form="budget-replicate-form-{{ secao.tipo }}"
+                        data-budget-replicate="{{ secao.tipo }}"
+                    >
+                        <i class="bi bi-files me-2"></i>Replicar para o ano
+                    </button>
+                    {% if secao.tipo == 'categoria' %}
+                        <button
+                            class="btn btn-white budget-forecast-button"
+                            type="submit"
+                            form="budget-category-forecast-form"
+                            data-budget-forecast-category
+                        >
+                            <i class="bi bi-search me-2"></i>Buscar Previsto x Realizado
                         </button>
-                        <div class="filter-popover budget-month-popover">
-                            <strong class="filter-title">Meses</strong>
-                            <p class="filter-hint">Escolha um ou varios meses.</p>
-                            <div class="filter-options">
-                                {% for mes in secao.meses %}
-                                    <label class="filter-option month-option">
-                                        <input
-                                            type="checkbox"
-                                            name="mes_{{ secao.tipo }}"
-                                            value="{{ mes.numero }}"
-                                            {% if mes.selecionado %}checked{% endif %}
-                                        >
-                                        <span>{{ mes.rotulo }}</span>
-                                    </label>
-                                {% endfor %}
-                            </div>
-                            <div class="filter-actions">
-                                <button type="button" data-select-all>Selecionar todos</button>
-                                <button type="button" data-clear-all>Limpar</button>
-                            </div>
-                        </div>
-                    </div>
+                    {% endif %}
                     {% if not secao.usa_familias %}
                         <label class="budget-group-total {% if secao.modalidade != 'grupo' %}d-none{% endif %}" data-budget-group-total>
                             <span>Total do grupo</span>
@@ -377,8 +425,12 @@
 <script>
     const budgetOverview = document.querySelector("[data-budget-overview]");
     const budgetDetailView = document.querySelector("[data-budget-detail-view]");
+    const budgetActiveInput = document.querySelector("[data-budget-active-input]");
 
     function activateBudgetPanel(target) {
+        if (budgetActiveInput) {
+            budgetActiveInput.value = target;
+        }
         document.querySelectorAll("[data-budget-tab]").forEach((item) => {
             const active = item.dataset.budgetTab === target;
             item.classList.toggle("is-active", active);
@@ -407,6 +459,63 @@
         budgetDetailView?.classList.add("d-none");
         budgetOverview?.classList.remove("d-none");
         budgetOverview?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    document.querySelectorAll("[data-budget-revert]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            if (!window.confirm("Reverter este budget vai zerar os limites salvos desta vertente. Deseja continuar?")) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    document.querySelectorAll("[data-budget-replicate]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            const tipo = button.dataset.budgetReplicate;
+            const panel = document.querySelector(`[data-budget-panel="${tipo}"]`);
+            const form = document.getElementById(`budget-replicate-form-${tipo}`);
+            const monthInput = form?.querySelector("[data-budget-replicate-month]");
+            const monthSelect = panel?.querySelector(`[name="mes_edicao_${tipo}"]`);
+            if (monthInput && monthSelect) {
+                monthInput.value = monthSelect.value;
+            }
+            if (!window.confirm("Replicar este mes vai sobrescrever o budget dos demais meses do ano. Deseja continuar?")) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    document.querySelectorAll("[data-budget-month-go]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const tipo = button.dataset.budgetMonthGo;
+            const panel = document.querySelector(`[data-budget-panel="${tipo}"]`);
+            const form = document.getElementById(`budget-month-go-form-${tipo}`);
+            const monthInput = form?.querySelector("[data-budget-go-month]");
+            const monthSelect = panel?.querySelector(`[name="mes_edicao_${tipo}"]`);
+            if (monthInput && monthSelect) {
+                monthInput.value = monthSelect.value;
+            }
+        });
+    });
+
+    document.querySelector("[data-budget-forecast-category]")?.addEventListener("click", () => {
+        const categoryPanel = document.querySelector('[data-budget-panel="categoria"]');
+        const forecastForm = document.querySelector("[data-budget-forecast-form]");
+        const periodicityInput = forecastForm?.querySelector("[data-budget-forecast-periodicity]");
+        const monthsBox = forecastForm?.querySelector("[data-budget-forecast-months]");
+        const periodicity = categoryPanel?.querySelector('[name="periodicidade_categoria"]')?.value || "anual";
+        if (periodicityInput) periodicityInput.value = periodicity;
+        if (monthsBox) {
+            monthsBox.innerHTML = "";
+            const monthSelect = categoryPanel?.querySelector('[name="mes_edicao_categoria"]');
+            if (periodicity === "mensal" && monthSelect) {
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = "mes_categoria";
+                input.value = monthSelect.value;
+                monthsBox.appendChild(input);
+            }
+        }
     });
 
     function matchesBudgetSearch(text, term) {
@@ -609,10 +718,15 @@
         const hint = panel.querySelector("[data-budget-group-hint]");
         const periodicity = panel.querySelector("[data-budget-periodicity]");
         const months = panel.querySelector("[data-budget-months]");
+        const monthGo = panel.querySelector("[data-budget-month-go]");
+        const replicate = panel.querySelector("[data-budget-replicate]");
         const section = panel.closest("[data-budget-panel]");
 
         function updateMonthsVisibility() {
-            months?.classList.toggle("d-none", periodicity?.value !== "mensal");
+            const monthly = periodicity?.value === "mensal";
+            months?.classList.toggle("d-none", !monthly);
+            monthGo?.classList.toggle("d-none", !monthly);
+            replicate?.classList.toggle("d-none", !monthly);
         }
 
         function setMode(mode, options = {}) {

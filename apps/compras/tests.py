@@ -4,12 +4,15 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from unittest.mock import patch
 
 from apps.empresas.models import (
     CadastroOmie,
+    CategoriaOmie,
     DepartamentoOmie,
     Empresa,
     EmpresaUsuario,
+    IntegracaoOmie,
     PedidoCompraItemOmie,
     PedidoCompraOmie,
     ProdutoOmie,
@@ -38,6 +41,9 @@ class BudgetComprasParametrosTests(TestCase):
             "dashboards:budget",
             kwargs={"empresa_slug": self.empresa.slug},
         )
+
+    def budget_detail_url(self, tipo_controle):
+        return f"{self.url}?budget_tipo={tipo_controle}"
 
     def test_card_budget_aparece_em_parametros(self):
         self.client.force_login(self.usuario)
@@ -92,6 +98,8 @@ class BudgetComprasParametrosTests(TestCase):
 
         response = self.client.get(self.url)
 
+        self.assertContains(response, 'class="budget-overview "')
+        self.assertContains(response, 'class="budget-detail-view d-none"')
         self.assertContains(response, "Budget por familia de produtos")
         self.assertContains(response, "Budget de Projetos")
         self.assertContains(response, "Teto por fornecedor")
@@ -103,38 +111,44 @@ class BudgetComprasParametrosTests(TestCase):
         self.assertContains(response, 'value="1.234,56"')
         self.assertContains(response, 'data-budget-sort="previous"')
         self.assertContains(response, 'data-budget-sort="limit"')
-        self.assertContains(response, "Meses")
-        self.assertContains(response, 'name="mes_produto"')
-        self.assertContains(response, "Todos os meses")
-        self.assertContains(response, "Selecionar todos")
+        self.assertContains(response, "Mes")
+        self.assertContains(response, 'name="mes_edicao_produto"')
+        self.assertContains(response, "Replicar para o ano")
         self.assertNotContains(response, "Estoque minimo Omie")
         self.assertContains(
             response,
             f'name="limite_produto_{produto.codigo_produto}"',
         )
 
+        response = self.client.get(self.budget_detail_url("produto"))
+
+        self.assertContains(response, 'class="budget-overview d-none"')
+        self.assertContains(response, 'class="budget-detail-view "')
+
         response = self.client.post(
             self.url,
             {
                 "acao": "salvar_limites",
+                "tipo_ativo": "produto",
                 "periodicidade_produto": "mensal",
-                "mes_produto": ["1", "3", "12"],
+                "mes_edicao_produto": "3",
                 f"limite_produto_{produto.codigo_produto}": "250,75",
             },
         )
 
-        self.assertRedirects(response, self.url)
+        self.assertRedirects(response, self.budget_detail_url("produto"))
         limite = BudgetLimiteCompra.objects.get(
             empresa=self.empresa,
             tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
             referencia_codigo=str(produto.codigo_produto),
+            mes=3,
         )
         self.assertEqual(limite.referencia_nome, "Materia prima A")
         self.assertEqual(limite.estoque_minimo, Decimal("12.5000"))
         self.assertEqual(limite.limite_compra, Decimal("250.75"))
         configuracao = BudgetConfiguracaoCompra.objects.get(empresa=self.empresa)
         self.assertEqual(configuracao.periodicidades_controle["produto"], "mensal")
-        self.assertEqual(configuracao.meses_controle["produto"], [1, 3, 12])
+        self.assertEqual(configuracao.meses_controle["produto"], [3])
 
     def test_seleciona_produto_e_fornecedor_na_mesma_rotina(self):
         ProdutoOmie.objects.create(
@@ -189,12 +203,13 @@ class BudgetComprasParametrosTests(TestCase):
             self.url,
             {
                 "acao": "salvar_limites",
+                "tipo_ativo": "produto",
                 "limite_produto_101": "10",
                 "limite_fornecedor_202": "500",
             },
         )
 
-        self.assertRedirects(response, self.url)
+        self.assertRedirects(response, self.budget_detail_url("produto"))
         self.assertTrue(
             BudgetLimiteCompra.objects.filter(
                 empresa=self.empresa,
@@ -250,11 +265,12 @@ class BudgetComprasParametrosTests(TestCase):
             self.url,
             {
                 "acao": "salvar_limites",
+                "tipo_ativo": "departamento",
                 "limite_departamento_DEP-001": "1.500,00",
             },
         )
 
-        self.assertRedirects(response, self.url)
+        self.assertRedirects(response, self.budget_detail_url("departamento"))
         self.assertTrue(
             BudgetLimiteCompra.objects.filter(
                 empresa=self.empresa,
@@ -263,6 +279,407 @@ class BudgetComprasParametrosTests(TestCase):
                 limite_compra=Decimal("1500"),
             ).exists()
         )
+
+    def test_budget_por_categoria_lista_botao_previsto_realizado_e_salva_limite(self):
+        CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.01.01",
+            descricao="Materiais de uso e consumo",
+            categoria_superior="2.01",
+        )
+        CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01.01",
+            descricao="Venda de Mercadoria Fabricadas",
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "definir_tipos",
+                "tipos_controle": [
+                    BudgetConfiguracaoCompra.TipoControle.CATEGORIA,
+                ],
+            },
+        )
+
+        self.assertRedirects(response, self.url)
+        configuracao = BudgetConfiguracaoCompra.objects.get(empresa=self.empresa)
+        self.assertEqual(
+            configuracao.tipos_selecionados,
+            [BudgetConfiguracaoCompra.TipoControle.CATEGORIA],
+        )
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, "Budget por categoria")
+        self.assertContains(response, "Materiais de uso e consumo")
+        self.assertContains(response, "Superior 2.01")
+        self.assertNotContains(response, "Venda de Mercadoria Fabricadas")
+        self.assertContains(response, 'data-budget-open="categoria"')
+        self.assertContains(response, 'data-budget-panel="categoria"')
+        self.assertContains(response, 'data-budget-search="categoria"')
+        self.assertContains(response, "Buscar Previsto x Realizado")
+        self.assertContains(response, "data-budget-forecast-category")
+        self.assertContains(response, 'form="budget-category-forecast-form"')
+        self.assertContains(response, "data-budget-forecast-form")
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "salvar_limites",
+                "tipo_ativo": "categoria",
+                "modalidade_categoria": "individual",
+                "periodicidade_categoria": "mensal",
+                "mes_edicao_categoria": "8",
+                "limite_categoria_2.01.01": "2.500,00",
+            },
+        )
+
+        self.assertRedirects(response, self.budget_detail_url("categoria"))
+        self.assertTrue(
+            BudgetLimiteCompra.objects.filter(
+                empresa=self.empresa,
+                tipo_controle=BudgetConfiguracaoCompra.TipoControle.CATEGORIA,
+                referencia_codigo="2.01.01",
+                mes=8,
+                limite_compra=Decimal("2500"),
+            ).exists()
+        )
+        configuracao.refresh_from_db()
+        self.assertEqual(configuracao.periodicidades_controle["categoria"], "mensal")
+        self.assertEqual(configuracao.meses_controle["categoria"], [8])
+
+    def test_budget_por_categoria_rateia_em_grupo(self):
+        CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.01.01",
+            descricao="Materiais",
+        )
+        CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.01.02",
+            descricao="Servicos",
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "salvar_limites",
+                "tipo_ativo": "categoria",
+                "modalidade_categoria": "grupo",
+                "total_grupo_categoria": "1.000,00",
+                "grupo_item_categoria": ["2.01.01", "2.01.02"],
+            },
+        )
+
+        self.assertRedirects(response, self.budget_detail_url("categoria"))
+        configuracao = BudgetConfiguracaoCompra.objects.get(empresa=self.empresa)
+        self.assertEqual(configuracao.modalidades_controle["categoria"], "grupo")
+        self.assertEqual(configuracao.totais_grupo["categoria"], "1000.00")
+        self.assertEqual(
+            BudgetLimiteCompra.objects.get(
+                empresa=self.empresa,
+                tipo_controle=BudgetConfiguracaoCompra.TipoControle.CATEGORIA,
+                referencia_codigo="2.01.01",
+            ).limite_compra,
+            Decimal("500.0000"),
+        )
+        self.assertEqual(
+            BudgetLimiteCompra.objects.get(
+                empresa=self.empresa,
+                tipo_controle=BudgetConfiguracaoCompra.TipoControle.CATEGORIA,
+                referencia_codigo="2.01.02",
+            ).limite_compra,
+            Decimal("500.0000"),
+        )
+
+    def test_budget_salvo_bloqueia_troca_de_modalidade_ate_reverter(self):
+        ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=101,
+            codigo="MP-101",
+            descricao="Materia prima A",
+        )
+        configuracao = BudgetConfiguracaoCompra.objects.create(
+            empresa=self.empresa,
+            modalidades_controle={"produto": "individual"},
+        )
+        BudgetLimiteCompra.objects.create(
+            empresa=self.empresa,
+            configuracao=configuracao,
+            tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+            referencia_codigo="101",
+            referencia_nome="Materia prima A",
+            limite_compra=Decimal("100"),
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, "Reverter/Zerar")
+        self.assertContains(response, 'form="budget-revert-form-produto"')
+        self.assertContains(response, 'data-budget-revert')
+        self.assertContains(response, "Reverta o budget salvo para trocar a modalidade")
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "salvar_limites",
+                "modalidade_produto": "grupo",
+                "total_grupo_produto_sem_familia": "100,00",
+                "grupo_item_produto_sem_familia": ["101"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Para alterar a modalidade, reverta o budget salvo antes.",
+        )
+        configuracao.refresh_from_db()
+        self.assertEqual(configuracao.modalidades_controle["produto"], "individual")
+        self.assertTrue(
+            BudgetLimiteCompra.objects.filter(
+                empresa=self.empresa,
+                tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+                referencia_codigo="101",
+                limite_compra=Decimal("100"),
+            ).exists()
+        )
+
+    def test_reverter_budget_zera_limites_e_libera_modalidade(self):
+        ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=101,
+            codigo="MP-101",
+            descricao="Materia prima A",
+        )
+        configuracao = BudgetConfiguracaoCompra.objects.create(
+            empresa=self.empresa,
+            modalidades_controle={"produto": "grupo"},
+            totais_grupo={
+                "produto": {"sem_familia": "100.00"},
+                "produto:mes:2": {"sem_familia": "200.00"},
+            },
+            periodicidades_controle={"produto": "mensal"},
+            meses_controle={"produto": [1, 2]},
+        )
+        BudgetLimiteCompra.objects.create(
+            empresa=self.empresa,
+            configuracao=configuracao,
+            tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+            referencia_codigo="101",
+            referencia_nome="Materia prima A",
+            limite_compra=Decimal("100"),
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "reverter_budget",
+                "tipo_controle": "produto",
+            },
+        )
+
+        self.assertRedirects(response, self.budget_detail_url("produto"))
+        self.assertFalse(
+            BudgetLimiteCompra.objects.filter(
+                empresa=self.empresa,
+                tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+            ).exists()
+        )
+        configuracao.refresh_from_db()
+        self.assertNotIn("produto", configuracao.modalidades_controle)
+        self.assertNotIn("produto", configuracao.totais_grupo)
+        self.assertNotIn("produto:mes:2", configuracao.totais_grupo)
+        self.assertNotIn("produto", configuracao.periodicidades_controle)
+        self.assertNotIn("produto", configuracao.meses_controle)
+
+        response = self.client.get(self.url)
+
+        self.assertNotContains(response, "Reverter/Zerar")
+        self.assertNotContains(response, "Reverta o budget salvo para trocar a modalidade")
+
+    def test_replicar_budget_mensal_copia_mes_para_ano(self):
+        ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=101,
+            codigo="MP-101",
+            descricao="Materia prima A",
+        )
+        configuracao = BudgetConfiguracaoCompra.objects.create(
+            empresa=self.empresa,
+            modalidades_controle={"produto": "individual"},
+            periodicidades_controle={"produto": "mensal"},
+            meses_controle={"produto": [3]},
+        )
+        BudgetLimiteCompra.objects.create(
+            empresa=self.empresa,
+            configuracao=configuracao,
+            tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+            referencia_codigo="101",
+            referencia_nome="Materia prima A",
+            mes=3,
+            limite_compra=Decimal("750.00"),
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "replicar_budget_mensal",
+                "tipo_controle": "produto",
+                "mes_origem": "3",
+            },
+        )
+
+        self.assertRedirects(response, self.budget_detail_url("produto"))
+        limites = BudgetLimiteCompra.objects.filter(
+            empresa=self.empresa,
+            tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+            referencia_codigo="101",
+        )
+        self.assertEqual(limites.count(), 12)
+        self.assertEqual(
+            set(limites.values_list("mes", flat=True)),
+            set(range(1, 13)),
+        )
+        self.assertTrue(
+            all(limite.limite_compra == Decimal("750.0000") for limite in limites)
+        )
+        configuracao.refresh_from_db()
+        self.assertEqual(configuracao.periodicidades_controle["produto"], "mensal")
+        self.assertEqual(configuracao.meses_controle["produto"], [3])
+
+    def test_selecionar_mes_budget_carrega_limites_do_mes(self):
+        ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=101,
+            codigo="MP-101",
+            descricao="Materia prima A",
+        )
+        configuracao = BudgetConfiguracaoCompra.objects.create(
+            empresa=self.empresa,
+            periodicidades_controle={"produto": "mensal"},
+            meses_controle={"produto": [3]},
+        )
+        BudgetLimiteCompra.objects.create(
+            empresa=self.empresa,
+            configuracao=configuracao,
+            tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+            referencia_codigo="101",
+            referencia_nome="Materia prima A",
+            mes=3,
+            limite_compra=Decimal("300.00"),
+        )
+        BudgetLimiteCompra.objects.create(
+            empresa=self.empresa,
+            configuracao=configuracao,
+            tipo_controle=BudgetConfiguracaoCompra.TipoControle.PRODUTO,
+            referencia_codigo="101",
+            referencia_nome="Materia prima A",
+            mes=8,
+            limite_compra=Decimal("800.00"),
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "selecionar_mes_budget",
+                "tipo_controle": "produto",
+                "mes_edicao": "8",
+            },
+        )
+
+        self.assertRedirects(response, self.budget_detail_url("produto"))
+        configuracao.refresh_from_db()
+        self.assertEqual(configuracao.periodicidades_controle["produto"], "mensal")
+        self.assertEqual(configuracao.meses_controle["produto"], [8])
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'value="800,00"')
+        self.assertNotContains(response, 'value="300,00"')
+
+    @patch("apps.compras.views.consultar_orcamentos_categorias")
+    def test_busca_previsto_realizado_categoria_preenche_limite_pelo_omie(
+        self,
+        consultar_orcamentos_mock,
+    ):
+        integracao = IntegracaoOmie(empresa=self.empresa, app_key="app-key")
+        integracao.definir_app_secret("app-secret")
+        integracao.save()
+        CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.01.01",
+            descricao="Materiais",
+        )
+        CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.01.02",
+            descricao="Servicos",
+        )
+        CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01.01",
+            descricao="Receita",
+        )
+        consultar_orcamentos_mock.return_value = {
+            "orcamentos": [
+                {
+                    "cCodCateg": "2.01.01",
+                    "cDesCateg": "Materiais",
+                    "nValorPrevisto": 1200.75,
+                    "nValorRealizado": 800,
+                },
+                {
+                    "cCodCateg": "1.01.01",
+                    "cDesCateg": "Receita",
+                    "nValorPrevisto": 9999,
+                    "nValorRealizado": 9999,
+                },
+            ]
+        }
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            self.url,
+            {
+                "acao": "buscar_previsto_realizado_categoria",
+                "periodicidade_categoria": "mensal",
+                "mes_categoria": ["8"],
+            },
+        )
+
+        self.assertRedirects(response, self.budget_detail_url("categoria"))
+        consultar_orcamentos_mock.assert_called_once_with(
+            integracao,
+            timezone.localdate().year,
+            8,
+        )
+        self.assertEqual(
+            BudgetLimiteCompra.objects.get(
+                empresa=self.empresa,
+                tipo_controle=BudgetConfiguracaoCompra.TipoControle.CATEGORIA,
+                referencia_codigo="2.01.01",
+            ).limite_compra,
+            Decimal("1200.75"),
+        )
+        self.assertFalse(
+            BudgetLimiteCompra.objects.filter(
+                empresa=self.empresa,
+                tipo_controle=BudgetConfiguracaoCompra.TipoControle.CATEGORIA,
+                referencia_codigo="1.01.01",
+            ).exists()
+        )
+        configuracao = BudgetConfiguracaoCompra.objects.get(empresa=self.empresa)
+        self.assertEqual(configuracao.periodicidades_controle["categoria"], "mensal")
+        self.assertEqual(configuracao.meses_controle["categoria"], [8])
 
     def test_rateia_budget_em_grupo_para_itens_selecionados(self):
         ProdutoOmie.objects.create(
@@ -289,13 +706,14 @@ class BudgetComprasParametrosTests(TestCase):
             self.url,
             {
                 "acao": "salvar_limites",
+                "tipo_ativo": "produto",
                 "modalidade_produto": "grupo",
                 "total_grupo_produto_sem_familia": "300,00",
                 "grupo_item_produto_sem_familia": ["101", "102"],
             },
         )
 
-        self.assertRedirects(response, self.url)
+        self.assertRedirects(response, self.budget_detail_url("produto"))
         configuracao = BudgetConfiguracaoCompra.objects.get(empresa=self.empresa)
         self.assertEqual(configuracao.modalidades_controle["produto"], "grupo")
         self.assertEqual(configuracao.totais_grupo["produto"]["sem_familia"], "300.00")
@@ -349,6 +767,7 @@ class BudgetComprasParametrosTests(TestCase):
             self.url,
             {
                 "acao": "salvar_limites",
+                "tipo_ativo": "produto",
                 "modalidade_produto": "grupo",
                 "total_grupo_produto_sem_familia": "300,00",
                 "grupo_item_produto_sem_familia": ["101", "102", "103"],
@@ -356,7 +775,7 @@ class BudgetComprasParametrosTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, self.url)
+        self.assertRedirects(response, self.budget_detail_url("produto"))
         self.assertEqual(
             BudgetLimiteCompra.objects.get(
                 empresa=self.empresa,

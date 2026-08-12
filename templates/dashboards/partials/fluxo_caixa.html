@@ -17,9 +17,11 @@
                 <small>FLUXO REALIZADO</small>
                 <h2>Entradas, saidas e saldo acumulado</h2>
             </div>
-            <button type="button" class="btn btn-white cashflow-horizontal-button" data-cashflow-horizontal-open>
-                <i class="bi bi-table me-2"></i>Fluxo de caixa horizontal
-            </button>
+            <div class="cashflow-chart-actions">
+                <a class="btn btn-white cashflow-horizontal-button" href="{% url 'dashboards:fluxo_caixa_horizontal' empresa.slug %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" target="_blank" rel="noopener">
+                    <i class="bi bi-table me-2"></i>Fluxo de caixa horizontal
+                </a>
+            </div>
         </div>
         <div class="cashflow-chart-scroll">
             <div class="cashflow-chart-canvas" data-cashflow-chart-canvas>
@@ -64,104 +66,6 @@
                 </div>
                 <div data-cashflow-detail-rows></div>
             </div>
-        </div>
-    </div>
-
-    <div class="cashflow-detail-modal" data-cashflow-horizontal-modal hidden>
-        <div class="cashflow-detail-dialog cashflow-horizontal-dialog" role="dialog" aria-modal="true" aria-labelledby="cashflow-horizontal-title">
-            <div class="cashflow-detail-header cashflow-horizontal-header">
-                <div>
-                    <small>FLUXO DE CAIXA</small>
-                    <h2 id="cashflow-horizontal-title">Fluxo de caixa horizontal</h2>
-                </div>
-                <div class="cashflow-horizontal-controls">
-                    <label>
-                        <span>Periodo</span>
-                        <select data-cashflow-horizontal-mode>
-                            <option value="diario">Diario</option>
-                            <option value="semanal">Semanal</option>
-                            <option value="mensal">Mensal</option>
-                        </select>
-                    </label>
-                    <button type="button" class="cashflow-detail-close" data-cashflow-horizontal-close aria-label="Fechar">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
-                </div>
-            </div>
-            {% for modo, dados in fluxo.horizontal.items %}
-                <div class="cashflow-horizontal-panel" data-cashflow-horizontal-panel="{{ modo }}" {% if modo != "diario" %}hidden{% endif %}>
-                    <div class="cashflow-horizontal-note">
-                        <strong>{{ dados.limite_rotulo }}</strong>
-                        {% if modo == "diario" %}
-                            <span>Visao diaria limitada ao mes selecionado.</span>
-                        {% elif modo == "semanal" %}
-                            <span>Semanas do mes selecionado.</span>
-                        {% else %}
-                            <span>Meses do periodo filtrado.</span>
-                        {% endif %}
-                    </div>
-                    <div class="cashflow-horizontal-scroll">
-                        <table class="cashflow-horizontal-table">
-                            <thead>
-                                <tr>
-                                    <th rowspan="2" class="cashflow-horizontal-label">Grupo</th>
-                                    {% for periodo in dados.periodos %}
-                                        <th colspan="2">
-                                            {{ periodo.rotulo }}
-                                            {% if periodo.subrotulo %}<small>{{ periodo.subrotulo }}</small>{% endif %}
-                                        </th>
-                                    {% endfor %}
-                                </tr>
-                                <tr>
-                                    {% for periodo in dados.periodos %}
-                                        <th>Previsao</th>
-                                        <th>Realizado</th>
-                                    {% endfor %}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr class="cashflow-horizontal-section">
-                                    <td colspan="{{ dados.colspan }}">Saldo inicial por conta bancaria</td>
-                                </tr>
-                                {% for conta in dados.saldo_contas %}
-                                    <tr>
-                                        <td>{{ conta.nome }}</td>
-                                        {% for valor in conta.valores %}
-                                            <td>{{ valor.previsao }}</td>
-                                            <td>{{ valor.realizado }}</td>
-                                        {% endfor %}
-                                    </tr>
-                                {% empty %}
-                                    <tr>
-                                        <td colspan="{{ dados.colspan }}">Sem contas bancarias visiveis.</td>
-                                    </tr>
-                                {% endfor %}
-                                <tr class="cashflow-horizontal-revenue">
-                                    <td>Receitas</td>
-                                    {% for valor in dados.receitas %}
-                                        <td>{{ valor.previsao }}</td>
-                                        <td>{{ valor.realizado }}</td>
-                                    {% endfor %}
-                                </tr>
-                                <tr class="cashflow-horizontal-expense">
-                                    <td>Despesas</td>
-                                    {% for valor in dados.despesas %}
-                                        <td>{{ valor.previsao }}</td>
-                                        <td>{{ valor.realizado }}</td>
-                                    {% endfor %}
-                                </tr>
-                                <tr class="cashflow-horizontal-result">
-                                    <td>Resultado final</td>
-                                    {% for valor in dados.resultado %}
-                                        <td>{{ valor.previsao }}</td>
-                                        <td>{{ valor.realizado }}</td>
-                                    {% endfor %}
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            {% endfor %}
         </div>
     </div>
 

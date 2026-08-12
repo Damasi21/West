@@ -8,7 +8,10 @@ from decimal import Decimal
 from django.db.models import Sum
 from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
-from apps.dashboards.finance_filters import registros_com_conta_visivel_financeiro
+from apps.dashboards.finance_filters import (
+    registros_com_conta_visivel_dre,
+    registros_com_conta_visivel_financeiro,
+)
 from apps.empresas.models import (
     ContaDRE,
     ContaPagarOmie,
@@ -209,8 +212,8 @@ def _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos):
     if projetos:
         receber = receber.filter(codigo_projeto__in=projetos)
         pagar = pagar.filter(codigo_projeto__in=projetos)
-    receber = registros_com_conta_visivel_financeiro(receber, "id_conta_corrente")
-    pagar = registros_com_conta_visivel_financeiro(pagar, "id_conta_corrente")
+    receber = registros_com_conta_visivel_dre(receber, "id_conta_corrente")
+    pagar = registros_com_conta_visivel_dre(pagar, "id_conta_corrente")
 
     for queryset in (receber, pagar):
         linhas = (
@@ -347,7 +350,7 @@ def _fornecedores_caixa(conta, inicio, fim, empresas_ids, receitas_mes, meses):
         data_lancamento__lte=fim,
         categoria_principal__conta_dre=conta,
     )
-    base = registros_com_conta_visivel_financeiro(base, "codigo_conta_corrente")
+    base = registros_com_conta_visivel_dre(base, "codigo_conta_corrente")
     fornecedores = (
         base
         .values(
@@ -453,7 +456,7 @@ def _pessoas_competencia(
     for base, prefixo, padrao in bases:
         if projetos:
             base = base.filter(codigo_projeto__in=projetos)
-        base = registros_com_conta_visivel_financeiro(base, "id_conta_corrente")
+        base = registros_com_conta_visivel_dre(base, "id_conta_corrente")
         pessoas = (
             base.values(f"{prefixo}__razao_social", f"{prefixo}__nome_fantasia")
             .annotate(total=Sum("valor_documento"))
@@ -559,6 +562,8 @@ def dre_gerencial(
     for pai in pais:
         for ano, mes in _meses_consulta(meses):
             chave = f"{ano}-{mes:02d}"
+            if pai.eh_resultado:
+                continue
             soma_filhos = sum(
                 (
                     _decimal(valores_por_conta[filho.pk][chave])
@@ -568,6 +573,28 @@ def dre_gerencial(
             )
             if soma_filhos:
                 valores_por_conta[pai.pk][chave] = soma_filhos
+
+    ultimo_resultado = defaultdict(Decimal)
+    bloco_resultado = defaultdict(Decimal)
+    for pai in pais:
+        if pai.eh_resultado:
+            for ano, mes in _meses_consulta(meses):
+                chave = f"{ano}-{mes:02d}"
+                valores_por_conta[pai.pk][chave] = (
+                    ultimo_resultado[chave] + bloco_resultado[chave]
+                )
+            ultimo_resultado = defaultdict(
+                Decimal,
+                {
+                    chave: _decimal(valor)
+                    for chave, valor in valores_por_conta[pai.pk].items()
+                },
+            )
+            bloco_resultado = defaultdict(Decimal)
+            continue
+        for ano, mes in _meses_consulta(meses):
+            chave = f"{ano}-{mes:02d}"
+            bloco_resultado[chave] += _decimal(valores_por_conta[pai.pk][chave])
 
     receitas_mes = defaultdict(Decimal)
     for pai in pais:

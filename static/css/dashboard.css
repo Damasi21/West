@@ -889,6 +889,15 @@
 .cashflow-horizontal-button {
     white-space: nowrap;
 }
+.cashflow-chart-actions {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin-left: auto;
+}
+.cashflow-main-chart .chart-zoom-button {
+    margin-left: .55rem;
+}
 .chart-card-fullscreen:fullscreen .cashflow-chart-scroll {
     flex: 1 1 auto;
     min-height: 0;
@@ -1084,6 +1093,36 @@
     overflow: auto;
     max-height: calc(90vh - 175px);
 }
+.cashflow-horizontal-page {
+    display: grid;
+    gap: 1rem;
+}
+.standalone-dashboard-page {
+    min-height: 100vh;
+    padding: 1.75rem;
+    background: #f3f6fb;
+}
+.standalone-dashboard-page .page-heading {
+    margin-bottom: 1.25rem;
+}
+.cashflow-horizontal-page-panel[hidden] {
+    display: none;
+}
+.cashflow-horizontal-page-header {
+    padding-bottom: .9rem;
+}
+.cashflow-horizontal-toolbar {
+    align-self: flex-start;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.cashflow-horizontal-page-scroll {
+    max-height: none;
+    padding: 0 1rem 1rem;
+}
+.cashflow-horizontal-page-scroll .cashflow-horizontal-table {
+    min-width: 1180px;
+}
 .cashflow-horizontal-table {
     width: 100%;
     min-width: 980px;
@@ -1159,6 +1198,39 @@
     color: #111827;
     background: #eef2ff !important;
     font-weight: 900;
+}
+.cashflow-horizontal-category td {
+    color: #344054;
+    background: #ffffff;
+}
+.cashflow-horizontal-category[hidden] {
+    display: none;
+}
+.cashflow-horizontal-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    max-width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 800;
+    text-align: left;
+}
+.cashflow-horizontal-toggle i {
+    flex: 0 0 auto;
+    font-size: .72rem;
+}
+.cashflow-horizontal-category .cashflow-horizontal-toggle,
+.cashflow-horizontal-category-name {
+    margin-left: calc(var(--level, 0) * 1.15rem);
+}
+.cashflow-horizontal-category-name {
+    display: inline-block;
+    color: #475467;
+    font-weight: 700;
 }
 .cashflow-bottom-grid {
     display: grid;

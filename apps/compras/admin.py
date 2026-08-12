@@ -20,8 +20,9 @@ class BudgetLimiteCompraAdmin(admin.ModelAdmin):
         "empresa",
         "tipo_controle",
         "referencia_nome",
+        "mes",
         "estoque_minimo",
         "limite_compra",
     )
-    list_filter = ("tipo_controle",)
+    list_filter = ("tipo_controle", "mes")
     search_fields = ("empresa__nome_fantasia", "referencia_nome", "referencia_codigo")

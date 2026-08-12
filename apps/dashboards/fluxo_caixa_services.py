@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.db.models.functions import ExtractMonth, ExtractYear
 
 from apps.dashboards.finance_filters import (
@@ -20,6 +20,7 @@ from apps.dashboards.dre_services import (
 )
 from apps.dashboards.visao_geral_services import _formatar_moeda_curta
 from apps.empresas.models import (
+    CategoriaOmie,
     ContaCorrenteOmie,
     ContaPagarOmie,
     ContaReceberOmie,
@@ -31,6 +32,7 @@ from apps.empresas.models import (
 
 STATUS_FECHADOS_RECEBER = {"RECEBIDO", "LIQUIDADO", "BAIXADO", "CANCELADO"}
 STATUS_FECHADOS_PAGAR = {"PAGO", "LIQUIDADO", "BAIXADO", "CANCELADO"}
+STATUS_MOVIMENTO_PAGO = {"PAGO", "LIQUIDADO", "BAIXADO", "RECEBIDO"}
 CHAVES_RETENCOES_RECEBER = (
     "valor_iss",
     "valor_pis",
@@ -124,6 +126,50 @@ def _query_movimentos_pagar_previstos_omie(hoje, empresas_ids, projetos):
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
     return queryset
+
+
+def _query_movimentos_financeiros(empresas_ids, projetos, natureza, inicio=None, fim=None):
+    queryset = MovimentoFinanceiroOmie.objects.filter(
+        empresa_id__in=empresas_ids,
+        ativo_omie=True,
+        natureza=natureza,
+    )
+    if projetos:
+        queryset = queryset.filter(codigo_projeto__in=projetos)
+    if inicio and fim:
+        queryset = queryset.filter(
+            Q(data_previsao__gte=inicio, data_previsao__lte=fim)
+            | Q(status__in=STATUS_MOVIMENTO_PAGO, data_pagamento__gte=inicio, data_pagamento__lte=fim)
+            | Q(status__in=STATUS_MOVIMENTO_PAGO, data_pagamento__isnull=True, data_vencimento__gte=inicio, data_vencimento__lte=fim)
+        )
+    return registros_com_conta_visivel_financeiro(queryset, "codigo_conta_corrente")
+
+
+def _movimento_pago(movimento):
+    return str(movimento.status or "").upper() in STATUS_MOVIMENTO_PAGO
+
+
+def _data_realizado_movimento(movimento):
+    if not _movimento_pago(movimento):
+        return None
+    return movimento.data_pagamento or movimento.data_vencimento
+
+
+def _valor_previsto_movimento(movimento):
+    return _decimal(
+        movimento.valor_liquido
+        or movimento.valor_titulo
+        or movimento.valor_aberto
+        or movimento.valor_pago
+    )
+
+
+def _valor_realizado_movimento(movimento):
+    return _decimal(
+        movimento.valor_pago
+        or movimento.valor_liquido
+        or movimento.valor_titulo
+    )
 
 
 def _query_lancamentos(inicio, fim, empresas_ids, projetos, natureza):
@@ -281,7 +327,7 @@ def _periodos_horizontais(inicio, fim):
         }
         for item in _meses_do_intervalo(inicio, fim)
     ]
-    return {"diario": dias, "semanal": semanas, "mensal": meses}
+    return {"diario": dias, "semanal": semanas, "anual": meses}
 
 
 def _somar_por_periodo(queryset, periodos, data_field, valor_fn):
@@ -295,6 +341,18 @@ def _somar_por_periodo(queryset, periodos, data_field, valor_fn):
                 totais[periodo["chave"]] += abs(valor_fn(registro))
                 break
     return totais
+
+
+def _periodos_mensais_para_fluxo(meses):
+    return [
+        {
+            "chave": item["chave"],
+            "rotulo": item["rotulo"],
+            "inicio": date(item["ano"], item["mes"], 1),
+            "fim": date(item["ano"], item["mes"], monthrange(item["ano"], item["mes"])[1]),
+        }
+        for item in meses
+    ]
 
 
 def _valor_pagar(conta):
@@ -343,9 +401,202 @@ def _valores_horizontais(totais, periodos):
     ]
 
 
-def _fluxo_horizontal(inicio, fim, empresas_ids, projetos):
+def _chave_periodo_data(data, periodos):
+    if not data:
+        return ""
+    for periodo in periodos:
+        if periodo["inicio"] <= data <= periodo["fim"]:
+            return periodo["chave"]
+    return ""
+
+
+def _codigo_categoria_item(item):
+    codigo = str(getattr(item, "codigo_categoria", "") or "").strip()
+    categoria = getattr(item, "categoria_principal", None)
+    if not codigo and categoria:
+        codigo = str(categoria.codigo or "").strip()
+    return codigo or "sem_categoria"
+
+
+def _nome_categoria_item(item):
+    categoria = getattr(item, "categoria_principal", None)
+    return (
+        getattr(categoria, "descricao", "")
+        or getattr(item, "codigo_categoria", "")
+        or "Sem categoria"
+    )
+
+
+def _somar_categorias_por_periodo(
+    queryset,
+    periodos,
+    data_accessor,
+    valor_accessor,
+    tipo,
+):
+    totais = defaultdict(lambda: {"previsao": defaultdict(Decimal), "realizado": defaultdict(Decimal)})
+    nomes = {}
+    codigos = set()
+    if hasattr(queryset, "select_related"):
+        queryset = queryset.select_related("categoria_principal")
+    for item in queryset:
+        data = data_accessor(item) if callable(data_accessor) else getattr(item, data_accessor)
+        chave_periodo = _chave_periodo_data(data, periodos)
+        if not chave_periodo:
+            continue
+        codigo = _codigo_categoria_item(item)
+        valor = abs(_decimal(valor_accessor(item) if callable(valor_accessor) else getattr(item, valor_accessor)))
+        if not valor:
+            continue
+        totais[codigo][tipo][chave_periodo] += valor
+        nomes.setdefault(codigo, _nome_categoria_item(item))
+        if codigo != "sem_categoria":
+            codigos.add(codigo)
+    return totais, nomes, codigos
+
+
+def _linhas_categorias_horizontais(
+    empresas_ids,
+    periodos,
+    previstos,
+    realizados,
+):
+    totais = defaultdict(lambda: {"previsao": defaultdict(Decimal), "realizado": defaultdict(Decimal)})
+    nomes = {}
+    codigos = set()
+    for origem, tipo in ((previstos, "previsao"), (realizados, "realizado")):
+        origem_totais, origem_nomes, origem_codigos = origem
+        codigos.update(origem_codigos)
+        nomes.update(origem_nomes)
+        for codigo, dados in origem_totais.items():
+            for chave, valor in dados[tipo].items():
+                totais[codigo][tipo][chave] += valor
+
+    categorias = {
+        categoria.codigo: categoria
+        for categoria in CategoriaOmie.objects.filter(
+            empresa_id__in=empresas_ids,
+            ativo_omie=True,
+            codigo__in=codigos,
+        )
+    }
+    pendentes = set(codigos)
+    while pendentes:
+        superiores = {
+            categoria.categoria_superior
+            for codigo, categoria in categorias.items()
+            if codigo in pendentes and categoria.categoria_superior
+        }
+        superiores -= set(categorias)
+        superiores.discard("0")
+        superiores.discard("")
+        if not superiores:
+            break
+        novos = {
+            categoria.codigo: categoria
+            for categoria in CategoriaOmie.objects.filter(
+                empresa_id__in=empresas_ids,
+                ativo_omie=True,
+                codigo__in=superiores,
+            )
+        }
+        if not novos:
+            break
+        categorias.update(novos)
+        pendentes = set(novos)
+
+    filhos = defaultdict(list)
+    for codigo, categoria in categorias.items():
+        pai = categoria.categoria_superior or ""
+        if pai and pai in categorias:
+            filhos[pai].append(codigo)
+
+    for codigo, categoria in categorias.items():
+        nomes.setdefault(codigo, categoria.descricao or codigo)
+        totais.setdefault(codigo, {"previsao": defaultdict(Decimal), "realizado": defaultdict(Decimal)})
+
+    totais_diretos = totais
+    totais_agregados = defaultdict(
+        lambda: {"previsao": defaultdict(Decimal), "realizado": defaultdict(Decimal)}
+    )
+
+    def agregar(codigo):
+        if codigo in totais_agregados:
+            return totais_agregados[codigo]
+        for tipo in ("previsao", "realizado"):
+            for chave, valor in totais_diretos[codigo][tipo].items():
+                totais_agregados[codigo][tipo][chave] += valor
+        for filho in filhos.get(codigo, []):
+            totais_filho = agregar(filho)
+            for tipo in ("previsao", "realizado"):
+                for chave, valor in totais_filho[tipo].items():
+                    totais_agregados[codigo][tipo][chave] += valor
+        return totais_agregados[codigo]
+
+    for codigo in list(totais_diretos):
+        agregar(codigo)
+    totais = totais_agregados
+
+    roots = []
+    for codigo in totais:
+        if codigo == "sem_categoria":
+            roots.append(codigo)
+            continue
+        categoria = categorias.get(codigo)
+        if not categoria or not categoria.categoria_superior or categoria.categoria_superior not in categorias:
+            roots.append(codigo)
+
+    def valor_total(codigo):
+        return sum(
+            (
+                totais[codigo][tipo].get(periodo["chave"], Decimal("0"))
+                for tipo in ("previsao", "realizado")
+                for periodo in periodos
+            ),
+            Decimal("0"),
+        )
+
+    def row_id(prefixo, codigo):
+        seguro = "".join(char if char.isalnum() else "-" for char in str(codigo))
+        return f"{prefixo}-{seguro}"
+
+    linhas = []
+
+    def adicionar(codigo, nivel, parent_id=""):
+        children = sorted(filhos.get(codigo, []), key=lambda item: nomes.get(item, item))
+        if codigo == "sem_categoria":
+            children = []
+        linha_id = row_id("cat", codigo)
+        linhas.append(
+            {
+                "id": linha_id,
+                "parent_id": parent_id,
+                "nivel": nivel,
+                "nome": nomes.get(codigo, codigo),
+                "tem_filhos": bool(children),
+                "oculta": bool(parent_id),
+                "valores": _valores_horizontais(totais[codigo], periodos),
+            }
+        )
+        for filho in children:
+            adicionar(filho, nivel + 1, linha_id)
+
+    for codigo in sorted(roots, key=lambda item: nomes.get(item, item)):
+        if valor_total(codigo):
+            adicionar(codigo, 0)
+    return linhas
+
+
+def _fluxo_horizontal(inicio, fim, empresas_ids, projetos, modos_selecionados=None):
     hoje = date.today()
     periodos_por_modo = _periodos_horizontais(inicio, fim)
+    if modos_selecionados:
+        permitidos = set(modos_selecionados)
+        periodos_por_modo = {
+            modo: periodos
+            for modo, periodos in periodos_por_modo.items()
+            if modo in permitidos
+        }
     contas = list(
         contas_correntes_visiveis_financeiro(
             ContaCorrenteOmie.objects.filter(
@@ -355,46 +606,39 @@ def _fluxo_horizontal(inicio, fim, empresas_ids, projetos):
             )
         ).order_by("descricao", "codigo_omie")
     )
-    receber = _query_receber_aberto(None, None, empresas_ids, projetos)
-    pagar = _query_pagar_aberto(None, None, empresas_ids, projetos)
-    lanc_recebidos = LancamentoContaCorrenteOmie.objects.filter(
-        empresa_id__in=empresas_ids,
-        ativo_omie=True,
-        natureza="R",
+    movimentos_receber = list(
+        _query_movimentos_financeiros(
+            empresas_ids,
+            projetos,
+            "R",
+            inicio,
+            fim,
+        ).select_related("categoria_principal")
     )
-    lanc_pagos = LancamentoContaCorrenteOmie.objects.filter(
-        empresa_id__in=empresas_ids,
-        ativo_omie=True,
-        natureza="P",
-    )
-    if projetos:
-        lanc_recebidos = lanc_recebidos.filter(codigo_projeto__in=projetos)
-        lanc_pagos = lanc_pagos.filter(codigo_projeto__in=projetos)
-    lanc_recebidos = registros_com_conta_visivel_financeiro(
-        lanc_recebidos,
-        "codigo_conta_corrente",
-    )
-    lanc_pagos = registros_com_conta_visivel_financeiro(
-        lanc_pagos,
-        "codigo_conta_corrente",
+    movimentos_pagar = list(
+        _query_movimentos_financeiros(
+            empresas_ids,
+            projetos,
+            "P",
+            inicio,
+            fim,
+        ).select_related("categoria_principal")
     )
 
     modos = {}
     for modo, periodos in periodos_por_modo.items():
         inicio_modo = periodos[0]["inicio"]
         fim_modo = periodos[-1]["fim"]
-        receber_periodo = receber
-        pagar_periodo = pagar
-        recebidos_periodo = lanc_recebidos.filter(data_lancamento__gte=inicio_modo, data_lancamento__lte=fim_modo)
-        pagos_periodo = lanc_pagos.filter(data_lancamento__gte=inicio_modo, data_lancamento__lte=fim_modo)
+        receber_periodo = movimentos_receber
+        pagar_periodo = movimentos_pagar
 
         receitas = {
-            "previsao": _somar_por_periodo(receber_periodo, periodos, _data_previsao_titulo, _valor_liquido_receber),
-            "realizado": _somar_por_periodo(recebidos_periodo, periodos, "data_lancamento", _valor_lancamento),
+            "previsao": _somar_por_periodo(receber_periodo, periodos, "data_previsao", _valor_previsto_movimento),
+            "realizado": _somar_por_periodo(receber_periodo, periodos, _data_realizado_movimento, _valor_realizado_movimento),
         }
         despesas = {
-            "previsao": _somar_por_periodo(pagar_periodo, periodos, _data_previsao_titulo, _valor_pagar),
-            "realizado": _somar_por_periodo(pagos_periodo, periodos, "data_lancamento", _valor_lancamento),
+            "previsao": _somar_por_periodo(pagar_periodo, periodos, "data_previsao", _valor_previsto_movimento),
+            "realizado": _somar_por_periodo(pagar_periodo, periodos, _data_realizado_movimento, _valor_realizado_movimento),
         }
         saldo_inicial_total = {"previsao": {}, "realizado": {}}
         saldo_rows = []
@@ -433,6 +677,18 @@ def _fluxo_horizontal(inicio, fim, empresas_ids, projetos):
             "saldo_contas": saldo_rows,
             "receitas": _valores_horizontais(receitas, periodos),
             "despesas": _valores_horizontais(despesas, periodos),
+            "receitas_categorias": _linhas_categorias_horizontais(
+                empresas_ids,
+                periodos,
+                _somar_categorias_por_periodo(receber_periodo, periodos, "data_previsao", _valor_previsto_movimento, "previsao"),
+                _somar_categorias_por_periodo(receber_periodo, periodos, _data_realizado_movimento, _valor_realizado_movimento, "realizado"),
+            ),
+            "despesas_categorias": _linhas_categorias_horizontais(
+                empresas_ids,
+                periodos,
+                _somar_categorias_por_periodo(pagar_periodo, periodos, "data_previsao", _valor_previsto_movimento, "previsao"),
+                _somar_categorias_por_periodo(pagar_periodo, periodos, _data_realizado_movimento, _valor_realizado_movimento, "realizado"),
+            ),
             "resultado": _valores_horizontais(resultado, periodos),
             "limite_rotulo": (
                 f"{meses_nome(inicio_modo.month)} de {inicio_modo.year}"
@@ -440,7 +696,36 @@ def _fluxo_horizontal(inicio, fim, empresas_ids, projetos):
                 else f"{_formatar_data_curta(inicio_modo)} a {_formatar_data_curta(fim_modo)}"
             ),
         }
+        modos[modo]["saldo_inicial"] = _valores_horizontais(
+            saldo_inicial_total,
+            periodos,
+        )
     return modos
+
+
+def fluxo_de_caixa_horizontal(
+    empresa,
+    periodo,
+    data_inicio="",
+    data_fim="",
+    empresas_ids=None,
+    projetos_selecionados=None,
+    modo=None,
+):
+    empresas_ids = empresas_ids or [empresa.pk]
+    inicio, fim = _intervalo_periodo(periodo, data_inicio, data_fim)
+    projetos = _normalizar_filtro_composto(projetos_selecionados or [])
+    return {
+        "modos": _fluxo_horizontal(
+            inicio,
+            fim,
+            empresas_ids,
+            projetos,
+            [modo] if modo else None,
+        ),
+        "periodo_inicio": inicio,
+        "periodo_fim": fim,
+    }
 
 
 def meses_nome(numero):
@@ -492,7 +777,8 @@ def _nome_cliente_fornecedor(lancamento):
     return (
         getattr(cadastro, "nome_fantasia", "")
         or getattr(cadastro, "razao_social", "")
-        or lancamento.observacao
+        or getattr(lancamento, "observacao", "")
+        or getattr(lancamento, "numero_titulo", "")
         or "Nao informado"
     )
 
@@ -505,7 +791,7 @@ def _categoria_lancamento(lancamento):
     )
 
 
-def _detalhes_lancamentos_por_mes(lancamentos, meses):
+def _detalhes_lancamentos_por_mes(lancamentos, meses, data_accessor, valor_accessor):
     detalhes = {
         item["chave"]: {
             "rotulo": item["rotulo"],
@@ -514,20 +800,23 @@ def _detalhes_lancamentos_por_mes(lancamentos, meses):
         }
         for item in meses
     }
-    for lancamento in lancamentos.select_related(
-        "cliente_fornecedor",
-        "categoria_principal",
-    ).order_by("data_lancamento", "codigo_lancamento_omie"):
-        if not lancamento.data_lancamento:
+    if hasattr(lancamentos, "select_related"):
+        lancamentos = lancamentos.select_related(
+            "cliente_fornecedor",
+            "categoria_principal",
+        ).order_by("data_vencimento", "codigo_titulo")
+    for lancamento in lancamentos:
+        data = data_accessor(lancamento) if callable(data_accessor) else getattr(lancamento, data_accessor, None)
+        if not data:
             continue
-        chave = f"{lancamento.data_lancamento.year}-{lancamento.data_lancamento.month:02d}"
+        chave = f"{data.year}-{data.month:02d}"
         if chave not in detalhes:
             continue
         tipo = "entradas" if lancamento.natureza == "R" else "saidas"
-        valor = abs(_decimal(lancamento.valor_lancamento))
+        valor = abs(valor_accessor(lancamento) if callable(valor_accessor) else _decimal(getattr(lancamento, valor_accessor)))
         detalhes[chave][tipo].append(
             {
-                "data": lancamento.data_lancamento.strftime("%d/%m/%Y"),
+                "data": data.strftime("%d/%m/%Y"),
                 "nome": _nome_cliente_fornecedor(lancamento),
                 "categoria": _categoria_lancamento(lancamento),
                 "valor": float(valor),
@@ -535,6 +824,35 @@ def _detalhes_lancamentos_por_mes(lancamentos, meses):
             }
         )
     return detalhes
+
+
+def _composicao_movimentos(queryset, data_accessor, valor_accessor):
+    totais = defaultdict(Decimal)
+    nomes = {}
+    if hasattr(queryset, "select_related"):
+        queryset = queryset.select_related("categoria_principal")
+    for movimento in queryset:
+        data = data_accessor(movimento) if callable(data_accessor) else getattr(movimento, data_accessor, None)
+        if not data:
+            continue
+        codigo = _codigo_categoria_item(movimento)
+        valor = abs(valor_accessor(movimento) if callable(valor_accessor) else _decimal(getattr(movimento, valor_accessor)))
+        if not valor:
+            continue
+        totais[codigo] += valor
+        nomes.setdefault(codigo, _nome_categoria_item(movimento))
+
+    principais = []
+    outros = Decimal("0")
+    for indice, codigo in enumerate(sorted(totais, key=lambda item: totais[item], reverse=True)):
+        total = totais[codigo]
+        if indice < 4:
+            principais.append({"nome": nomes.get(codigo, codigo), "valor": float(total)})
+        else:
+            outros += total
+    if outros:
+        principais.append({"nome": "Outros", "valor": float(outros)})
+    return principais
 
 
 def _prazo_medio_pagamento(pagar):
@@ -610,49 +928,58 @@ def fluxo_de_caixa(
         empresas_ids,
         inicio,
     )
-    lanc_recebidos = _query_lancamentos(inicio, fim, empresas_ids, projetos, "R")
-    lanc_pagos = _query_lancamentos(inicio, fim, empresas_ids, projetos, "P")
-    receber_aberto = _query_receber_aberto(inicio, fim, empresas_ids, projetos)
-    pagar_aberto = _query_pagar_aberto(inicio, fim, empresas_ids, projetos)
-    receber_previsto = _query_receber_previsto_omie(hoje, empresas_ids, projetos)
-    pagar_previsto = _query_pagar_previsto_omie(hoje, empresas_ids, projetos)
-    movimentos_pagar_previsto = _query_movimentos_pagar_previstos_omie(
-        hoje,
+    movimentos_receber = _query_movimentos_financeiros(
         empresas_ids,
         projetos,
+        "R",
+        inicio,
+        fim,
     )
+    movimentos_pagar = _query_movimentos_financeiros(
+        empresas_ids,
+        projetos,
+        "P",
+        inicio,
+        fim,
+    )
+    movimentos_receber_lista = list(
+        movimentos_receber.select_related("cliente_fornecedor", "categoria_principal")
+    )
+    movimentos_pagar_lista = list(
+        movimentos_pagar.select_related("cliente_fornecedor", "categoria_principal")
+    )
+    receber_aberto = _query_receber_aberto(inicio, fim, empresas_ids, projetos)
+    pagar_aberto = _query_pagar_aberto(inicio, fim, empresas_ids, projetos)
+    periodos_mensais = _periodos_mensais_para_fluxo(meses)
 
-    entradas_realizadas = abs(
-        _decimal(lanc_recebidos.aggregate(total=Sum("valor_lancamento"))["total"])
+    entradas_realizadas_mes = _somar_por_periodo(
+        movimentos_receber_lista,
+        periodos_mensais,
+        _data_realizado_movimento,
+        _valor_realizado_movimento,
     )
-    saidas_realizadas = abs(
-        _decimal(lanc_pagos.aggregate(total=Sum("valor_lancamento"))["total"])
+    saidas_realizadas_mes = _somar_por_periodo(
+        movimentos_pagar_lista,
+        periodos_mensais,
+        _data_realizado_movimento,
+        _valor_realizado_movimento,
     )
-    entradas_previstas_resumo = None
-    saidas_previstas_resumo = None
-    if not projetos:
-        entradas_previstas_resumo = _total_resumo_financeiro_omie(
-            empresas_ids,
-            "contaReceber",
-        )
-        saidas_previstas_resumo = _total_resumo_financeiro_omie(
-            empresas_ids,
-            "contaPagar",
-        )
-
-    entradas_previstas = abs(_total_liquido_receber(receber_previsto))
-    if entradas_previstas_resumo is not None:
-        entradas_previstas = abs(entradas_previstas_resumo)
-
-    saidas_previstas = abs(
-        _decimal(movimentos_pagar_previsto.aggregate(total=Sum("valor_aberto"))["total"])
+    entradas_previstas_mes = _somar_por_periodo(
+        movimentos_receber_lista,
+        periodos_mensais,
+        "data_previsao",
+        _valor_previsto_movimento,
     )
-    if not movimentos_pagar_previsto.exists():
-        saidas_previstas = abs(
-            _decimal(pagar_previsto.aggregate(total=Sum("valor_a_pagar"))["total"])
-        )
-    if saidas_previstas_resumo is not None:
-        saidas_previstas = abs(saidas_previstas_resumo)
+    saidas_previstas_mes = _somar_por_periodo(
+        movimentos_pagar_lista,
+        periodos_mensais,
+        "data_previsao",
+        _valor_previsto_movimento,
+    )
+    entradas_realizadas = sum(entradas_realizadas_mes.values(), Decimal("0"))
+    saidas_realizadas = sum(saidas_realizadas_mes.values(), Decimal("0"))
+    entradas_previstas = sum(entradas_previstas_mes.values(), Decimal("0"))
+    saidas_previstas = sum(saidas_previstas_mes.values(), Decimal("0"))
     saldo_abertura_periodo = saldo_abertura_extrato
     if saldo_abertura_periodo is None:
         saldo_abertura_periodo = _saldo_abertura_por_movimentos(
@@ -670,17 +997,6 @@ def fluxo_de_caixa(
         - saidas_previstas
     )
 
-    entradas_realizadas_mes = _totais_por_mes(
-        lanc_recebidos,
-        "data_lancamento",
-        "valor_lancamento",
-    )
-    saidas_realizadas_mes = _totais_por_mes(
-        lanc_pagos,
-        "data_lancamento",
-        "valor_lancamento",
-    )
-
     entradas = []
     saidas = []
     saldo_acumulado = []
@@ -694,9 +1010,16 @@ def fluxo_de_caixa(
         saldo_acumulado.append(float(saldo_corrente))
         saldo_corrente += entrada - saida
 
+    movimentos_realizados = [
+        movimento
+        for movimento in movimentos_receber_lista + movimentos_pagar_lista
+        if inicio <= (_data_realizado_movimento(movimento) or date.min) <= fim
+    ]
     detalhes_lancamentos = _detalhes_lancamentos_por_mes(
-        lanc_recebidos | lanc_pagos,
+        movimentos_realizados,
         meses,
+        _data_realizado_movimento,
+        _valor_realizado_movimento,
     )
 
     return {
@@ -743,7 +1066,22 @@ def fluxo_de_caixa(
         "saldo_acumulado": saldo_acumulado,
         "detalhes_lancamentos": detalhes_lancamentos,
         "criticos": _criticos(receber_aberto, pagar_aberto),
-        "composicao_entradas": _composicao(lanc_recebidos, "valor_lancamento"),
-        "composicao_saidas": _composicao(lanc_pagos, "valor_lancamento"),
-        "horizontal": _fluxo_horizontal(inicio, fim, empresas_ids, projetos),
+        "composicao_entradas": _composicao_movimentos(
+            [
+                movimento
+                for movimento in movimentos_receber_lista
+                if inicio <= (_data_realizado_movimento(movimento) or date.min) <= fim
+            ],
+            _data_realizado_movimento,
+            _valor_realizado_movimento,
+        ),
+        "composicao_saidas": _composicao_movimentos(
+            [
+                movimento
+                for movimento in movimentos_pagar_lista
+                if inicio <= (_data_realizado_movimento(movimento) or date.min) <= fim
+            ],
+            _data_realizado_movimento,
+            _valor_realizado_movimento,
+        ),
     }
