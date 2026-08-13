@@ -28,16 +28,17 @@ body {
 a { text-decoration: none; }
 .app-navbar {
     min-height: 68px;
-    background: var(--navy);
-    box-shadow: 0 4px 20px rgba(11, 23, 57, .12);
+    background: linear-gradient(110deg, #2184cf 0%, #1a3b92 100%);
+    box-shadow: 0 4px 20px rgba(26, 59, 146, .14);
 }
 .navbar-brand { font-size: 1.25rem; letter-spacing: -.02em; }
 .brand-logo {
-    width: 44px;
-    height: 44px;
-    object-fit: cover;
-    border: 1px solid rgba(255,255,255,.12);
-    border-radius: 10px;
+    width: 158px;
+    height: 42px;
+    object-fit: contain;
+    background: rgba(255,255,255,.94);
+    border: 1px solid rgba(255,255,255,.34);
+    border-radius: 9px;
 }
 .company-pill {
     align-items: center;
@@ -82,11 +83,12 @@ a { text-decoration: none; }
 .companies-hero {
     color: white;
     background:
-        radial-gradient(circle at 85% 0%, rgba(63, 103, 231, .55), transparent 30%),
-        linear-gradient(135deg, var(--navy), #172a60);
+        radial-gradient(circle at 82% 8%, rgba(255,255,255,.14), transparent 28%),
+        radial-gradient(circle at 18% 100%, rgba(33,132,207,.24), transparent 32%),
+        linear-gradient(135deg, #2184cf 0%, #1a3b92 100%);
 }
-.companies-hero .eyebrow { color: #9bb5ff; }
-.companies-hero p { color: #c8d2ed; max-width: 680px; }
+.companies-hero .eyebrow { color: #dceeff; }
+.companies-hero p { color: #e6eefb; max-width: 680px; }
 .hero-stat {
     width: 190px;
     padding: 1rem 1.2rem;
@@ -95,7 +97,7 @@ a { text-decoration: none; }
     background: rgba(255,255,255,.08);
 }
 .hero-stat strong { display: block; font-size: 2rem; line-height: 1; }
-.hero-stat span { color: #c8d2ed; font-size: .84rem; }
+.hero-stat span { color: #e6eefb; font-size: .84rem; }
 .companies-section { padding-top: 3rem; padding-bottom: 5rem; min-height: 55vh; }
 .company-card {
     display: flex;

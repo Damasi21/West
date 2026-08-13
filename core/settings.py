@@ -40,8 +40,8 @@ ALLOWED_HOSTS = [
 
 APP_BRAND_NAME = os.getenv("APP_BRAND_NAME", "MD21 BI")
 APP_BRAND_NAVBAR_TEXT = os.getenv("APP_BRAND_NAVBAR_TEXT", "MD21 BI")
-APP_BRAND_LOGIN_LOGO = os.getenv("APP_BRAND_LOGIN_LOGO", "md21_bi_login.png")
-APP_BRAND_NAVBAR_LOGO = os.getenv("APP_BRAND_NAVBAR_LOGO", "md21_bi.png")
+APP_BRAND_LOGIN_LOGO = os.getenv("APP_BRAND_LOGIN_LOGO", "logo_elevdata_semfundo.png")
+APP_BRAND_NAVBAR_LOGO = os.getenv("APP_BRAND_NAVBAR_LOGO", "logo_elevdata_new.jpg")
 APP_BRAND_HERO_EYEBROW = os.getenv("APP_BRAND_HERO_EYEBROW", "BEM-VINDO")
 APP_BRAND_HERO_TITLE = os.getenv(
     "APP_BRAND_HERO_TITLE",

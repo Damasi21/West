@@ -123,7 +123,8 @@ class ListaEmpresasTests(TestCase):
         self.assertNotContains(response, self.empresa_bloqueada.nome_fantasia)
         self.assertNotContains(response, "Configurações")
         self.assertContains(response, "MD21 BI")
-        self.assertContains(response, "/media/md21_bi.png")
+        self.assertContains(response, "/media/logo_elevdata_new.jpg")
+        self.assertContains(response, "2026 ELEVDATA")
 
 
 class UsuariosEmpresaTests(TestCase):
