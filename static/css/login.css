@@ -87,6 +87,11 @@
     text-align: center;
 }
 .auth-switch a { color: var(--blue); font-weight: 700; }
+.auth-small-link {
+    color: var(--blue);
+    font-size: .78rem;
+    font-weight: 700;
+}
 
 /* Identidade Elevdata na tela de cadastro. */
 .register-page {
