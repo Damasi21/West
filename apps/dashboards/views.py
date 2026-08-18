@@ -13,6 +13,9 @@ from apps.dashboards.aprovacao_pagamentos_services import (
     salvar_aprovacoes_pagamentos,
 )
 from apps.dashboards.budget_services import budget_compras
+from apps.dashboards.curva_abc_fornecedores_services import (
+    curva_abc_fornecedores_compras,
+)
 from apps.dashboards.desempenho_vendedores_services import desempenho_vendedores
 from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import (
@@ -27,6 +30,7 @@ from apps.dashboards.inadimplencia_services import inadimplencia
 from apps.dashboards.margem_rentabilidade_services import (
     margem_rentabilidade_comercial,
 )
+from apps.dashboards.score_fornecedores_services import score_fornecedores_compras
 from apps.dashboards.visao_geral_services import visao_geral_financeira
 from apps.empresas.services import (
     areas_permitidas_usuario,
@@ -127,28 +131,22 @@ AREAS = {
                 "icone": "bi-wallet2",
             },
             {
-                "slug": "evolucao-de-compras",
-                "titulo": "Evolução de compras",
-                "descricao": "Acompanhe valores e volumes comprados por período.",
-                "icone": "bi-graph-up",
+                "slug": "score-de-fornecedor",
+                "titulo": "Score de fornecedor",
+                "descricao": "Avalie fornecedores por prazo, NF, preco e lead time.",
+                "icone": "bi-award",
             },
             {
-                "slug": "analise-de-fornecedores",
-                "titulo": "Análise de fornecedores",
-                "descricao": "Compare participação, preços e desempenho dos parceiros.",
-                "icone": "bi-buildings",
+                "slug": "curva-abc",
+                "titulo": "Curva ABC",
+                "descricao": "Classifique itens por relevancia de valor e consumo.",
+                "icone": "bi-sort-down-alt",
             },
             {
-                "slug": "pedidos-de-compra",
-                "titulo": "Pedidos de compra",
-                "descricao": "Visualize pedidos emitidos, pendentes e concluídos.",
-                "icone": "bi-clipboard-check",
-            },
-            {
-                "slug": "prazos-de-entrega",
-                "titulo": "Prazos de entrega",
-                "descricao": "Monitore atrasos e pontualidade dos fornecedores.",
-                "icone": "bi-clock-history",
+                "slug": "kardex",
+                "titulo": "Kardex",
+                "descricao": "Acompanhe a movimentacao e o saldo dos produtos.",
+                "icone": "bi-journal-text",
             },
         ],
     },
@@ -718,6 +716,24 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_fim,
             empresas_consulta_ids,
             budget_dimensao,
+        )
+    if area_slug == "compras" and dashboard_slug == "score-de-fornecedor":
+        contexto["score_fornecedor"] = score_fornecedores_compras(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_consulta,
+        )
+    if area_slug == "compras" and dashboard_slug == "curva-abc":
+        contexto["curva_abc_fornecedores"] = curva_abc_fornecedores_compras(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_consulta,
         )
     if area_slug == "comercial" and dashboard_slug == "faturamento":
         contexto["faturamento"] = faturamento_comercial(

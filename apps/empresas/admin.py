@@ -26,6 +26,8 @@ from .models import (
     PosicaoEstoqueOmie,
     ProdutoOmie,
     ProjetoOmie,
+    RecebimentoNfeItemOmie,
+    RecebimentoNfeOmie,
     ServicoOmie,
     SincronizacaoOmie,
     TipoContaCorrenteOmie,
@@ -539,6 +541,64 @@ class PedidoCompraItemOmieAdmin(admin.ModelAdmin):
         "descricao",
     )
     readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
+
+
+@admin.register(RecebimentoNfeOmie)
+class RecebimentoNfeOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "codigo_recebimento",
+        "numero_nfe",
+        "chave_nfe",
+        "etapa",
+        "data_registro",
+        "valor_nfe",
+        "empresa",
+    )
+    list_filter = ("empresa", "etapa", "data_registro")
+    search_fields = (
+        "codigo_recebimento",
+        "chave_nfe",
+        "numero_nfe",
+    )
+    readonly_fields = (
+        "cabec",
+        "info_adicionais",
+        "parcelas",
+        "totais",
+        "transporte",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+@admin.register(RecebimentoNfeItemOmie)
+class RecebimentoNfeItemOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "recebimento",
+        "sequencia",
+        "numero_pedido_compra",
+        "codigo_produto_texto",
+        "quantidade_nfe",
+        "quantidade_recebida",
+        "preco_unitario",
+        "data_recebimento",
+        "empresa",
+    )
+    list_filter = ("empresa", "data_recebimento")
+    search_fields = (
+        "numero_pedido_compra",
+        "codigo_recebimento",
+        "codigo_produto_texto",
+        "descricao",
+    )
+    readonly_fields = (
+        "item_cabec",
+        "item_ajustes",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
 
 
 @admin.register(CategoriaOmie)
