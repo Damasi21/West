@@ -1266,6 +1266,122 @@ class PedidoCompraItemOmie(models.Model):
         return self.descricao or str(self.codigo_item)
 
 
+class RecebimentoNfeOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="recebimentos_nfe_omie",
+    )
+    codigo_recebimento = models.BigIntegerField()
+    chave_nfe = models.CharField(max_length=60, blank=True)
+    etapa = models.CharField(max_length=10, blank=True)
+    modelo_nfe = models.CharField(max_length=10, blank=True)
+    numero_nfe = models.CharField(max_length=30, blank=True)
+    serie_nfe = models.CharField(max_length=10, blank=True)
+    data_emissao_nfe = models.DateField(null=True, blank=True)
+    data_registro = models.DateField(null=True, blank=True)
+    codigo_fornecedor = models.BigIntegerField(null=True, blank=True)
+    valor_nfe = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    categoria_compra = models.CharField(max_length=80, blank=True)
+    codigo_conta = models.BigIntegerField(null=True, blank=True)
+    cabec = models.JSONField(default=dict, blank=True)
+    info_adicionais = models.JSONField(default=dict, blank=True)
+    parcelas = models.JSONField(default=dict, blank=True)
+    totais = models.JSONField(default=dict, blank=True)
+    transporte = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data_registro", "-codigo_recebimento"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_recebimento"],
+                name="receb_nfe_omie_empresa_cod_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "chave_nfe"],
+                name="receb_nfe_emp_chave_idx",
+            ),
+            models.Index(
+                fields=["empresa", "data_registro"],
+                name="receb_nfe_emp_data_idx",
+            ),
+        ]
+        verbose_name = "recebimento de NF-e OMIE"
+        verbose_name_plural = "recebimentos de NF-e OMIE"
+
+    def __str__(self):
+        return self.numero_nfe or str(self.codigo_recebimento)
+
+
+class RecebimentoNfeItemOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="itens_recebimento_nfe_omie",
+    )
+    recebimento = models.ForeignKey(
+        RecebimentoNfeOmie,
+        on_delete=models.CASCADE,
+        related_name="itens",
+    )
+    codigo_recebimento = models.BigIntegerField()
+    sequencia = models.PositiveIntegerField(default=0)
+    numero_pedido_compra = models.CharField(max_length=30, blank=True)
+    data_recebimento = models.DateField(null=True, blank=True)
+    codigo_produto_texto = models.CharField(max_length=60, blank=True)
+    descricao = models.CharField(max_length=255, blank=True)
+    quantidade_nfe = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    quantidade_recebida = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        default=0,
+    )
+    preco_unitario = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_total_item = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    item_cabec = models.JSONField(default=dict, blank=True)
+    item_ajustes = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["recebimento_id", "sequencia"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_recebimento", "sequencia"],
+                name="receb_nfe_item_empresa_seq_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "numero_pedido_compra"],
+                name="receb_item_emp_ped_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_produto_texto"],
+                name="receb_item_emp_prod_idx",
+            ),
+            models.Index(
+                fields=["empresa", "data_recebimento"],
+                name="receb_item_emp_data_idx",
+            ),
+        ]
+        verbose_name = "item de recebimento de NF-e OMIE"
+        verbose_name_plural = "itens de recebimento de NF-e OMIE"
+
+    def __str__(self):
+        return f"{self.numero_pedido_compra} - {self.codigo_produto_texto}"
+
+
 class CategoriaOmie(models.Model):
     empresa = models.ForeignKey(
         Empresa,

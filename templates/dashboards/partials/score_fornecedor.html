@@ -1,0 +1,103 @@
+<section class="supplier-score-dashboard">
+    <div class="supplier-score-kpis">
+        <article class="supplier-score-kpi">
+            <span>Score medio da base</span>
+            <strong>{{ dados.score_medio_fmt }}</strong>
+            <small>{{ dados.total_fornecedores }} fornecedores avaliados</small>
+        </article>
+        <article class="supplier-score-kpi">
+            <span>Melhor fornecedor</span>
+            <strong>{{ dados.melhor_fornecedor.nome }}</strong>
+            <small>Score {{ dados.melhor_fornecedor.score_fmt }} - {{ dados.melhor_fornecedor.classe }}</small>
+        </article>
+        <article class="supplier-score-kpi">
+            <span>OTD medio geral</span>
+            <strong>{{ dados.otd_medio_fmt }}</strong>
+            <small>Entregas no prazo</small>
+        </article>
+        <article class="supplier-score-kpi supplier-score-kpi-danger">
+            <span>Requer atencao</span>
+            <strong>{{ dados.requer_atencao.nome }}</strong>
+            <small>Score {{ dados.requer_atencao.score_fmt }} - abaixo de 75</small>
+        </article>
+    </div>
+
+    <section class="supplier-score-segments">
+        <input id="supplier-segment-a" name="supplier-score-segment" type="radio" checked>
+        <input id="supplier-segment-b" name="supplier-score-segment" type="radio">
+        <input id="supplier-segment-c" name="supplier-score-segment" type="radio">
+        <input id="supplier-segment-d" name="supplier-score-segment" type="radio">
+
+        <div class="supplier-score-segment-tabs">
+            {% for classificacao in dados.classificacoes %}
+                <label class="supplier-segment-tab supplier-segment-tab-{{ classificacao.tom }}" for="supplier-segment-{{ classificacao.slug }}">
+                    {{ classificacao.rotulo }}
+                </label>
+            {% endfor %}
+        </div>
+
+        {% for classificacao in dados.classificacoes %}
+            <div class="supplier-score-segment-panel supplier-score-segment-panel-{{ classificacao.slug }}">
+                <div class="supplier-score-section-header">
+                    <div>
+                        <small>{{ classificacao.rotulo }}</small>
+                        <h2>3 principais fornecedores do grupo</h2>
+                    </div>
+                    <span>{{ classificacao.total }} fornecedores</span>
+                </div>
+                <div class="supplier-score-cards">
+                    {% for fornecedor in classificacao.fornecedores %}
+                        <article class="supplier-score-card supplier-score-card-{{ fornecedor.tom }}">
+                            <header>
+                                <span>{{ fornecedor.sigla }}</span>
+                                <strong>{{ fornecedor.nome }}</strong>
+                            </header>
+                            <small>Score composto</small>
+                            <div class="supplier-score-number">{{ fornecedor.score_fmt }}</div>
+                            <mark>{{ fornecedor.classe }}</mark>
+                            <div class="supplier-score-lines">
+                                <div>
+                                    <span>OTD</span>
+                                    <i><b style="width: {{ fornecedor.otd }}%"></b></i>
+                                    <strong>{{ fornecedor.otd_fmt }}</strong>
+                                </div>
+                                <div>
+                                    <span>NF</span>
+                                    <i><b style="width: {{ fornecedor.conformidade_nf }}%"></b></i>
+                                    <strong>{{ fornecedor.conformidade_nf_fmt }}</strong>
+                                </div>
+                                <div>
+                                    <span>Preco</span>
+                                    <i><b style="width: {{ fornecedor.estabilidade_preco }}%"></b></i>
+                                    <strong>{{ fornecedor.estabilidade_preco_fmt }}</strong>
+                                </div>
+                            </div>
+                        </article>
+                    {% empty %}
+                        <div class="supplier-score-empty">Sem fornecedores nesse grupo.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endfor %}
+    </section>
+
+    <article class="supplier-score-ranking">
+        <div class="supplier-score-section-header">
+            <div>
+                <small>Ranking geral</small>
+                <h2>10 melhores scores</h2>
+            </div>
+        </div>
+        <div class="supplier-ranking-list">
+            {% for fornecedor in dados.ranking %}
+                <div class="supplier-ranking-row supplier-ranking-row-{{ fornecedor.tom }}">
+                    <span>{{ forloop.counter|stringformat:"02d" }}</span>
+                    <strong>{{ fornecedor.nome }}</strong>
+                    <i><b style="width: {{ fornecedor.score }}%"></b></i>
+                    <mark>{{ fornecedor.classe }}</mark>
+                    <em>{{ fornecedor.score_fmt }}</em>
+                </div>
+            {% endfor %}
+        </div>
+    </article>
+</section>

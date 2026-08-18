@@ -37,6 +37,8 @@ from apps.empresas.models import (
     PosicaoEstoqueOmie,
     ProdutoOmie,
     ProjetoOmie,
+    RecebimentoNfeItemOmie,
+    RecebimentoNfeOmie,
     ServicoOmie,
     SincronizacaoOmie,
     VendedorOmie,
@@ -298,6 +300,14 @@ class DashboardPermissaoTests(TestCase):
 
         self.assertContains(response, "Budget")
         self.assertContains(response, "Compare budget")
+        self.assertContains(response, "Score de fornecedor")
+        self.assertContains(response, "Curva ABC")
+        self.assertContains(response, "Kardex")
+        self.assertNotContains(response, "analise-precos-saving")
+        self.assertNotContains(response, "evolucao-de-compras")
+        self.assertNotContains(response, "analise-de-fornecedores")
+        self.assertNotContains(response, "pedidos-de-compra")
+        self.assertNotContains(response, "prazos-de-entrega")
 
     def test_dashboard_budget_calcula_consumo_por_produto(self):
         ano_atual = date.today().year
@@ -488,6 +498,280 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Administrativo")
         self.assertContains(response, "85%")
         self.assertEqual(response.context["budget"]["status"]["atencao"], 1)
+
+    def test_dashboard_score_fornecedor_exibe_estrutura_inicial(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        fornecedor_a = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=101,
+            razao_social="Fornecedor Alpha",
+            tipo="fornecedor",
+        )
+        fornecedor_b = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=202,
+            razao_social="Fornecedor Beta",
+            tipo="fornecedor",
+        )
+        produto_a = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=1001,
+            codigo="PRD-A",
+            descricao="Produto A",
+        )
+        produto_b = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=1002,
+            codigo="PRD-B",
+            descricao="Produto B",
+        )
+        pedido_anterior = PedidoCompraOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=10,
+            numero_pedido="10",
+            etapa="10",
+            codigo_fornecedor=101,
+            fornecedor=fornecedor_a,
+            data_inclusao=date(2026, 7, 1),
+            data_previsao=date(2026, 7, 5),
+        )
+        PedidoCompraItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido_anterior,
+            codigo_item=10,
+            produto=produto_a,
+            codigo_produto=produto_a.codigo_produto,
+            codigo_produto_texto=produto_a.codigo,
+            descricao=produto_a.descricao,
+            quantidade=10,
+            quantidade_recebida=10,
+            valor_unitario=100,
+            valor_total=1000,
+        )
+        pedido_a = PedidoCompraOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=11,
+            numero_pedido="119",
+            etapa="15",
+            codigo_fornecedor=101,
+            fornecedor=fornecedor_a,
+            data_inclusao=date(2026, 8, 4),
+            data_previsao=date(2026, 8, 10),
+        )
+        PedidoCompraItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido_a,
+            codigo_item=11,
+            produto=produto_a,
+            codigo_produto=produto_a.codigo_produto,
+            codigo_produto_texto=produto_a.codigo,
+            descricao=produto_a.descricao,
+            quantidade=10,
+            quantidade_recebida=10,
+            valor_unitario=92,
+            valor_total=920,
+        )
+        RecebimentoNfeOmie.objects.create(
+            empresa=self.empresa,
+            codigo_recebimento=100,
+            data_registro=date(2026, 8, 10),
+            numero_nfe="100",
+        )
+        RecebimentoNfeItemOmie.objects.create(
+            empresa=self.empresa,
+            recebimento=RecebimentoNfeOmie.objects.get(codigo_recebimento=100),
+            codigo_recebimento=100,
+            sequencia=1,
+            numero_pedido_compra="119",
+            data_recebimento=date(2026, 8, 10),
+            codigo_produto_texto=produto_a.codigo,
+            quantidade_nfe=10,
+            quantidade_recebida=10,
+            preco_unitario=92,
+        )
+        pedido_b = PedidoCompraOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=12,
+            numero_pedido="120",
+            etapa="10",
+            codigo_fornecedor=202,
+            fornecedor=fornecedor_b,
+            data_inclusao=date(2026, 8, 5),
+            data_previsao=date(2026, 8, 10),
+        )
+        PedidoCompraItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido_b,
+            codigo_item=12,
+            produto=produto_b,
+            codigo_produto=produto_b.codigo_produto,
+            codigo_produto_texto=produto_b.codigo,
+            descricao=produto_b.descricao,
+            quantidade=10,
+            quantidade_recebida=5,
+            valor_unitario=50,
+            valor_total=500,
+        )
+        RecebimentoNfeOmie.objects.create(
+            empresa=self.empresa,
+            codigo_recebimento=101,
+            data_registro=date(2026, 8, 12),
+            numero_nfe="101",
+        )
+        RecebimentoNfeItemOmie.objects.create(
+            empresa=self.empresa,
+            recebimento=RecebimentoNfeOmie.objects.get(codigo_recebimento=101),
+            codigo_recebimento=101,
+            sequencia=1,
+            numero_pedido_compra="120",
+            data_recebimento=date(2026, 8, 12),
+            codigo_produto_texto=produto_b.codigo,
+            quantidade_nfe=5,
+            quantidade_recebida=5,
+            preco_unitario=50,
+        )
+        pedido_ignorado = PedidoCompraOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=13,
+            numero_pedido="121",
+            etapa="20",
+            codigo_fornecedor=202,
+            fornecedor=fornecedor_b,
+            data_inclusao=date(2026, 8, 6),
+            data_previsao=date(2026, 8, 10),
+        )
+        PedidoCompraItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido_ignorado,
+            codigo_item=13,
+            produto=produto_b,
+            codigo_produto=produto_b.codigo_produto,
+            codigo_produto_texto=produto_b.codigo,
+            descricao=produto_b.descricao,
+            quantidade=10,
+            quantidade_recebida=10,
+            valor_unitario=1,
+            valor_total=10,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "compras",
+                    "dashboard_slug": "score-de-fornecedor",
+                },
+            ),
+            {"_filtrar": "1", "periodo": "mes-2026-08"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Score medio da base")
+        self.assertContains(response, "OTD medio geral")
+        self.assertContains(response, "A-excelente")
+        self.assertContains(response, "B - Muito bom")
+        self.assertContains(response, "C - Bom")
+        self.assertContains(response, "D- Atencao")
+        self.assertContains(response, "3 principais fornecedores do grupo", count=4)
+        self.assertContains(response, "Ranking geral")
+        self.assertContains(response, "10 melhores scores")
+        self.assertContains(response, "Fornecedor Alpha")
+        self.assertContains(response, "Fornecedor Beta")
+        self.assertIn("score_fornecedor", response.context)
+        dados = response.context["score_fornecedor"]
+        self.assertEqual(len(dados["ranking"]), 2)
+        self.assertEqual(dados["ranking"][0]["nome"], "Fornecedor Alpha")
+        self.assertEqual(dados["ranking"][0]["otd"], 100)
+        self.assertEqual(dados["ranking"][0]["conformidade_nf"], 100)
+        self.assertEqual(dados["ranking"][0]["estabilidade_preco"], 108)
+        self.assertEqual(dados["ranking"][1]["otd"], 60)
+        self.assertEqual(dados["ranking"][1]["conformidade_nf"], 50)
+        self.assertEqual(dados["ranking"][1]["itens"], 1)
+
+    def test_dashboard_curva_abc_fornecedores_exibe_layout_inicial(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        fornecedor_alfa = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=301,
+            razao_social="Fornecedor Alfa",
+            tipo="fornecedor",
+        )
+        fornecedor_beta = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=302,
+            razao_social="Fornecedor Beta",
+            tipo="fornecedor",
+        )
+        fornecedor_gama = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=303,
+            razao_social="Fornecedor Gama",
+            tipo="fornecedor",
+        )
+        pedidos = [
+            (701, "701", fornecedor_alfa, Decimal("600")),
+            (702, "702", fornecedor_beta, Decimal("300")),
+            (703, "703", fornecedor_gama, Decimal("100")),
+        ]
+        for codigo_pedido, numero_pedido, fornecedor, valor in pedidos:
+            pedido = PedidoCompraOmie.objects.create(
+                empresa=self.empresa,
+                codigo_pedido=codigo_pedido,
+                numero_pedido=numero_pedido,
+                etapa="10",
+                codigo_fornecedor=fornecedor.codigo_cliente_omie,
+                fornecedor=fornecedor,
+                data_previsao=date(2026, 8, 10),
+            )
+            PedidoCompraItemOmie.objects.create(
+                empresa=self.empresa,
+                pedido=pedido,
+                codigo_item=codigo_pedido,
+                descricao=f"Compra {numero_pedido}",
+                quantidade=1,
+                valor_unitario=valor,
+                valor_total=valor,
+            )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "compras",
+                    "dashboard_slug": "curva-abc",
+                },
+            ),
+            {"_filtrar": "1", "periodo": "mes-2026-08"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Gasto total")
+        self.assertContains(response, "Fornecedores ativos")
+        self.assertContains(response, "Concentracao top 10")
+        self.assertContains(response, "Fornecedores classe A")
+        self.assertContains(response, "Gasto por fornecedor e % acumulado")
+        self.assertContains(response, "Distribuicao por classe")
+        self.assertContains(response, "Ranking de fornecedores")
+        self.assertContains(response, "Fornecedor Alfa")
+        self.assertContains(response, "60,0%")
+        self.assertContains(response, "90,0%")
+        self.assertContains(response, "100,0%")
+        self.assertIn("curva_abc_fornecedores", response.context)
+        dados = response.context["curva_abc_fornecedores"]
+        self.assertEqual(dados["fornecedores_ativos"], 3)
+        self.assertEqual(dados["gasto_total"], "R$ 1 mil")
+        self.assertEqual(dados["concentracao_top10"], "100%")
+        self.assertEqual(dados["fornecedores"][0]["nome"], "Fornecedor Alfa")
+        self.assertEqual(dados["fornecedores"][1]["nome"], "Fornecedor Beta")
+        self.assertEqual(dados["fornecedores"][2]["nome"], "Fornecedor Gama")
+        self.assertEqual(dados["fornecedores"][0]["classe"], "A")
+        self.assertEqual(dados["fornecedores"][1]["classe"], "B")
+        self.assertEqual(dados["fornecedores"][2]["classe"], "C")
+        self.assertTrue(dados["curva_pontos"])
 
     def test_dashboard_exibe_filtros_e_projetos_ativos(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
