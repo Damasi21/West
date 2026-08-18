@@ -34,6 +34,8 @@ from .models import (
     PosicaoEstoqueOmie,
     ProdutoOmie,
     ProjetoOmie,
+    RecebimentoNfeItemOmie,
+    RecebimentoNfeOmie,
     ServicoOmie,
     SincronizacaoOmie,
     TipoContaCorrenteOmie,
@@ -60,6 +62,7 @@ LANCAMENTOS_CONTA_CORRENTE_URL = (
 )
 PEDIDOS_URL = "https://app.omie.com.br/api/v1/produtos/pedido/"
 PEDIDOS_COMPRA_URL = "https://app.omie.com.br/api/v1/produtos/pedidocompra/"
+RECEBIMENTOS_NFE_URL = "https://app.omie.com.br/api/v1/produtos/recebimentonfe/"
 POSICAO_ESTOQUE_URL = "https://app.omie.com.br/api/v1/estoque/consulta/"
 SERVICOS_URL = "https://app.omie.com.br/api/v1/servicos/servico/"
 ORDENS_SERVICO_URL = "https://app.omie.com.br/api/v1/servicos/os/"
@@ -961,12 +964,12 @@ def consultar_pedidos_compra(
                 "nRegsPorPagina": registros_por_pagina,
                 "lApenasImportadoApi": "F",
                 "lExibirPedidosPendentes": "T",
-                "lExibirPedidosFaturados": "F",
-                "lExibirPedidosRecebidos": "F",
+                "lExibirPedidosFaturados": "T",
+                "lExibirPedidosRecebidos": "T",
                 "lExibirPedidosCancelados": "F",
                 "lExibirPedidosEncerrados": "F",
-                "lExibirPedidosRecParciais": "F",
-                "lExibirPedidosFatParciais": "F",
+                "lExibirPedidosRecParciais": "T",
+                "lExibirPedidosFatParciais": "T",
                 "dDataInicial": inicio.strftime("%d/%m/%Y"),
                 "dDataFinal": fim.strftime("%d/%m/%Y"),
                 "lApenasAlterados": "F",
@@ -977,6 +980,103 @@ def consultar_pedidos_compra(
     }
     request = Request(
         PEDIDOS_COMPRA_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invalida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_recebimentos_nfe(
+    integracao,
+    pagina,
+    registros_por_pagina=100,
+    inicio=None,
+    fim=None,
+):
+    payload = {
+        "call": "ListarRecebimentos",
+        "param": [
+            {
+                "nPagina": pagina,
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        RECEBIMENTOS_NFE_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invalida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    recebimentos = dados.get("recebimentos") or []
+    recebimentos_detalhados = []
+    for recebimento in recebimentos:
+        cabec = recebimento.get("cabec") or {}
+        codigo_recebimento = _inteiro_ou_none(cabec.get("nIdReceb"))
+        if codigo_recebimento is None:
+            recebimentos_detalhados.append(recebimento)
+            continue
+        detalhe = consultar_recebimento_nfe(integracao, codigo_recebimento)
+        if detalhe:
+            detalhe.setdefault("cabec", cabec)
+            detalhe.setdefault("infoAdicionais", recebimento.get("infoAdicionais") or {})
+            detalhe.setdefault("parcelas", recebimento.get("parcelas") or {})
+            detalhe.setdefault("totais", recebimento.get("totais") or {})
+            detalhe.setdefault("transporte", recebimento.get("transporte") or {})
+            recebimentos_detalhados.append(detalhe)
+        else:
+            recebimentos_detalhados.append(recebimento)
+    dados["recebimentos"] = recebimentos_detalhados
+    return dados
+
+
+def consultar_recebimento_nfe(integracao, codigo_recebimento):
+    payload = {
+        "call": "ConsultarRecebimento",
+        "param": [{"nIdReceb": codigo_recebimento}],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        RECEBIMENTOS_NFE_URL,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -3055,6 +3155,193 @@ def _salvar_pedidos_compra(empresa, itens):
     return processados
 
 
+def _primeiro_valor(*valores):
+    for valor in valores:
+        if valor not in (None, ""):
+            return valor
+    return None
+
+
+def _itens_recebimento_nfe(recebimento):
+    for chave in ("itensRecebimento", "itens_recebimento", "itens", "produtos"):
+        itens = recebimento.get(chave)
+        if isinstance(itens, list):
+            return itens
+    return []
+
+
+def _salvar_recebimentos_nfe(empresa, itens):
+    agora = timezone.now()
+    processados = 0
+    for recebimento in itens:
+        cabec = recebimento.get("cabec") or recebimento.get("cabecalho") or {}
+        info = recebimento.get("infoAdicionais") or {}
+        info_cadastro = recebimento.get("infoCadastro") or {}
+        parcelas = recebimento.get("parcelas") or {}
+        totais = recebimento.get("totais") or {}
+        transporte = recebimento.get("transporte") or {}
+        codigo_recebimento = _inteiro_ou_none(
+            _primeiro_valor(
+                recebimento.get("nIdReceb"),
+                cabec.get("nIdReceb"),
+            )
+        )
+        if codigo_recebimento is None:
+            continue
+
+        chave_nfe = str(
+            _primeiro_valor(
+                recebimento.get("cChaveNFe"),
+                recebimento.get("cChaveNfe"),
+                cabec.get("cChaveNFe"),
+                cabec.get("cChaveNfe"),
+                "",
+            )
+            or ""
+        ).strip()
+        recebimento_obj, _criado = RecebimentoNfeOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_recebimento=codigo_recebimento,
+            defaults={
+                "chave_nfe": chave_nfe,
+                "etapa": str(cabec.get("cEtapa") or ""),
+                "modelo_nfe": str(cabec.get("cModeloNFe") or ""),
+                "numero_nfe": str(cabec.get("cNumeroNFe") or ""),
+                "serie_nfe": str(cabec.get("cSerieNFe") or ""),
+                "data_emissao_nfe": _data_omie(cabec.get("dEmissaoNFe")),
+                "data_registro": _data_omie(info.get("dRegistro")),
+                "codigo_fornecedor": _inteiro_ou_none(cabec.get("nIdFornecedor")),
+                "valor_nfe": _decimal(cabec.get("nValorNFe")),
+                "categoria_compra": str(info.get("cCategCompra") or ""),
+                "codigo_conta": _inteiro_ou_none(info.get("nIdConta")),
+                "cabec": cabec,
+                "info_adicionais": info,
+                "parcelas": parcelas,
+                "totais": totais,
+                "transporte": transporte,
+                "dados_originais": recebimento,
+                **_presenca_omie(agora),
+            },
+        )
+        numero_pedido = str(
+            _primeiro_valor(
+                recebimento.get("nNumPedCompra"),
+                cabec.get("nNumPedCompra"),
+                info.get("nNumPedCompra"),
+                "",
+            )
+            or ""
+        ).strip()
+        data_recebimento = _data_omie(
+            _primeiro_valor(
+                info_cadastro.get("dRec"),
+                recebimento.get("dRec"),
+                cabec.get("dRec"),
+                info.get("dRec"),
+                info.get("dRegistro"),
+            )
+        )
+        itens_recebimento = _itens_recebimento_nfe(recebimento)
+        sequencias_ativas = set()
+        for indice, item in enumerate(itens_recebimento, start=1):
+            item_ide = item.get("itensIde") or item.get("ide") or {}
+            item_cabec = item.get("itensCabec") or item.get("produto") or item.get("prod") or item
+            item_ajustes = item.get("itensAjustes") or {}
+            item_info = item.get("itensInfoAdic") or {}
+            sequencia = int(
+                _inteiro_ou_none(
+                    _primeiro_valor(
+                        item.get("nSequencia"),
+                        item_cabec.get("nSequencia"),
+                        item_ide.get("nSequencia"),
+                        indice,
+                    )
+                )
+                or indice
+            )
+            codigo_produto = str(
+                _primeiro_valor(
+                    item.get("cCodigoProduto"),
+                    item_cabec.get("cCodigoProduto"),
+                    item.get("cProduto"),
+                    item_cabec.get("cProduto"),
+                    "",
+                )
+                or ""
+            ).strip()
+            numero_pedido_item = str(
+                _primeiro_valor(
+                    item_info.get("nNumPedCompra"),
+                    item_cabec.get("nNumPedCompra"),
+                    item.get("nNumPedCompra"),
+                    numero_pedido,
+                )
+                or ""
+            ).strip()
+            RecebimentoNfeItemOmie.objects.update_or_create(
+                empresa=empresa,
+                codigo_recebimento=codigo_recebimento,
+                sequencia=sequencia,
+                defaults={
+                    "recebimento": recebimento_obj,
+                    "numero_pedido_compra": numero_pedido_item,
+                    "data_recebimento": data_recebimento,
+                    "codigo_produto_texto": codigo_produto,
+                    "descricao": str(
+                        _primeiro_valor(
+                            item.get("cDescricao"),
+                            item_cabec.get("cDescricao"),
+                            item_cabec.get("cDescricaoProduto"),
+                            item.get("xProd"),
+                            "",
+                        )
+                        or ""
+                    ),
+                    "quantidade_nfe": _decimal(
+                        _primeiro_valor(
+                            item.get("nQtdeNFe"),
+                            item_cabec.get("nQtdeNFe"),
+                            item.get("nQtde"),
+                        )
+                    ),
+                    "quantidade_recebida": _decimal(
+                        _primeiro_valor(
+                            item.get("nQtdeRecebida"),
+                            item_ajustes.get("nQtdeRecebida"),
+                            item.get("nQtdeNFe"),
+                            item_cabec.get("nQtdeNFe"),
+                        )
+                    ),
+                    "preco_unitario": _decimal(
+                        _primeiro_valor(
+                            item.get("nPrecoUnit"),
+                            item_cabec.get("nPrecoUnit"),
+                            item.get("nPrecoUnitario"),
+                        )
+                    ),
+                    "valor_total_item": _decimal(
+                        _primeiro_valor(
+                            item.get("vTotalItem"),
+                            item_cabec.get("vTotalItem"),
+                        )
+                    ),
+                    "item_cabec": item_cabec,
+                    "item_ajustes": item_ajustes,
+                    "dados_originais": item,
+                    **_presenca_omie(agora),
+                },
+            )
+            sequencias_ativas.add(sequencia)
+
+        RecebimentoNfeItemOmie.objects.filter(
+            empresa=empresa,
+            codigo_recebimento=codigo_recebimento,
+            ativo_omie=True,
+        ).exclude(sequencia__in=sequencias_ativas).update(ativo_omie=False)
+        processados += 1
+    return processados
+
+
 def executar_sincronizacao_omie(sincronizacao_id):
     _fechar_conexoes_antigas_fora_de_transacao()
     sincronizacao = SincronizacaoOmie.objects.select_related(
@@ -3122,6 +3409,16 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_pedidos_compra,
                 "modelo": PedidoCompraOmie,
+            },
+            {
+                "nome": "Recebimentos de NF-e",
+                "consultar": consultar_recebimentos_nfe,
+                "chave": "recebimentos",
+                "chave_total_paginas": "nTotPaginas",
+                "chave_total_registros": "nTotRegistros",
+                "salvar": _salvar_recebimentos_nfe,
+                "modelo": RecebimentoNfeOmie,
+                "registros_por_pagina": None,
             },
             {
                 "nome": "Categorias",

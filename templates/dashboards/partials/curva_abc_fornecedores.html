@@ -1,0 +1,82 @@
+<section class="abc-suppliers-dashboard">
+    <div class="abc-suppliers-kpis">
+        <article>
+            <span>Gasto total</span>
+            <strong>{{ dados.gasto_total }}</strong>
+        </article>
+        <article>
+            <span>Fornecedores ativos</span>
+            <strong>{{ dados.fornecedores_ativos }}</strong>
+        </article>
+        <article>
+            <span>Concentracao top 10</span>
+            <strong>{{ dados.concentracao_top10 }}</strong>
+        </article>
+        <article>
+            <span>Fornecedores classe A</span>
+            <strong>{{ dados.fornecedores_classe_a }}</strong>
+        </article>
+    </div>
+
+    <div class="abc-suppliers-grid">
+        <article class="abc-suppliers-chart-card">
+            <div class="abc-card-title">Gasto por fornecedor e % acumulado</div>
+            <div class="abc-chart-stage">
+                <div class="abc-chart-bars">
+                    {% for fornecedor in dados.fornecedores %}
+                        <span class="abc-bar abc-bar-{{ fornecedor.tom }}" style="height: {{ fornecedor.altura }}%"></span>
+                    {% endfor %}
+                </div>
+                <svg class="abc-chart-line" viewBox="0 0 520 210" aria-hidden="true">
+                    {% if dados.curva_pontos %}
+                        <polyline points="{{ dados.curva_pontos }}"></polyline>
+                    {% endif %}
+                </svg>
+                <span class="abc-chart-guide">80%</span>
+            </div>
+            <div class="abc-chart-legend">
+                <span><i class="abc-dot-a"></i>classe A</span>
+                <span><i class="abc-dot-b"></i>classe B</span>
+                <span><i class="abc-dot-c"></i>classe C</span>
+                <span><i class="abc-line-dot"></i>% acumulado</span>
+            </div>
+        </article>
+
+        <article class="abc-suppliers-class-card">
+            <div class="abc-card-title">Distribuicao por classe</div>
+            <div class="abc-class-list">
+                {% for classe in dados.classes %}
+                    <div class="abc-class-row abc-class-row-{{ classe.tom }}">
+                        <div>
+                            <strong>Classe {{ classe.classe }}</strong>
+                            <span>{{ classe.fornecedores }}</span>
+                        </div>
+                        <b>{{ classe.valor }}</b>
+                    </div>
+                {% endfor %}
+            </div>
+        </article>
+    </div>
+
+    <article class="abc-suppliers-ranking">
+        <div class="abc-card-title">Ranking de fornecedores</div>
+        <div class="abc-ranking-table">
+            <div class="abc-ranking-row abc-ranking-head">
+                <span>Fornecedor</span>
+                <span>Valor</span>
+                <span>% individual</span>
+                <span>% acum.</span>
+                <span>Classe</span>
+            </div>
+            {% for fornecedor in dados.fornecedores %}
+                <div class="abc-ranking-row">
+                    <strong>{{ fornecedor.nome }}</strong>
+                    <span>{{ fornecedor.valor }}</span>
+                    <span>{{ fornecedor.individual }}</span>
+                    <span>{{ fornecedor.acumulado }}</span>
+                    <mark class="abc-class-badge abc-class-badge-{{ fornecedor.tom }}">{{ fornecedor.classe }}</mark>
+                </div>
+            {% endfor %}
+        </div>
+    </article>
+</section>

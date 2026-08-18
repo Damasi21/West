@@ -151,6 +151,10 @@
     {% include "dashboards/partials/inadimplencia.html" with dados=inadimplencia %}
 {% elif budget %}
     {% include "dashboards/partials/budget.html" with dados=budget %}
+{% elif score_fornecedor %}
+    {% include "dashboards/partials/score_fornecedor.html" with dados=score_fornecedor %}
+{% elif curva_abc_fornecedores %}
+    {% include "dashboards/partials/curva_abc_fornecedores.html" with dados=curva_abc_fornecedores %}
 {% else %}
 <div class="row g-3 mb-4">
     {% for item in "1234" %}
