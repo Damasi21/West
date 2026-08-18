@@ -3089,23 +3089,31 @@
 }
 .abc-suppliers-kpis {
     display: grid;
-    grid-template-columns: repeat(4, minmax(150px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(4, minmax(170px, 1fr));
+    gap: .9rem;
 }
 .abc-suppliers-kpis article {
-    min-height: 76px;
+    min-height: 126px;
+    padding: 1rem;
+    background: #fff;
+    border: 1px solid #dfe5ee;
+    border-radius: 8px;
+    box-shadow: 0 8px 22px rgba(23, 37, 84, .05);
 }
 .abc-suppliers-kpis span {
     display: block;
-    color: #475467;
-    font-size: .82rem;
+    color: #64748b;
+    font-size: .64rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
 }
 .abc-suppliers-kpis strong {
     display: block;
-    margin-top: .35rem;
-    color: #0b0f16;
-    font-size: 1.7rem;
-    line-height: 1;
+    margin-top: .55rem;
+    color: #111827;
+    font-size: 1.3rem;
+    line-height: 1.1;
 }
 .abc-suppliers-grid {
     display: grid;
