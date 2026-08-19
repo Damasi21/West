@@ -34,14 +34,8 @@ case "${1:-help}" in
   collectstatic)
     compose exec app python manage.py collectstatic --noinput
     ;;
-  cert)
-    ./.docker/scripts/certbot.sh issue
-    ;;
-  renew)
-    ./.docker/scripts/certbot.sh renew
-    ;;
   help|-h|--help)
-    echo "Usage: ./.docker/scripts/build.sh [build|up|down|restart|logs|ps|migrate|collectstatic|cert|renew]"
+    echo "Usage: ./.docker/scripts/build.sh [build|up|down|restart|logs|ps|migrate|collectstatic]"
     ;;
   *)
     echo "Unknown command: $1" >&2

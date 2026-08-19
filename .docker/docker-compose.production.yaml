@@ -29,10 +29,10 @@ services:
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-True}
       CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-True}
     volumes:
-      - WEST_STATIC:/app/staticfiles
-      - WEST_MEDIA:/app/media
-    expose:
-      - "8000"
+      - ../staticfiles:/app/staticfiles
+      - ../media:/app/media
+    ports:
+      - "${APP_HOST_PORT:-127.0.0.1:8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,54 +96,9 @@ services:
       - WEST_NETWORK
     logging: *default-logging
 
-  proxy:
-    image: nginx:alpine
-    environment:
-      DOMAIN: ${DOMAIN}
-      PROXY_CLIENT_MAX_BODY_SIZE: ${PROXY_CLIENT_MAX_BODY_SIZE:-50M}
-    ports:
-      - "${PROXY_HTTP_PORT:-80}:80"
-      - "${PROXY_HTTPS_PORT:-443}:443"
-    volumes:
-      - ./nginx.active.conf:/etc/nginx/templates/default.conf.template:ro
-      - WEST_CERTBOT_WWW:/var/www/certbot
-      - WEST_CERTBOT_CONF:/etc/letsencrypt
-      - WEST_STATIC:/app/staticfiles:ro
-      - WEST_MEDIA:/app/media:ro
-    depends_on:
-      app:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
-    networks:
-      - WEST_NETWORK
-    logging: *default-logging
-
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - WEST_CERTBOT_WWW:/var/www/certbot
-      - WEST_CERTBOT_CONF:/etc/letsencrypt
-    networks:
-      - WEST_NETWORK
-    logging: *default-logging
-
 volumes:
   WEST_POSTGRES_DATA:
     name: WEST_POSTGRES_DATA
-  WEST_STATIC:
-    name: WEST_STATIC
-  WEST_MEDIA:
-    name: WEST_MEDIA
-  WEST_CERTBOT_WWW:
-    name: WEST_CERTBOT_WWW
-  WEST_CERTBOT_CONF:
-    name: WEST_CERTBOT_CONF
 
 networks:
   WEST_NETWORK:

@@ -26,7 +26,8 @@ visualizam somente as empresas vinculadas ao seu usuário.
 ## Deploy com Docker
 
 O projeto possui uma stack de produção em `.docker/docker-compose.production.yaml`
-com os serviços `app`, `postgres`, `proxy`, `certbot` e `scheduler`.
+com os serviços `app`, `postgres` e `scheduler`. O Nginx e o Certbot ficam no
+host e apontam para o app publicado em `127.0.0.1:8000`.
 
 O serviço `scheduler` mantém a sincronização automática da OMIE ativa, executando
 continuamente:
