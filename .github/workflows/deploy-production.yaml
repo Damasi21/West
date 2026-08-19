@@ -115,12 +115,11 @@ jobs:
             : > .docker/.env.production
             write_env DOMAIN
             write_default_env EMAIL "admin@${DOMAIN}"
-            write_default_env PROXY_HTTP_PORT "80"
-            write_default_env PROXY_HTTPS_PORT "443"
-            write_default_env PROXY_CLIENT_MAX_BODY_SIZE "50M"
+            write_default_env APP_HOST_PORT "127.0.0.1:8012"
             write_default_env SECRET_KEY "${POSTGRES_PASSWORD}-django"
             write_default_env OMIE_CREDENTIALS_ENCRYPTION_KEY "${POSTGRES_PASSWORD}-omie"
             write_default_env ALLOWED_HOSTS "${DOMAIN},${DEPLOY_PRODUCTION_HOST},127.0.0.1,localhost"
+            write_default_env CSRF_TRUSTED_ORIGINS "https://${DOMAIN}"
             write_default_env POSTGRES_DB "west_bi"
             write_default_env POSTGRES_USER "west_user"
             write_env POSTGRES_PASSWORD
