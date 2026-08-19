@@ -122,6 +122,8 @@ jobs:
             write_default_env CSRF_TRUSTED_ORIGINS "https://${DOMAIN}"
             write_default_env POSTGRES_DB "west_bi"
             write_default_env POSTGRES_USER "west_user"
+            write_default_env POSTGRES_HOST "host.docker.internal"
+            write_default_env POSTGRES_PORT "5432"
             write_env POSTGRES_PASSWORD
 
             echo "[deploy] running production install"
