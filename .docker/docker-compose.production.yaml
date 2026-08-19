@@ -25,11 +25,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
       SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-True}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-True}
       CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-True}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../staticfiles:/app/staticfiles
       - ../media:/app/media
@@ -65,11 +65,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
       SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-True}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-True}
       CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-True}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: ["python", "manage.py", "monitorar_sincronizacoes_agendadas", "--intervalo-segundos", "60", "--tolerancia-minutos", "10"]
     depends_on:
       app:
