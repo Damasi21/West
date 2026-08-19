@@ -66,14 +66,20 @@ jobs:
           script: |
             set -euo pipefail
 
+            SERVER_PATH="${SERVER_PATH:?PRODUCTION_PATH is required}"
+            REPO_URL="${REPO_URL:?REPO_URL is required}"
+
             echo "[deploy] preparing ${SERVER_PATH}"
             mkdir -p "${SERVER_PATH}"
             cd "${SERVER_PATH}"
+            echo "[deploy] repository directory ready"
 
             if [ ! -d .git ]; then
+              echo "[deploy] initializing git repository"
               git init
             fi
 
+            echo "[deploy] configuring git remote"
             if git remote get-url origin >/dev/null 2>&1; then
               git remote set-url origin "${REPO_URL}"
             else
@@ -126,7 +132,7 @@ jobs:
             APP_VERSION="${APP_VERSION:-${GITHUB_SHA}}" ./.docker/scripts/install.sh
         env:
           SERVER_PATH: ${{ secrets.PRODUCTION_PATH }}
-          REPO_URL: ${{ secrets.REPO_URL }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
           GITHUB_SHA: ${{ github.sha }}
           APP_VERSION: ${{ github.sha }}
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
