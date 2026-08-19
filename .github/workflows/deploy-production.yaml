@@ -1,0 +1,134 @@
+name: deploy-production
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: django check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate Django project
+        run: python manage.py check
+
+      - name: Run tests
+        run: python manage.py test
+
+  deploy:
+    name: deploy production
+    needs: check
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+    steps:
+      - name: Production summary
+        run: |
+          echo "## Production deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- branch: \`${GITHUB_REF_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- commit: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- server path: \`${{ secrets.PRODUCTION_PATH }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_PORT || '22' }}
+          timeout: 120s
+          command_timeout: 45m
+          script_stop: true
+          envs: SERVER_PATH,REPO_URL,GITHUB_SHA,APP_VERSION,PRODUCTION_HOST,PRODUCTION_DOMAIN,POSTGRES_PASSWORD
+          script: |
+            set -euo pipefail
+
+            echo "[deploy] preparing ${SERVER_PATH}"
+            mkdir -p "${SERVER_PATH}"
+            cd "${SERVER_PATH}"
+
+            if [ ! -d .git ]; then
+              git init
+            fi
+
+            if git remote get-url origin >/dev/null 2>&1; then
+              git remote set-url origin "${REPO_URL}"
+            else
+              git remote add origin "${REPO_URL}"
+            fi
+
+            echo "[deploy] fetching ${GITHUB_SHA}"
+            git fetch --depth=1 origin "${GITHUB_SHA}"
+            git -c advice.detachedHead=false checkout -f FETCH_HEAD
+
+            echo "[deploy] rendering production environment"
+            mkdir -p .docker
+            DEPLOY_PRODUCTION_HOST="${PRODUCTION_HOST:-}"
+            DEPLOY_PRODUCTION_DOMAIN="${PRODUCTION_DOMAIN:?PRODUCTION_DOMAIN is required}"
+            DEPLOY_POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
+
+            DOMAIN="$DEPLOY_PRODUCTION_DOMAIN"
+            SECRET_KEY=""
+            OMIE_CREDENTIALS_ENCRYPTION_KEY=""
+            POSTGRES_PASSWORD="$DEPLOY_POSTGRES_PASSWORD"
+            export DOMAIN SECRET_KEY OMIE_CREDENTIALS_ENCRYPTION_KEY POSTGRES_PASSWORD
+
+            write_env() {
+              key="$1"
+              value="$(printenv "$key" || true)"
+              printf "%s=%s\n" "$key" "$value" >> .docker/.env.production
+            }
+
+            write_default_env() {
+              key="$1"
+              value="$2"
+              printf "%s=%s\n" "$key" "$value" >> .docker/.env.production
+            }
+
+            : > .docker/.env.production
+            write_env DOMAIN
+            write_default_env EMAIL "admin@${DOMAIN}"
+            write_default_env PROXY_HTTP_PORT "80"
+            write_default_env PROXY_HTTPS_PORT "443"
+            write_default_env PROXY_CLIENT_MAX_BODY_SIZE "50M"
+            write_default_env SECRET_KEY "${POSTGRES_PASSWORD}-django"
+            write_default_env OMIE_CREDENTIALS_ENCRYPTION_KEY "${POSTGRES_PASSWORD}-omie"
+            write_default_env ALLOWED_HOSTS "${DOMAIN},${DEPLOY_PRODUCTION_HOST},127.0.0.1,localhost"
+            write_default_env POSTGRES_DB "west_bi"
+            write_default_env POSTGRES_USER "west_user"
+            write_env POSTGRES_PASSWORD
+
+            echo "[deploy] running production install"
+            chmod +x .docker/scripts/*.sh
+            APP_VERSION="${APP_VERSION:-${GITHUB_SHA}}" ./.docker/scripts/install.sh
+        env:
+          SERVER_PATH: ${{ secrets.PRODUCTION_PATH }}
+          REPO_URL: ${{ secrets.REPO_URL }}
+          GITHUB_SHA: ${{ github.sha }}
+          APP_VERSION: ${{ github.sha }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN || secrets.PRODUCTION_DOMAIN || vars.DOMAIN || secrets.DOMAIN }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
