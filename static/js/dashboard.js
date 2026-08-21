@@ -200,6 +200,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const saidas = JSON.parse(document.getElementById("cashflow-chart-out").textContent);
         const saldo = JSON.parse(document.getElementById("cashflow-chart-balance").textContent);
         const details = JSON.parse(document.getElementById("cashflow-chart-details").textContent);
+        const kpiDetails = JSON.parse(document.getElementById("cashflow-kpi-details").textContent);
         const pieIn = JSON.parse(document.getElementById("cashflow-pie-in").textContent);
         const pieOut = JSON.parse(document.getElementById("cashflow-pie-out").textContent);
         const palette = ["#0f766e", "#14b8a6", "#38bdf8", "#64748b", "#cbd5e1"];
@@ -213,6 +214,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const detailClose = cashflow.querySelector("[data-cashflow-detail-close]");
         const detailSortDate = cashflow.querySelector("[data-cashflow-sort-date]");
         const detailSortValue = cashflow.querySelector("[data-cashflow-sort-value]");
+        const detailDateLabel = cashflow.querySelector("[data-cashflow-detail-date-label]");
         let pendingDetail = null;
         let currentDetailRows = [];
         let currentDetailSortField = "valor";
@@ -228,13 +230,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const openCashflowDetails = (detail) => {
             if (!detailModal || !detailRows || !detailTitle || !detailKind) return;
-            const month = details[detail.chave] || {};
-            const rows = month[detail.tipo] || [];
             detailKind.textContent = detail.tipo === "entradas" ? "ENTRADAS" : "SAIDAS";
             detailTitle.textContent = `${detail.rotulo} - ${detail.label}`;
-            currentDetailRows = [...rows];
+            currentDetailRows = [...(detail.rows || [])];
             currentDetailSortField = "valor";
             currentDetailSort = "desc";
+            if (detailDateLabel) detailDateLabel.textContent = detail.dateLabel || "Data";
             renderCashflowDetailRows();
             detailModal.hidden = false;
         };
@@ -313,7 +314,11 @@ document.addEventListener("DOMContentLoaded", () => {
             pendingDetail = null;
             const openDetail = () => {
                 if (detail) {
-                    openCashflowDetails(detail);
+                    const month = details[detail.chave] || {};
+                    openCashflowDetails({
+                        ...detail,
+                        rows: month[detail.tipo] || [],
+                    });
                 }
             };
             if (document.fullscreenElement) {
@@ -347,6 +352,19 @@ document.addEventListener("DOMContentLoaded", () => {
             if (event.target === detailModal) {
                 closeCashflowDetails();
             }
+        });
+        cashflow.querySelectorAll("[data-cashflow-kpi-detail]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const tipo = button.dataset.cashflowKpiDetail;
+                const title = button.dataset.cashflowKpiTitle || "Previstos";
+                openCashflowDetails({
+                    tipo,
+                    rotulo: "Ate hoje",
+                    label: title,
+                    rows: kpiDetails[tipo] || [],
+                    dateLabel: "Previsao",
+                });
+            });
         });
         document.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;

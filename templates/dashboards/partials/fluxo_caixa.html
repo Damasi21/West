@@ -6,7 +6,20 @@
                     <span>{{ indicador.titulo }}</span>
                     <strong class="metric-value-with-tooltip" title="{{ indicador.valor_completo|default:indicador.valor }}">{{ indicador.valor }}</strong>
                 </div>
-                <i class="bi {{ indicador.icone }}"></i>
+                {% if indicador.detalhe_tipo %}
+                    <button
+                        type="button"
+                        class="finance-kpi-detail-button"
+                        data-cashflow-kpi-detail="{{ indicador.detalhe_tipo }}"
+                        data-cashflow-kpi-title="{{ indicador.titulo }}"
+                        aria-label="Detalhar {{ indicador.titulo }}"
+                        title="Detalhar {{ indicador.titulo }}"
+                    >
+                        <i class="bi {{ indicador.icone }}"></i>
+                    </button>
+                {% else %}
+                    <i class="bi {{ indicador.icone }}"></i>
+                {% endif %}
             </article>
         {% endfor %}
     </div>
@@ -54,7 +67,7 @@
             <div class="cashflow-detail-table">
                 <div class="cashflow-detail-row cashflow-detail-head">
                     <button type="button" data-cashflow-sort-date aria-label="Ordenar por data">
-                        <span>Data</span>
+                        <span data-cashflow-detail-date-label>Data</span>
                         <i class="bi bi-arrow-down-short"></i>
                     </button>
                     <span>Cliente / fornecedor</span>
@@ -126,6 +139,7 @@
     {{ fluxo.saidas|json_script:"cashflow-chart-out" }}
     {{ fluxo.saldo_acumulado|json_script:"cashflow-chart-balance" }}
     {{ fluxo.detalhes_lancamentos|json_script:"cashflow-chart-details" }}
+    {{ fluxo.detalhes_previstos|json_script:"cashflow-kpi-details" }}
     {{ fluxo.composicao_entradas|json_script:"cashflow-pie-in" }}
     {{ fluxo.composicao_saidas|json_script:"cashflow-pie-out" }}
 </section>

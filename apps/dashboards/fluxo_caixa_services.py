@@ -30,7 +30,7 @@ from apps.empresas.models import (
 )
 
 
-STATUS_FECHADOS_RECEBER = {"RECEBIDO", "LIQUIDADO", "BAIXADO", "CANCELADO"}
+STATUS_FECHADOS_RECEBER = {"RECEBIDO", "PAGO", "LIQUIDADO", "BAIXADO", "CANCELADO"}
 STATUS_FECHADOS_PAGAR = {"PAGO", "LIQUIDADO", "BAIXADO", "CANCELADO"}
 STATUS_MOVIMENTO_PAGO = {"PAGO", "LIQUIDADO", "BAIXADO", "RECEBIDO"}
 CHAVES_RETENCOES_RECEBER = (
@@ -50,11 +50,23 @@ def _decimal(valor):
     return Decimal(str(valor))
 
 
+def _excluir_status_fechados(queryset, campo, status_fechados):
+    filtros = Q()
+    for status in status_fechados:
+        filtros |= Q(**{f"{campo}__iexact": status})
+    return queryset.exclude(filtros) if filtros else queryset
+
+
 def _query_receber_aberto(inicio, fim, empresas_ids, projetos):
     queryset = ContaReceberOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
-    ).exclude(status_titulo__in=STATUS_FECHADOS_RECEBER)
+    )
+    queryset = _excluir_status_fechados(
+        queryset,
+        "status_titulo",
+        STATUS_FECHADOS_RECEBER,
+    )
     if inicio:
         queryset = queryset.filter(data_vencimento__gte=inicio)
     if fim:
@@ -68,7 +80,12 @@ def _query_pagar_aberto(inicio, fim, empresas_ids, projetos):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
-    ).exclude(status_titulo__in=STATUS_FECHADOS_PAGAR)
+    )
+    queryset = _excluir_status_fechados(
+        queryset,
+        "status_titulo",
+        STATUS_FECHADOS_PAGAR,
+    )
     if inicio:
         queryset = queryset.filter(data_previsao__gte=inicio)
     if fim:
@@ -82,7 +99,12 @@ def _query_pagar_aberto_por_vencimento(inicio, fim, empresas_ids, projetos):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
-    ).exclude(status_titulo__in=STATUS_FECHADOS_PAGAR)
+    )
+    queryset = _excluir_status_fechados(
+        queryset,
+        "status_titulo",
+        STATUS_FECHADOS_PAGAR,
+    )
     if inicio:
         queryset = queryset.filter(data_vencimento__gte=inicio)
     if fim:
@@ -97,35 +119,46 @@ def _query_receber_previsto_omie(hoje, empresas_ids, projetos):
         empresa_id__in=empresas_ids,
         ativo_omie=True,
         data_previsao__lte=hoje,
-    ).exclude(status_titulo__in=STATUS_FECHADOS_RECEBER)
+    )
+    queryset = _excluir_status_fechados(
+        queryset,
+        "status_titulo",
+        STATUS_FECHADOS_RECEBER,
+    )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
-    return queryset
+    return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
 def _query_pagar_previsto_omie(hoje, empresas_ids, projetos):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
-        data_vencimento__lte=hoje,
-    ).exclude(status_titulo__in=STATUS_FECHADOS_PAGAR)
-    if projetos:
-        queryset = queryset.filter(codigo_projeto__in=projetos)
-    return queryset
-
-
-def _query_movimentos_pagar_previstos_omie(hoje, empresas_ids, projetos):
-    queryset = MovimentoFinanceiroOmie.objects.filter(
-        empresa_id__in=empresas_ids,
-        ativo_omie=True,
-        grupo="CONTA_A_PAGAR",
-        natureza="P",
-        liquidado=False,
-        data_vencimento__lte=hoje,
+        data_previsao__lte=hoje,
+    )
+    queryset = _excluir_status_fechados(
+        queryset,
+        "status_titulo",
+        STATUS_FECHADOS_PAGAR,
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
-    return queryset
+    return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
+
+
+def _query_movimentos_previstos_omie(hoje, empresas_ids, projetos, natureza):
+    grupo = "CONTA_A_RECEBER" if natureza == "R" else "CONTA_A_PAGAR"
+    queryset = MovimentoFinanceiroOmie.objects.filter(
+        empresa_id__in=empresas_ids,
+        ativo_omie=True,
+        grupo=grupo,
+        natureza=natureza,
+        valor_aberto__gt=0,
+        data_previsao__lte=hoje,
+    )
+    if projetos:
+        queryset = queryset.filter(codigo_projeto__in=projetos)
+    return registros_com_conta_visivel_financeiro(queryset, "codigo_conta_corrente")
 
 
 def _query_movimentos_financeiros(empresas_ids, projetos, natureza, inicio=None, fim=None):
@@ -156,12 +189,7 @@ def _data_realizado_movimento(movimento):
 
 
 def _valor_previsto_movimento(movimento):
-    return _decimal(
-        movimento.valor_liquido
-        or movimento.valor_titulo
-        or movimento.valor_aberto
-        or movimento.valor_pago
-    )
+    return _decimal(movimento.valor_aberto or movimento.valor_liquido or movimento.valor_titulo)
 
 
 def _valor_realizado_movimento(movimento):
@@ -170,6 +198,139 @@ def _valor_realizado_movimento(movimento):
         or movimento.valor_liquido
         or movimento.valor_titulo
     )
+
+
+def _codigo_titulo_movimento(movimento):
+    return movimento.codigo_titulo
+
+
+def _total_previsto_movimentos(movimentos):
+    total = Decimal("0")
+    codigos = set()
+    for movimento in movimentos:
+        codigo = _codigo_titulo_movimento(movimento)
+        if codigo and codigo in codigos:
+            continue
+        total += abs(_valor_previsto_movimento(movimento))
+        if codigo:
+            codigos.add(codigo)
+    return total, codigos
+
+
+def _total_receber_aberto_sem_movimento(queryset, codigos_movimentos):
+    total = Decimal("0")
+    for conta in queryset:
+        if conta.codigo_lancamento_omie in codigos_movimentos:
+            continue
+        total += _valor_liquido_receber(conta)
+    return total
+
+
+def _total_pagar_aberto_sem_movimento(queryset, codigos_movimentos):
+    total = Decimal("0")
+    for conta in queryset:
+        if conta.codigo_lancamento_omie in codigos_movimentos:
+            continue
+        total += _valor_pagar(conta)
+    return total
+
+
+def _linha_prevista_movimento(movimento):
+    data = movimento.data_previsao or movimento.data_vencimento
+    valor = abs(_valor_previsto_movimento(movimento))
+    return {
+        "data": data.strftime("%d/%m/%Y") if data else "",
+        "nome": _nome_cliente_fornecedor(movimento),
+        "categoria": _categoria_lancamento(movimento),
+        "valor": float(valor),
+        "valor_fmt": _formatar_moeda(valor),
+    }
+
+
+def _nome_conta_receber(conta):
+    return (
+        getattr(conta.cliente, "nome_fantasia", "")
+        or getattr(conta.cliente, "razao_social", "")
+        or "Cliente nao informado"
+    )
+
+
+def _nome_conta_pagar(conta):
+    return (
+        getattr(conta.fornecedor, "nome_fantasia", "")
+        or getattr(conta.fornecedor, "razao_social", "")
+        or "Fornecedor nao informado"
+    )
+
+
+def _categoria_conta(conta):
+    return (
+        getattr(conta.categoria_principal, "descricao", "")
+        or conta.codigo_categoria
+        or "Sem categoria"
+    )
+
+
+def _linha_prevista_conta_receber(conta):
+    data = conta.data_previsao or conta.data_vencimento
+    valor = abs(_valor_liquido_receber(conta))
+    return {
+        "data": data.strftime("%d/%m/%Y") if data else "",
+        "nome": _nome_conta_receber(conta),
+        "categoria": _categoria_conta(conta),
+        "valor": float(valor),
+        "valor_fmt": _formatar_moeda(valor),
+    }
+
+
+def _linha_prevista_conta_pagar(conta):
+    data = conta.data_previsao or conta.data_vencimento
+    valor = abs(_valor_pagar(conta))
+    return {
+        "data": data.strftime("%d/%m/%Y") if data else "",
+        "nome": _nome_conta_pagar(conta),
+        "categoria": _categoria_conta(conta),
+        "valor": float(valor),
+        "valor_fmt": _formatar_moeda(valor),
+    }
+
+
+def _detalhes_previstos(
+    movimentos_receber,
+    movimentos_pagar,
+    receber_aberto,
+    pagar_aberto,
+    codigos_receber_movimentos,
+    codigos_pagar_movimentos,
+):
+    entradas = [
+        _linha_prevista_movimento(movimento)
+        for movimento in movimentos_receber
+    ]
+    entradas.extend(
+        _linha_prevista_conta_receber(conta)
+        for conta in receber_aberto.select_related("cliente", "categoria_principal")
+        if conta.codigo_lancamento_omie not in codigos_receber_movimentos
+    )
+    saidas = [
+        _linha_prevista_movimento(movimento)
+        for movimento in movimentos_pagar
+    ]
+    saidas.extend(
+        _linha_prevista_conta_pagar(conta)
+        for conta in pagar_aberto.select_related("fornecedor", "categoria_principal")
+        if conta.codigo_lancamento_omie not in codigos_pagar_movimentos
+    )
+
+    def ordenar(item):
+        data = item["data"].split("/")
+        data_ordenacao = f"{data[2]}-{data[1]}-{data[0]}" if len(data) == 3 else ""
+        return data_ordenacao, -item["valor"]
+
+    return {
+        "entradas": sorted(entradas, key=ordenar),
+        "saidas": sorted(saidas, key=ordenar),
+    }
 
 
 def _query_lancamentos(inicio, fim, empresas_ids, projetos, natureza):
@@ -964,22 +1125,36 @@ def fluxo_de_caixa(
         _data_realizado_movimento,
         _valor_realizado_movimento,
     )
-    entradas_previstas_mes = _somar_por_periodo(
-        movimentos_receber_lista,
-        periodos_mensais,
-        "data_previsao",
-        _valor_previsto_movimento,
-    )
-    saidas_previstas_mes = _somar_por_periodo(
-        movimentos_pagar_lista,
-        periodos_mensais,
-        "data_previsao",
-        _valor_previsto_movimento,
-    )
     entradas_realizadas = sum(entradas_realizadas_mes.values(), Decimal("0"))
     saidas_realizadas = sum(saidas_realizadas_mes.values(), Decimal("0"))
-    entradas_previstas = sum(entradas_previstas_mes.values(), Decimal("0"))
-    saidas_previstas = sum(saidas_previstas_mes.values(), Decimal("0"))
+    movimentos_receber_previstos = list(
+        _query_movimentos_previstos_omie(hoje, empresas_ids, projetos, "R")
+    )
+    movimentos_pagar_previstos = list(
+        _query_movimentos_previstos_omie(hoje, empresas_ids, projetos, "P")
+    )
+    entradas_previstas, codigos_receber_movimentos = _total_previsto_movimentos(
+        movimentos_receber_previstos
+    )
+    saidas_previstas, codigos_pagar_movimentos = _total_previsto_movimentos(
+        movimentos_pagar_previstos
+    )
+    entradas_previstas += _total_receber_aberto_sem_movimento(
+        _query_receber_previsto_omie(hoje, empresas_ids, projetos),
+        codigos_receber_movimentos,
+    )
+    saidas_previstas += _total_pagar_aberto_sem_movimento(
+        _query_pagar_previsto_omie(hoje, empresas_ids, projetos),
+        codigos_pagar_movimentos,
+    )
+    detalhes_previstos = _detalhes_previstos(
+        movimentos_receber_previstos,
+        movimentos_pagar_previstos,
+        _query_receber_previsto_omie(hoje, empresas_ids, projetos),
+        _query_pagar_previsto_omie(hoje, empresas_ids, projetos),
+        codigos_receber_movimentos,
+        codigos_pagar_movimentos,
+    )
     saldo_abertura_periodo = saldo_abertura_extrato
     if saldo_abertura_periodo is None:
         saldo_abertura_periodo = _saldo_abertura_por_movimentos(
@@ -1037,6 +1212,7 @@ def fluxo_de_caixa(
                 "valor_completo": _formatar_moeda(entradas_previstas),
                 "icone": "bi-arrow-down-left-circle",
                 "tom": "positive",
+                "detalhe_tipo": "entradas",
             },
             {
                 "titulo": "Saidas previstas",
@@ -1044,6 +1220,7 @@ def fluxo_de_caixa(
                 "valor_completo": _formatar_moeda(saidas_previstas),
                 "icone": "bi-arrow-up-right-circle",
                 "tom": "negative",
+                "detalhe_tipo": "saidas",
             },
             {
                 "titulo": "Saldo projetado",
@@ -1065,6 +1242,7 @@ def fluxo_de_caixa(
         "saidas": saidas,
         "saldo_acumulado": saldo_acumulado,
         "detalhes_lancamentos": detalhes_lancamentos,
+        "detalhes_previstos": detalhes_previstos,
         "criticos": _criticos(receber_aberto, pagar_aberto),
         "composicao_entradas": _composicao_movimentos(
             [
