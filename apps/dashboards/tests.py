@@ -302,8 +302,9 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Compare budget")
         self.assertContains(response, "Score de fornecedor")
         self.assertContains(response, "Curva ABC")
-        self.assertContains(response, "Kardex")
-        self.assertNotContains(response, "analise-precos-saving")
+        self.assertContains(response, "Análise de Preço")
+        self.assertContains(response, "Saving")
+        self.assertContains(response, "analise-preco-saving")
         self.assertNotContains(response, "evolucao-de-compras")
         self.assertNotContains(response, "analise-de-fornecedores")
         self.assertNotContains(response, "pedidos-de-compra")
@@ -772,6 +773,117 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(dados["fornecedores"][1]["classe"], "B")
         self.assertEqual(dados["fornecedores"][2]["classe"], "C")
         self.assertTrue(dados["curva_pontos"])
+
+    def test_dashboard_analise_preco_saving_usa_recebimentos_e_cmc(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        produto_a = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=901,
+            codigo="PRD901",
+            descricao="Produto Saving",
+            descricao_familia="Familia A",
+        )
+        produto_b = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=902,
+            codigo="PRD902",
+            descricao="Produto Alta",
+            descricao_familia="Familia B",
+        )
+        produto_ignorado = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=903,
+            codigo="PRD903",
+            descricao="Produto Ignorado",
+            descricao_familia="Familia C",
+        )
+        PosicaoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto_a,
+            codigo_produto=produto_a.codigo_produto,
+            codigo_local_estoque=1,
+            codigo=produto_a.codigo,
+            descricao=produto_a.descricao,
+            data_posicao=date(2026, 8, 1),
+            saldo=100,
+            cmc=98,
+        )
+        PosicaoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto_b,
+            codigo_produto=produto_b.codigo_produto,
+            codigo_local_estoque=1,
+            codigo=produto_b.codigo,
+            descricao=produto_b.descricao,
+            data_posicao=date(2026, 8, 1),
+            saldo=100,
+            cmc=51,
+        )
+
+        def criar_item(codigo_recebimento, produto, data_emissao, preco, etapa="60", ajustes=None):
+            recebimento = RecebimentoNfeOmie.objects.create(
+                empresa=self.empresa,
+                codigo_recebimento=codigo_recebimento,
+                etapa=etapa,
+                data_emissao_nfe=data_emissao,
+                codigo_fornecedor=700 + codigo_recebimento,
+                cabec={"cNome": f"Fornecedor {codigo_recebimento}"},
+            )
+            return RecebimentoNfeItemOmie.objects.create(
+                empresa=self.empresa,
+                recebimento=recebimento,
+                codigo_recebimento=codigo_recebimento,
+                sequencia=1,
+                data_recebimento=data_emissao,
+                codigo_produto_texto=produto.codigo,
+                descricao=produto.descricao,
+                quantidade_nfe=10,
+                quantidade_recebida=10,
+                preco_unitario=preco,
+                valor_total_item=Decimal(str(preco)) * Decimal("10"),
+                item_ajustes=ajustes or {"cNaoGerarFinanceiro": "N"},
+            )
+
+        criar_item(801, produto_a, date(2026, 7, 1), 90)
+        criar_item(802, produto_a, date(2026, 7, 20), 95)
+        criar_item(803, produto_a, date(2026, 8, 10), 80)
+        criar_item(804, produto_b, date(2026, 7, 5), 50)
+        criar_item(805, produto_b, date(2026, 8, 12), 60)
+        criar_item(806, produto_ignorado, date(2026, 8, 12), 10, etapa="40")
+        criar_item(
+            807,
+            produto_ignorado,
+            date(2026, 8, 13),
+            10,
+            ajustes={"cNaoGerarFinanceiro": "S"},
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "compras",
+                    "dashboard_slug": "analise-preco-saving",
+                },
+            ),
+            {"_filtrar": "1", "periodo": "mes-2026-08"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Impacto por familia de produto")
+        self.assertContains(response, "Familia A")
+        self.assertContains(response, "Produto Saving")
+        self.assertContains(response, "Produto Alta")
+        self.assertNotContains(response, "Produto Ignorado")
+        self.assertIn("analise_preco_saving", response.context)
+        dados = response.context["analise_preco_saving"]
+        self.assertEqual(dados["saving_total"], "R$ 200,00")
+        self.assertEqual(dados["perda_total"], "R$ 100,00")
+        self.assertEqual(dados["itens_alta"], 1)
+        self.assertEqual(dados["familia_destaque"], "Familia A")
+        self.assertEqual(dados["itens"][0]["base_origem"], "CMC anterior")
 
     def test_dashboard_exibe_filtros_e_projetos_ativos(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
@@ -2015,6 +2127,12 @@ class DashboardPermissaoTests(TestCase):
             tipo=CadastroOmie.Tipo.FORNECEDOR,
             nome_fantasia="Fornecedor Critico",
         )
+        fornecedor_reagendado = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=10003,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="Fornecedor Reagendado",
+        )
         categoria_receita_pai = CategoriaOmie.objects.create(
             empresa=self.empresa,
             codigo="1.03",
@@ -2054,6 +2172,7 @@ class DashboardPermissaoTests(TestCase):
             codigo_lancamento_omie=11001,
             cliente=cliente,
             categoria_principal=categoria_receita,
+            data_previsao=date(ano_atual, 1, 10),
             data_vencimento=date(ano_atual, 1, 10),
             valor_documento=7000,
             valor_a_receber=7000,
@@ -2069,6 +2188,18 @@ class DashboardPermissaoTests(TestCase):
             data_vencimento=date(ano_atual, 1, 15),
             valor_documento=2500,
             valor_a_pagar=2500,
+            status_titulo="ATRASADO",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=12002,
+            fornecedor=fornecedor_reagendado,
+            categoria_principal=categoria_despesa,
+            data_entrada=date.today() - timedelta(days=20),
+            data_previsao=date.today() + timedelta(days=10),
+            data_vencimento=date.today() - timedelta(days=5),
+            valor_documento=800,
+            valor_a_pagar=800,
             status_titulo="ATRASADO",
         )
         LancamentoContaCorrenteOmie.objects.create(
@@ -2138,6 +2269,23 @@ class DashboardPermissaoTests(TestCase):
         )
         MovimentoFinanceiroOmie.objects.create(
             empresa=self.empresa,
+            codigo_titulo=14005,
+            cliente_fornecedor=fornecedor_reagendado,
+            codigo_conta_corrente=101,
+            codigo_categoria=categoria_despesa.codigo,
+            categoria_principal=categoria_despesa,
+            grupo="CONTA_A_PAGAR",
+            natureza="P",
+            status="ABERTO",
+            liquidado=False,
+            data_previsao=date.today() + timedelta(days=10),
+            data_vencimento=date.today() - timedelta(days=5),
+            valor_titulo=800,
+            valor_aberto=800,
+            valor_liquido=800,
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
             codigo_titulo=14004,
             cliente_fornecedor=fornecedor,
             codigo_conta_corrente=101,
@@ -2186,13 +2334,25 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Fornecedor Critico")
         self.assertContains(response, "Composicao das entradas realizadas")
         self.assertContains(response, "Composicao das saidas realizadas")
+        self.assertNotContains(response, "Fornecedor Reagendado")
         self.assertContains(response, "data-cashflow-chart")
         self.assertContains(response, "data-cashflow-in-pie")
         self.assertContains(response, "data-cashflow-out-pie")
         self.assertContains(response, "Quer detalhar as contas?")
         self.assertContains(response, "data-cashflow-detail-modal")
+        self.assertContains(response, 'data-cashflow-kpi-detail="entradas"')
+        self.assertContains(response, 'data-cashflow-kpi-detail="saidas"')
         self.assertContains(response, "Fluxo de caixa horizontal")
         self.assertContains(response, "fluxo-de-caixa/horizontal/")
+        detalhes_previstos = response.context["fluxo_caixa"]["detalhes_previstos"]
+        self.assertEqual(detalhes_previstos["entradas"][0]["data"], f"10/01/{ano_atual}")
+        self.assertEqual(detalhes_previstos["entradas"][0]["nome"], "Cliente Critico")
+        self.assertEqual(detalhes_previstos["entradas"][0]["categoria"], "Assinaturas")
+        self.assertEqual(detalhes_previstos["entradas"][0]["valor_fmt"], "R$ 7.000,00")
+        self.assertEqual(detalhes_previstos["saidas"][0]["data"], f"15/01/{ano_atual}")
+        self.assertEqual(detalhes_previstos["saidas"][0]["nome"], "Fornecedor Critico")
+        self.assertEqual(detalhes_previstos["saidas"][0]["categoria"], "Operacional")
+        self.assertEqual(detalhes_previstos["saidas"][0]["valor_fmt"], "R$ 2.500,00")
         detalhes = response.context["fluxo_caixa"]["detalhes_lancamentos"][f"{ano_atual}-01"]
         self.assertEqual(detalhes["entradas"][0]["data"], f"20/01/{ano_atual}")
         self.assertEqual(detalhes["entradas"][0]["nome"], "Cliente Critico")
@@ -2940,14 +3100,14 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(contexto["saldo_acumulado"], [0.0])
         self.assertEqual(
             contexto["indicadores"][1]["valor_completo"],
-            "R$ 125,00",
+            "R$ 150,00",
         )
         self.assertEqual(
             contexto["indicadores"][2]["valor_completo"],
-            "R$ 55,00",
+            "R$ 110,00",
         )
 
-    def test_fluxo_de_caixa_usa_valor_aberto_dos_movimentos_financeiros(self):
+    def test_fluxo_de_caixa_inclui_saldo_aberto_de_movimentos_parciais(self):
         conta = ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
             codigo_omie=701,
@@ -2971,7 +3131,7 @@ class DashboardPermissaoTests(TestCase):
             grupo="CONTA_A_PAGAR",
             natureza="P",
             status="PAGO",
-            liquidado=False,
+            liquidado=True,
             data_previsao=date.today(),
             data_pagamento=date.today(),
             data_vencimento=date.today(),
@@ -3007,6 +3167,72 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(
             contexto["indicadores"][2]["valor_completo"],
             "R$ 5.000,00",
+        )
+
+    def test_fluxo_de_caixa_deduplica_previstos_entre_movimentos_e_contas(self):
+        conta = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=801,
+            descricao="Conta principal",
+            saldo_atual=1000,
+        )
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=8001,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="ALARMCEL",
+        )
+        categoria = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.05.02",
+            descricao="Servicos Prestados",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=81001,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            fornecedor=fornecedor,
+            categoria_principal=categoria,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_documento=566.68,
+            valor_a_pagar=566.68,
+            status_titulo="ATRASADO",
+        )
+        MovimentoFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=81001,
+            codigo_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            cliente_fornecedor=fornecedor,
+            categoria_principal=categoria,
+            grupo="CONTA_A_PAGAR",
+            natureza="P",
+            status="PAGO",
+            liquidado=False,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_titulo=566.68,
+            valor_aberto=566.68,
+            valor_liquido=0,
+            valor_pago=0,
+        )
+
+        contexto = fluxo_de_caixa(
+            self.empresa,
+            f"mes-{date.today().year}-{date.today().month:02d}",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(
+            contexto["indicadores"][2]["valor_completo"],
+            "R$ 566,68",
+        )
+        self.assertEqual(len(contexto["detalhes_previstos"]["saidas"]), 1)
+        self.assertEqual(
+            contexto["detalhes_previstos"]["saidas"][0]["nome"],
+            "ALARMCEL",
         )
 
     def test_fluxo_de_caixa_usa_movimentos_em_vez_do_resumo_financeiro_omie(self):

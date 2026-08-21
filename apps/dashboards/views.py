@@ -8,6 +8,9 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
 from apps.dashboards.analise_clientes_services import analise_clientes_comercial
+from apps.dashboards.analise_preco_saving_services import (
+    analise_preco_saving_compras,
+)
 from apps.dashboards.aprovacao_pagamentos_services import (
     painel_aprovacao_pagamentos,
     salvar_aprovacoes_pagamentos,
@@ -143,10 +146,10 @@ AREAS = {
                 "icone": "bi-sort-down-alt",
             },
             {
-                "slug": "kardex",
-                "titulo": "Kardex",
-                "descricao": "Acompanhe a movimentacao e o saldo dos produtos.",
-                "icone": "bi-journal-text",
+                "slug": "analise-preco-saving",
+                "titulo": "Análise de Preço & Saving",
+                "descricao": "Compare variações de preço, economias e perdas por categoria.",
+                "icone": "bi-graph-down-arrow",
             },
         ],
     },
@@ -728,6 +731,15 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         )
     if area_slug == "compras" and dashboard_slug == "curva-abc":
         contexto["curva_abc_fornecedores"] = curva_abc_fornecedores_compras(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_consulta,
+        )
+    if area_slug == "compras" and dashboard_slug == "analise-preco-saving":
+        contexto["analise_preco_saving"] = analise_preco_saving_compras(
             empresa,
             periodo_selecionado,
             data_inicio,

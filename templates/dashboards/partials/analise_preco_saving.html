@@ -1,0 +1,89 @@
+<section class="price-saving-dashboard">
+    <div class="price-saving-kpis">
+        <article class="price-saving-kpi price-saving-kpi-success">
+            <span>Saving no periodo</span>
+            <strong>{{ dados.saving_total }}</strong>
+            <small>{{ dados.itens_comparados }} itens comparados</small>
+        </article>
+        <article class="price-saving-kpi price-saving-kpi-danger">
+            <span>Perda por aumento</span>
+            <strong>{{ dados.perda_total }}</strong>
+            <small>itens com aumento no periodo</small>
+        </article>
+        <article class="price-saving-kpi price-saving-kpi-warning">
+            <span>Itens com alta &gt; 10%</span>
+            <strong>{{ dados.itens_alta }}</strong>
+            <small>sobre o total filtrado</small>
+        </article>
+        <article class="price-saving-kpi price-saving-kpi-primary">
+            <span>Familia destaque</span>
+            <strong>{{ dados.familia_destaque }}</strong>
+            <small>economia de {{ dados.familia_destaque_valor }}</small>
+        </article>
+    </div>
+
+    <article class="price-saving-impact">
+        <header>
+            <div>
+                <h2>Impacto por familia de produto</h2>
+                <p>Economia vs. perda acumulada no periodo, por familia de produto</p>
+            </div>
+            <div class="price-saving-legend">
+                <span><i class="is-saving"></i>Economia</span>
+                <span><i class="is-loss"></i>Perda</span>
+            </div>
+        </header>
+        <div class="price-saving-bars">
+            {% for familia in dados.familias %}
+                <div class="price-saving-bar-row is-{{ familia.tom }}-row">
+                    <span>{{ familia.nome }}</span>
+                    <div><b style="width: {{ familia.largura }}%"></b></div>
+                    <strong>{{ familia.impacto_sinal }}{{ familia.impacto }}</strong>
+                </div>
+            {% empty %}
+                <div class="price-saving-empty">Sem dados de recebimento para o periodo selecionado.</div>
+            {% endfor %}
+        </div>
+    </article>
+
+    <div class="price-saving-tabs" role="tablist" aria-label="Visoes de analise de preco">
+        <button class="is-active" type="button">Saving Historico</button>
+        <button type="button">Saving por Cotacao</button>
+        <button type="button">Variacao entre Fornecedores</button>
+    </div>
+
+    <div class="price-saving-detail-grid">
+        <article class="price-saving-table-card">
+            <div class="price-saving-table">
+                <div class="price-saving-table-row price-saving-table-head">
+                    <span>Item</span>
+                    <span>CMC anterior</span>
+                    <span>Preco atual</span>
+                    <span>Variacao</span>
+                    <span>Impacto (R$)</span>
+                </div>
+                {% for item in dados.itens %}
+                    <div class="price-saving-table-row">
+                        <strong>{{ item.descricao }}</strong>
+                        <span>{{ item.preco_base }}</span>
+                        <span>{{ item.preco_atual }}</span>
+                        <em class="is-{{ item.tom }}">{{ item.variacao }}</em>
+                        <mark class="is-{{ item.tom }}">{{ item.impacto_sinal }}{{ item.impacto }}</mark>
+                    </div>
+                {% empty %}
+                    <div class="price-saving-table-row price-saving-table-empty">
+                        <strong>Sem itens comparaveis <small>Sincronize os recebimentos de NF-e e produtos para carregar a analise.</small></strong>
+                        <span>-</span>
+                        <span>-</span>
+                        <em>-</em>
+                        <mark>-</mark>
+                    </div>
+                {% endfor %}
+            </div>
+        </article>
+
+        <article class="price-saving-preview">
+            <span>Selecione um item na tabela para ver a evolucao de preco</span>
+        </article>
+    </div>
+</section>

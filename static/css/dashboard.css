@@ -747,7 +747,8 @@
     font-size: 1.25rem;
     line-height: 1.15;
 }
-.finance-kpi i {
+.finance-kpi > i,
+.finance-kpi-detail-button {
     display: grid;
     place-items: center;
     flex: 0 0 42px;
@@ -755,12 +756,38 @@
     height: 42px;
     color: #0f766e;
     background: #d7fbef;
+    border: 0;
     border-radius: 8px;
     font-size: 1.15rem;
 }
-.finance-kpi-negative i {
+.finance-kpi-detail-button {
+    cursor: pointer;
+    transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+.finance-kpi-detail-button:hover {
+    filter: brightness(.98);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(15, 118, 110, .16);
+}
+.finance-kpi-detail-button:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, .28);
+    outline-offset: 2px;
+}
+.finance-kpi-detail-button i {
+    display: block;
+    width: auto;
+    height: auto;
+    color: currentColor;
+    background: transparent;
+    border-radius: 0;
+}
+.finance-kpi-negative > i,
+.finance-kpi-negative .finance-kpi-detail-button {
     color: #ef4444;
     background: #fee2e2;
+}
+.finance-kpi-negative .finance-kpi-detail-button:hover {
+    box-shadow: 0 8px 18px rgba(239, 68, 68, .16);
 }
 .finance-kpi-negative strong { color: #991b1b; }
 .finance-chart-grid {
@@ -3277,6 +3304,247 @@
 .abc-class-badge-a { color: #075f54; background: #ccefe7; }
 .abc-class-badge-b { color: #7c3f00; background: #ffe3ba; }
 .abc-class-badge-c { color: #344054; background: #eceff2; }
+.price-saving-dashboard {
+    display: grid;
+    gap: 1.15rem;
+    padding: 1px;
+    color: #1d2939;
+}
+.price-saving-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(160px, 1fr));
+    gap: 1rem;
+}
+.price-saving-kpi,
+.price-saving-impact,
+.price-saving-table-card,
+.price-saving-preview {
+    background: #fff;
+    border: 1px solid #dfe3ea;
+    border-radius: 8px;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, .05);
+}
+.price-saving-kpi {
+    position: relative;
+    min-height: 100px;
+    padding: 1rem 1rem .9rem;
+    overflow: hidden;
+}
+.price-saving-kpi::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: currentColor;
+}
+.price-saving-kpi span,
+.price-saving-table-head,
+.price-saving-table-row small {
+    color: #667085;
+    font-size: .72rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.price-saving-kpi strong {
+    display: block;
+    margin-top: .45rem;
+    color: currentColor;
+    font-size: 1.55rem;
+    line-height: 1.05;
+}
+.price-saving-kpi small {
+    display: block;
+    margin-top: .35rem;
+    color: #667085;
+    font-size: .78rem;
+}
+.price-saving-kpi-success { color: #0f766e; }
+.price-saving-kpi-danger { color: #b42318; }
+.price-saving-kpi-warning { color: #b77905; }
+.price-saving-kpi-primary { color: #2563eb; }
+.price-saving-kpi-primary strong { color: #1d2939; font-size: 1rem; }
+.price-saving-impact {
+    min-height: 240px;
+    padding: 1.15rem 1.25rem;
+}
+.price-saving-impact header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.price-saving-impact h2 {
+    margin: 0;
+    color: #1d2939;
+    font-size: .95rem;
+}
+.price-saving-impact p {
+    margin: .25rem 0 0;
+    color: #667085;
+    font-size: .78rem;
+}
+.price-saving-legend {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: #475467;
+    font-size: .72rem;
+}
+.price-saving-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    white-space: nowrap;
+}
+.price-saving-legend i {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+}
+.price-saving-legend .is-saving { background: #0f766e; }
+.price-saving-legend .is-loss { background: #e5485d; }
+.price-saving-bars {
+    display: grid;
+    gap: .75rem;
+}
+.price-saving-empty {
+    min-height: 96px;
+    display: grid;
+    place-items: center;
+    color: #667085;
+    font-size: .82rem;
+    text-align: center;
+}
+.price-saving-bar-row {
+    display: grid;
+    grid-template-columns: minmax(130px, .95fr) minmax(220px, 3fr) 132px;
+    align-items: center;
+    gap: 1.25rem;
+    min-height: 24px;
+    color: #475467;
+    font-size: .78rem;
+}
+.price-saving-bar-row div {
+    position: relative;
+    height: 14px;
+    overflow: hidden;
+}
+.price-saving-bar-row b {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 3px;
+}
+.price-saving-bar-row strong {
+    justify-self: end;
+    min-width: 112px;
+    color: #1d2939;
+    font-size: .78rem;
+    font-weight: 700;
+    text-align: right;
+}
+.price-saving-bar-row.is-saving-row b {
+    right: 50%;
+    background: linear-gradient(90deg, rgba(15, 118, 110, .12), #0f766e);
+}
+.price-saving-bar-row.is-loss-row b {
+    left: 50%;
+    background: linear-gradient(90deg, #e5485d, rgba(229, 72, 93, .14));
+}
+.price-saving-bar-row.is-saving-row strong { color: #0f766e; }
+.price-saving-bar-row.is-loss-row strong { color: #b42318; }
+.price-saving-tabs {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    border-bottom: 1px solid #dfe3ea;
+}
+.price-saving-tabs button {
+    min-height: 42px;
+    padding: 0 .9rem;
+    color: #667085;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    font-size: .78rem;
+}
+.price-saving-tabs button.is-active {
+    color: #1d2939;
+    border-color: #2563eb;
+}
+.price-saving-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(280px, .95fr);
+    gap: 1rem;
+}
+.price-saving-table-card {
+    min-height: 260px;
+    overflow: hidden;
+}
+.price-saving-table {
+    overflow-x: auto;
+}
+.price-saving-table-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.5fr) minmax(110px, .7fr) minmax(110px, .7fr) minmax(90px, .6fr) minmax(110px, .7fr);
+    align-items: center;
+    gap: .8rem;
+    min-width: 720px;
+    min-height: 52px;
+    padding: .7rem 1rem;
+    border-bottom: 1px solid #e4e7ec;
+    color: #344054;
+    font-size: .78rem;
+}
+.price-saving-table-head {
+    min-height: 38px;
+    color: #667085;
+    font-size: .66rem;
+}
+.price-saving-table-row strong {
+    display: grid;
+    gap: .15rem;
+    color: #1d2939;
+    font-size: .78rem;
+    font-weight: 700;
+}
+.price-saving-table-row small {
+    letter-spacing: 0;
+    text-transform: none;
+}
+.price-saving-table-row em {
+    font-style: normal;
+    font-weight: 800;
+}
+.price-saving-table-row mark {
+    justify-self: start;
+    min-width: 72px;
+    padding: .1rem .5rem;
+    color: inherit;
+    background: transparent;
+    border-bottom: 5px solid currentColor;
+    font-size: .78rem;
+    font-weight: 800;
+}
+.price-saving-table-row .is-saving,
+.price-saving-table-row mark.is-saving { color: #0f766e; }
+.price-saving-table-row .is-loss,
+.price-saving-table-row mark.is-loss { color: #b42318; }
+.price-saving-table-row .is-neutral,
+.price-saving-table-row mark.is-neutral { color: #667085; }
+.price-saving-table-empty {
+    min-height: 82px;
+}
+.price-saving-preview {
+    display: grid;
+    place-items: center;
+    min-height: 154px;
+    padding: 1.5rem;
+    color: #667085;
+    text-align: center;
+    font-size: .82rem;
+}
 @media (max-width: 991.98px) {
     .app-sidebar { flex-basis: 76px; padding-inline: .65rem; }
     .sidebar-company { justify-content: center; padding: .55rem; }
@@ -3398,7 +3666,9 @@
     .supplier-score-layout,
     .supplier-score-cards,
     .abc-suppliers-kpis,
-    .abc-suppliers-grid {
+    .abc-suppliers-grid,
+    .price-saving-kpis,
+    .price-saving-detail-grid {
         grid-template-columns: 1fr;
     }
     .purchase-budget-card-header {
@@ -3429,5 +3699,22 @@
         left: .5rem;
         right: 1.6rem;
         gap: .35rem;
+    }
+    .price-saving-impact header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .price-saving-bar-row {
+        grid-template-columns: 1fr;
+        gap: .35rem;
+    }
+    .price-saving-bar-row div {
+        width: 100%;
+    }
+    .price-saving-tabs {
+        overflow-x: auto;
+    }
+    .price-saving-tabs button {
+        white-space: nowrap;
     }
 }
