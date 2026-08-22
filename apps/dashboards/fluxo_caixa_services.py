@@ -27,6 +27,7 @@ from apps.empresas.models import (
     Empresa,
     LancamentoContaCorrenteOmie,
     MovimentoFinanceiroOmie,
+    PesqTituloFinanceiroOmie,
 )
 
 
@@ -161,6 +162,45 @@ def _query_movimentos_previstos_omie(hoje, empresas_ids, projetos, natureza):
     return registros_com_conta_visivel_financeiro(queryset, "codigo_conta_corrente")
 
 
+def _query_pagar_pago_parcial_pesq_titulo(hoje, empresas_ids, projetos, codigos_movimentos):
+    titulos = PesqTituloFinanceiroOmie.objects.filter(
+        empresa_id__in=empresas_ids,
+        ativo_omie=True,
+        natureza="P",
+        valor_aberto__gt=0,
+        data_previsao__lte=hoje,
+    )
+    if codigos_movimentos:
+        titulos = titulos.exclude(codigo_titulo__in=codigos_movimentos)
+
+    titulos_por_codigo = {
+        titulo.codigo_titulo: titulo
+        for titulo in titulos.select_related("categoria_principal", "cliente_fornecedor")
+    }
+    if not titulos_por_codigo:
+        return []
+
+    contas = ContaPagarOmie.objects.filter(
+        empresa_id__in=empresas_ids,
+        ativo_omie=True,
+        codigo_lancamento_omie__in=titulos_por_codigo.keys(),
+        status_titulo__iexact="PAGO",
+    )
+    if projetos:
+        contas = contas.filter(codigo_projeto__in=projetos)
+    contas = registros_com_conta_visivel_financeiro(
+        contas,
+        "id_conta_corrente",
+    ).select_related("fornecedor", "categoria_principal")
+
+    pares = []
+    for conta in contas:
+        titulo = titulos_por_codigo.get(conta.codigo_lancamento_omie)
+        if titulo:
+            pares.append((conta, titulo))
+    return pares
+
+
 def _query_movimentos_financeiros(empresas_ids, projetos, natureza, inicio=None, fim=None):
     queryset = MovimentoFinanceiroOmie.objects.filter(
         empresa_id__in=empresas_ids,
@@ -235,6 +275,10 @@ def _total_pagar_aberto_sem_movimento(queryset, codigos_movimentos):
     return total
 
 
+def _total_pagar_pesq_titulos_parciais(pares):
+    return sum((abs(_decimal(titulo.valor_aberto)) for _, titulo in pares), Decimal("0"))
+
+
 def _linha_prevista_movimento(movimento):
     data = movimento.data_previsao or movimento.data_vencimento
     valor = abs(_valor_previsto_movimento(movimento))
@@ -295,11 +339,27 @@ def _linha_prevista_conta_pagar(conta):
     }
 
 
+def _linha_prevista_pesq_titulo_pagar(conta, titulo):
+    data = titulo.data_previsao or conta.data_previsao or conta.data_vencimento
+    valor = abs(_decimal(titulo.valor_aberto))
+    categoria = _categoria_conta(conta)
+    if categoria == "Sem categoria":
+        categoria = _categoria_lancamento(titulo)
+    return {
+        "data": data.strftime("%d/%m/%Y") if data else "",
+        "nome": _nome_conta_pagar(conta),
+        "categoria": categoria,
+        "valor": float(valor),
+        "valor_fmt": _formatar_moeda(valor),
+    }
+
+
 def _detalhes_previstos(
     movimentos_receber,
     movimentos_pagar,
     receber_aberto,
     pagar_aberto,
+    pagar_pesq_titulos_parciais,
     codigos_receber_movimentos,
     codigos_pagar_movimentos,
 ):
@@ -320,6 +380,10 @@ def _detalhes_previstos(
         _linha_prevista_conta_pagar(conta)
         for conta in pagar_aberto.select_related("fornecedor", "categoria_principal")
         if conta.codigo_lancamento_omie not in codigos_pagar_movimentos
+    )
+    saidas.extend(
+        _linha_prevista_pesq_titulo_pagar(conta, titulo)
+        for conta, titulo in pagar_pesq_titulos_parciais
     )
 
     def ordenar(item):
@@ -1139,6 +1203,12 @@ def fluxo_de_caixa(
     saidas_previstas, codigos_pagar_movimentos = _total_previsto_movimentos(
         movimentos_pagar_previstos
     )
+    pagar_pesq_titulos_parciais = _query_pagar_pago_parcial_pesq_titulo(
+        hoje,
+        empresas_ids,
+        projetos,
+        codigos_pagar_movimentos,
+    )
     entradas_previstas += _total_receber_aberto_sem_movimento(
         _query_receber_previsto_omie(hoje, empresas_ids, projetos),
         codigos_receber_movimentos,
@@ -1147,11 +1217,15 @@ def fluxo_de_caixa(
         _query_pagar_previsto_omie(hoje, empresas_ids, projetos),
         codigos_pagar_movimentos,
     )
+    saidas_previstas += _total_pagar_pesq_titulos_parciais(
+        pagar_pesq_titulos_parciais
+    )
     detalhes_previstos = _detalhes_previstos(
         movimentos_receber_previstos,
         movimentos_pagar_previstos,
         _query_receber_previsto_omie(hoje, empresas_ids, projetos),
         _query_pagar_previsto_omie(hoje, empresas_ids, projetos),
+        pagar_pesq_titulos_parciais,
         codigos_receber_movimentos,
         codigos_pagar_movimentos,
     )

@@ -31,6 +31,7 @@ from .models import (
     PedidoCompraOmie,
     PedidoItemOmie,
     PedidoOmie,
+    PesqTituloFinanceiroOmie,
     PosicaoEstoqueOmie,
     ProdutoOmie,
     ProjetoOmie,
@@ -57,6 +58,7 @@ EXTRATO_CONTA_CORRENTE_URL = "https://app.omie.com.br/api/v1/financas/extrato/"
 RESUMO_FINANCAS_URL = "https://app.omie.com.br/api/v1/financas/resumo/"
 ORCAMENTOS_CAIXA_URL = "https://app.omie.com.br/api/v1/financas/caixa/"
 MOVIMENTOS_FINANCEIROS_URL = "https://app.omie.com.br/api/v1/financas/mf/"
+PESQUISAR_TITULOS_URL = "https://app.omie.com.br/api/v1/financas/pesquisartitulos/"
 LANCAMENTOS_CONTA_CORRENTE_URL = (
     "https://app.omie.com.br/api/v1/financas/contacorrentelancamentos/"
 )
@@ -767,6 +769,49 @@ def consultar_movimentos_financeiros(
         raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_pesq_titulos_financeiros(
+    integracao,
+    pagina,
+    registros_por_pagina=500,
+):
+    payload = {
+        "call": "PesquisarLancamentos",
+        "param": [
+            {
+                "nPagina": pagina,
+                "nRegPorPagina": registros_por_pagina,
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        PESQUISAR_TITULOS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invalida.") from exc
 
     if "faultstring" in dados:
         raise OmieAPIError(dados["faultstring"])
@@ -2722,6 +2767,114 @@ def _salvar_movimentos_financeiros(empresa, itens):
     return processados
 
 
+def _salvar_pesq_titulos_financeiros(empresa, itens):
+    agora = timezone.now()
+    codigos_clientes = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("cabecTitulo") or {}).get("nCodCliente"))]
+        if codigo is not None
+    }
+    ids_contas_correntes = {
+        codigo
+        for item in itens
+        for codigo in [_inteiro_ou_none((item.get("cabecTitulo") or {}).get("nCodCC"))]
+        if codigo is not None
+    }
+    codigos_categorias = {
+        str((item.get("cabecTitulo") or {}).get("cCodCateg") or "").strip()
+        for item in itens
+        if str((item.get("cabecTitulo") or {}).get("cCodCateg") or "").strip()
+    }
+    clientes = {
+        cadastro.codigo_cliente_omie: cadastro
+        for cadastro in CadastroOmie.objects.filter(
+            empresa=empresa,
+            codigo_cliente_omie__in=codigos_clientes,
+        )
+    }
+    contas_correntes = {
+        conta.codigo_omie: conta
+        for conta in ContaCorrenteOmie.objects.filter(
+            empresa=empresa,
+            codigo_omie__in=ids_contas_correntes,
+        )
+    }
+    categorias = {
+        categoria.codigo: categoria
+        for categoria in CategoriaOmie.objects.filter(
+            empresa=empresa,
+            codigo__in=codigos_categorias,
+        )
+    }
+
+    processados = 0
+    for item in itens:
+        cabecalho = item.get("cabecTitulo") or {}
+        resumo = item.get("resumo") or {}
+        codigo_titulo = _inteiro_ou_none(cabecalho.get("nCodTitulo"))
+        if codigo_titulo is None:
+            continue
+
+        codigo_cliente = _inteiro_ou_none(cabecalho.get("nCodCliente"))
+        codigo_conta = _inteiro_ou_none(cabecalho.get("nCodCC"))
+        codigo_categoria = str(cabecalho.get("cCodCateg") or "").strip()
+
+        PesqTituloFinanceiroOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_titulo=codigo_titulo,
+            defaults={
+                "codigo_titulo_repeticao": _inteiro_ou_none(
+                    cabecalho.get("nCodTitRepet")
+                ),
+                "codigo_cliente_fornecedor": codigo_cliente,
+                "cliente_fornecedor": clientes.get(codigo_cliente),
+                "codigo_conta_corrente": codigo_conta,
+                "conta_corrente": contas_correntes.get(codigo_conta),
+                "codigo_categoria": codigo_categoria,
+                "categoria_principal": categorias.get(codigo_categoria),
+                "natureza": str(cabecalho.get("cNatureza") or ""),
+                "origem": str(cabecalho.get("cOrigem") or ""),
+                "status": str(cabecalho.get("cStatus") or ""),
+                "liquidado": _sim_nao(resumo.get("cLiquidado")),
+                "tipo_documento": str(cabecalho.get("cTipo") or ""),
+                "numero_titulo": str(cabecalho.get("cNumTitulo") or ""),
+                "numero_documento_fiscal": str(
+                    cabecalho.get("cNumDocFiscal") or ""
+                ),
+                "cpf_cnpj_cliente": str(cabecalho.get("cCPFCNPJCliente") or ""),
+                "data_emissao": _data_omie(cabecalho.get("dDtEmissao")),
+                "data_pagamento": _data_omie(cabecalho.get("dDtPagamento")),
+                "data_previsao": _data_omie(cabecalho.get("dDtPrevisao")),
+                "data_registro": _data_omie(cabecalho.get("dDtRegistro")),
+                "data_vencimento": _data_omie(cabecalho.get("dDtVenc")),
+                "valor_titulo": _decimal(cabecalho.get("nValorTitulo")),
+                "valor_aberto": _decimal(resumo.get("nValAberto")),
+                "valor_liquido": _decimal(resumo.get("nValLiquido")),
+                "valor_pago": _decimal(resumo.get("nValPago")),
+                "desconto": _decimal(resumo.get("nDesconto")),
+                "juros": _decimal(resumo.get("nJuros")),
+                "multa": _decimal(resumo.get("nMulta")),
+                "valor_cofins": _decimal(cabecalho.get("nValorCOFINS")),
+                "valor_csll": _decimal(cabecalho.get("nValorCSLL")),
+                "valor_inss": _decimal(cabecalho.get("nValorINSS")),
+                "valor_ir": _decimal(cabecalho.get("nValorIR")),
+                "valor_iss": _decimal(cabecalho.get("nValorISS")),
+                "valor_pis": _decimal(cabecalho.get("nValorPIS")),
+                "observacao": str(cabecalho.get("observacao") or ""),
+                "categorias": cabecalho.get("aCodCateg") or [],
+                "departamentos": item.get("departamentos") or [],
+                "lancamentos": item.get("lancamentos") or [],
+                "cabec_titulo": cabecalho,
+                "resumo": resumo,
+                "dados_originais": item,
+                **_presenca_omie(agora),
+            },
+        )
+        processados += 1
+    return processados
+
+
 def _salvar_pedidos(empresa, itens):
     agora = timezone.now()
     codigos_clientes = {
@@ -3486,6 +3639,15 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_movimentos_financeiros,
                 "modelo": MovimentoFinanceiroOmie,
+            },
+            {
+                "nome": "Titulos financeiros pesquisados",
+                "consultar": consultar_pesq_titulos_financeiros,
+                "chave": "titulosEncontrados",
+                "chave_total_paginas": "nTotPaginas",
+                "chave_total_registros": "nTotRegistros",
+                "salvar": _salvar_pesq_titulos_financeiros,
+                "modelo": PesqTituloFinanceiroOmie,
             },
             {
                 "nome": "Lançamentos de conta corrente",
