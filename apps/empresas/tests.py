@@ -36,6 +36,7 @@ from .models import (
     PedidoCompraOmie,
     PedidoItemOmie,
     PedidoOmie,
+    PesqTituloFinanceiroOmie,
     PosicaoEstoqueOmie,
     ProdutoOmie,
     ProjetoOmie,
@@ -60,6 +61,7 @@ from .omie import (
     consultar_ordens_servico,
     consultar_pedidos,
     consultar_pedidos_compra,
+    consultar_pesq_titulos_financeiros,
     consultar_recebimento_nfe,
     consultar_recebimentos_nfe,
     consultar_posicoes_estoque,
@@ -1365,15 +1367,16 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_contas_receber(self.integracao, 5)
         consultar_lancamentos_conta_corrente(self.integracao, 6)
         consultar_movimentos_financeiros(self.integracao, 7)
-        consultar_produtos(self.integracao, 8)
-        consultar_posicoes_estoque(self.integracao, 9)
-        consultar_pedidos(self.integracao, 10)
-        consultar_pedidos_compra(self.integracao, 11)
-        consultar_recebimentos_nfe(self.integracao, 12)
-        consultar_servicos(self.integracao, 13)
-        consultar_ordens_servico(self.integracao, 14)
-        consultar_contratos(self.integracao, 15)
-        consultar_vendedores(self.integracao, 16)
+        consultar_pesq_titulos_financeiros(self.integracao, 8)
+        consultar_produtos(self.integracao, 9)
+        consultar_posicoes_estoque(self.integracao, 10)
+        consultar_pedidos(self.integracao, 11)
+        consultar_pedidos_compra(self.integracao, 12)
+        consultar_recebimentos_nfe(self.integracao, 13)
+        consultar_servicos(self.integracao, 14)
+        consultar_ordens_servico(self.integracao, 15)
+        consultar_contratos(self.integracao, 16)
+        consultar_vendedores(self.integracao, 17)
         consultar_resumo_financas(self.integracao)
         conta_extrato = ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
@@ -1473,21 +1476,35 @@ class SincronizacaoClientesOmieTests(TestCase):
             },
         )
 
-        requisicao_produtos = urlopen_mock.call_args_list[6].args[0]
+        requisicao_titulos = urlopen_mock.call_args_list[6].args[0]
+        payload_titulos = json.loads(requisicao_titulos.data)
+        self.assertTrue(
+            requisicao_titulos.full_url.endswith("/financas/pesquisartitulos/")
+        )
+        self.assertEqual(payload_titulos["call"], "PesquisarLancamentos")
+        self.assertEqual(
+            payload_titulos["param"][0],
+            {
+                "nPagina": 8,
+                "nRegPorPagina": 500,
+            },
+        )
+
+        requisicao_produtos = urlopen_mock.call_args_list[7].args[0]
         payload_produtos = json.loads(requisicao_produtos.data)
         self.assertTrue(requisicao_produtos.full_url.endswith("/geral/produtos/"))
         self.assertEqual(payload_produtos["call"], "ListarProdutos")
         self.assertEqual(
             payload_produtos["param"][0],
             {
-                "pagina": 8,
+                "pagina": 9,
                 "registros_por_pagina": 50,
                 "apenas_importado_api": "N",
                 "filtrar_apenas_omiepdv": "N",
             },
         )
 
-        requisicao_posicoes = urlopen_mock.call_args_list[7].args[0]
+        requisicao_posicoes = urlopen_mock.call_args_list[8].args[0]
         payload_posicoes = json.loads(requisicao_posicoes.data)
         self.assertTrue(requisicao_posicoes.full_url.endswith("/estoque/consulta/"))
         self.assertEqual(payload_posicoes["call"], "ListarPosEstoque")
@@ -1495,27 +1512,27 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(
             payload_posicoes["param"][0],
             {
-                "nPagina": 9,
+                "nPagina": 10,
                 "nRegPorPagina": 50,
                 "cExibeTodos": "N",
                 "codigo_local_estoque": 0,
             },
         )
 
-        requisicao_pedidos = urlopen_mock.call_args_list[8].args[0]
+        requisicao_pedidos = urlopen_mock.call_args_list[9].args[0]
         payload_pedidos = json.loads(requisicao_pedidos.data)
         self.assertTrue(requisicao_pedidos.full_url.endswith("/produtos/pedido/"))
         self.assertEqual(payload_pedidos["call"], "ListarPedidos")
         self.assertEqual(
             payload_pedidos["param"][0],
             {
-                "pagina": 10,
+                "pagina": 11,
                 "registros_por_pagina": 100,
                 "apenas_importado_api": "N",
             },
         )
 
-        requisicao_pedidos_compra = urlopen_mock.call_args_list[9].args[0]
+        requisicao_pedidos_compra = urlopen_mock.call_args_list[10].args[0]
         payload_pedidos_compra = json.loads(requisicao_pedidos_compra.data)
         self.assertTrue(
             requisicao_pedidos_compra.full_url.endswith(
@@ -1526,7 +1543,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(
             payload_pedidos_compra["param"][0],
             {
-                "nPagina": 11,
+                "nPagina": 12,
                 "nRegsPorPagina": 100,
                 "lApenasImportadoApi": "F",
                 "lExibirPedidosPendentes": "T",
@@ -1542,7 +1559,7 @@ class SincronizacaoClientesOmieTests(TestCase):
             },
         )
 
-        requisicao_recebimentos = urlopen_mock.call_args_list[10].args[0]
+        requisicao_recebimentos = urlopen_mock.call_args_list[11].args[0]
         payload_recebimentos = json.loads(requisicao_recebimentos.data)
         self.assertTrue(
             requisicao_recebimentos.full_url.endswith(
@@ -1553,36 +1570,36 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(
             payload_recebimentos["param"][0],
             {
-                "nPagina": 12,
+                "nPagina": 13,
             },
         )
 
-        requisicao_servicos = urlopen_mock.call_args_list[11].args[0]
+        requisicao_servicos = urlopen_mock.call_args_list[12].args[0]
         payload_servicos = json.loads(requisicao_servicos.data)
         self.assertTrue(requisicao_servicos.full_url.endswith("/servicos/servico/"))
         self.assertEqual(payload_servicos["call"], "ListarCadastroServico")
         self.assertEqual(
             payload_servicos["param"][0],
             {
-                "nPagina": 13,
+                "nPagina": 14,
                 "nRegPorPagina": 20,
             },
         )
 
-        requisicao_os = urlopen_mock.call_args_list[12].args[0]
+        requisicao_os = urlopen_mock.call_args_list[13].args[0]
         payload_os = json.loads(requisicao_os.data)
         self.assertTrue(requisicao_os.full_url.endswith("/servicos/os/"))
         self.assertEqual(payload_os["call"], "ListarOS")
         self.assertEqual(
             payload_os["param"][0],
             {
-                "pagina": 14,
+                "pagina": 15,
                 "registros_por_pagina": 50,
                 "apenas_importado_api": "N",
             },
         )
 
-        requisicao_contratos = urlopen_mock.call_args_list[13].args[0]
+        requisicao_contratos = urlopen_mock.call_args_list[14].args[0]
         payload_contratos = json.loads(requisicao_contratos.data)
         self.assertTrue(
             requisicao_contratos.full_url.endswith("/servicos/contrato/")
@@ -1591,25 +1608,25 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(
             payload_contratos["param"][0],
             {
-                "pagina": 15,
+                "pagina": 16,
                 "registros_por_pagina": 50,
                 "apenas_importado_api": "N",
             },
         )
 
-        requisicao_vendedores = urlopen_mock.call_args_list[14].args[0]
+        requisicao_vendedores = urlopen_mock.call_args_list[15].args[0]
         payload_vendedores = json.loads(requisicao_vendedores.data)
         self.assertTrue(requisicao_vendedores.full_url.endswith("/geral/vendedores/"))
         self.assertEqual(payload_vendedores["call"], "ListarVendedores")
         self.assertEqual(
             payload_vendedores["param"][0],
             {
-                "pagina": 16,
+                "pagina": 17,
                 "registros_por_pagina": 100,
                 "apenas_importado_api": "N",
             },
         )
-        requisicao_resumo = urlopen_mock.call_args_list[15].args[0]
+        requisicao_resumo = urlopen_mock.call_args_list[16].args[0]
         payload_resumo = json.loads(requisicao_resumo.data)
         self.assertTrue(requisicao_resumo.full_url.endswith("/financas/resumo/"))
         self.assertEqual(payload_resumo["call"], "ObterResumoFinancas")
@@ -1620,7 +1637,7 @@ class SincronizacaoClientesOmieTests(TestCase):
                 "lApenasResumo": True,
             },
         )
-        requisicao_extrato = urlopen_mock.call_args_list[16].args[0]
+        requisicao_extrato = urlopen_mock.call_args_list[17].args[0]
         payload_extrato = json.loads(requisicao_extrato.data)
         self.assertTrue(requisicao_extrato.full_url.endswith("/financas/extrato/"))
         self.assertEqual(payload_extrato["call"], "ListarExtrato")
@@ -2059,6 +2076,7 @@ class SincronizacaoClientesOmieTests(TestCase):
     @patch("apps.empresas.omie.consultar_pedidos")
     @patch("apps.empresas.omie.consultar_posicoes_estoque")
     @patch("apps.empresas.omie.consultar_produtos")
+    @patch("apps.empresas.omie.consultar_pesq_titulos_financeiros")
     @patch("apps.empresas.omie.consultar_lancamentos_conta_corrente")
     @patch("apps.empresas.omie.consultar_movimentos_financeiros")
     @patch("apps.empresas.omie.consultar_contas_receber")
@@ -2083,6 +2101,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_contas_receber_mock,
         consultar_movimentos_financeiros_mock,
         consultar_lancamentos_conta_corrente_mock,
+        consultar_pesq_titulos_financeiros_mock,
         consultar_produtos_mock,
         consultar_posicoes_estoque_mock,
         consultar_pedidos_mock,
@@ -2703,6 +2722,69 @@ class SincronizacaoClientesOmieTests(TestCase):
                 }
             ],
         }
+        consultar_pesq_titulos_financeiros_mock.return_value = {
+            "nPagina": 1,
+            "nTotPaginas": 1,
+            "nRegistros": 1,
+            "nTotRegistros": 1,
+            "titulosEncontrados": [
+                {
+                    "cabecTitulo": {
+                        "aCodCateg": [
+                            {
+                                "cCodCateg": "0.01",
+                                "nPerc": 100,
+                                "nValor": 10000,
+                            }
+                        ],
+                        "cCPFCNPJCliente": "00.000.000/0002-22",
+                        "cCodCateg": "0.01",
+                        "cNatureza": "P",
+                        "cNumDocFiscal": "NF500013",
+                        "cNumTitulo": "RPS 3071844",
+                        "cOrigem": "APIP",
+                        "cStatus": "PAGO",
+                        "cTipo": "BOL",
+                        "dDtEmissao": "07/10/2025",
+                        "dDtPagamento": "15/12/2025",
+                        "dDtPrevisao": "10/11/2025",
+                        "dDtRegistro": "07/10/2025",
+                        "dDtVenc": "04/11/2025",
+                        "nCodCC": 3036783065,
+                        "nCodCliente": 202,
+                        "nCodTitRepet": 1344090316,
+                        "nCodTitulo": 1344090316,
+                        "nValorTitulo": 10000,
+                        "observacao": "Conta a pagar importada automaticamente.",
+                    },
+                    "departamentos": [
+                        {
+                            "cCodDepartamento": "303",
+                            "nDistrPercentual": 100,
+                            "nDistrValor": 10000,
+                        }
+                    ],
+                    "lancamentos": [
+                        {
+                            "cNatureza": "P",
+                            "dDtLanc": "15/12/2025",
+                            "nCodCC": 3036783065,
+                            "nCodLanc": 10048833261,
+                            "nValLanc": 5000,
+                        }
+                    ],
+                    "resumo": {
+                        "cLiquidado": "N",
+                        "nDesconto": 0,
+                        "nJuros": 0,
+                        "nMulta": 0,
+                        "nValAberto": 5000,
+                        "nValLiquido": 5000,
+                        "nValPago": 5000,
+                    },
+                }
+            ],
+        }
         consultar_lancamentos_conta_corrente_mock.return_value = {
             "nPagina": 1,
             "nTotPaginas": 1,
@@ -2892,8 +2974,8 @@ class SincronizacaoClientesOmieTests(TestCase):
 
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA)
-        self.assertEqual(sincronizacao.pagina_atual, 20)
-        self.assertEqual(sincronizacao.registros_processados, 20)
+        self.assertEqual(sincronizacao.pagina_atual, 21)
+        self.assertEqual(sincronizacao.registros_processados, 21)
         self.assertEqual(CadastroOmie.objects.count(), 2)
         self.assertEqual(
             CadastroOmie.objects.get(codigo_cliente_omie=101).tipo,
@@ -3071,6 +3153,20 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(str(movimento.valor_titulo), "10000.00")
         self.assertEqual(str(movimento.valor_aberto), "5000.00")
         self.assertEqual(str(movimento.valor_pago), "5000.00")
+        titulo_pesquisado = PesqTituloFinanceiroOmie.objects.get(
+            codigo_titulo=1344090316
+        )
+        self.assertEqual(titulo_pesquisado.cliente_fornecedor.codigo_cliente_omie, 202)
+        self.assertEqual(titulo_pesquisado.conta_corrente, conta)
+        self.assertEqual(titulo_pesquisado.categoria_principal, categoria)
+        self.assertEqual(titulo_pesquisado.natureza, "P")
+        self.assertEqual(titulo_pesquisado.status, "PAGO")
+        self.assertFalse(titulo_pesquisado.liquidado)
+        self.assertEqual(titulo_pesquisado.numero_documento_fiscal, "NF500013")
+        self.assertEqual(str(titulo_pesquisado.valor_titulo), "10000.00")
+        self.assertEqual(str(titulo_pesquisado.valor_aberto), "5000.00")
+        self.assertEqual(str(titulo_pesquisado.valor_pago), "5000.00")
+        self.assertEqual(titulo_pesquisado.lancamentos[0]["nValLanc"], 5000)
         conta_receber = ContaReceberOmie.objects.get(
             codigo_lancamento_omie=3037854759
         )

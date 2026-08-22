@@ -1983,6 +1983,106 @@ class MovimentoFinanceiroOmie(models.Model):
         return self.numero_titulo or str(self.codigo_titulo)
 
 
+class PesqTituloFinanceiroOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="pesq_titulos_financeiros_omie",
+    )
+    codigo_titulo = models.BigIntegerField()
+    codigo_titulo_repeticao = models.BigIntegerField(null=True, blank=True)
+    codigo_cliente_fornecedor = models.BigIntegerField(null=True, blank=True)
+    cliente_fornecedor = models.ForeignKey(
+        CadastroOmie,
+        on_delete=models.SET_NULL,
+        related_name="pesq_titulos_financeiros",
+        null=True,
+        blank=True,
+    )
+    codigo_conta_corrente = models.BigIntegerField(null=True, blank=True)
+    conta_corrente = models.ForeignKey(
+        ContaCorrenteOmie,
+        on_delete=models.SET_NULL,
+        related_name="pesq_titulos_financeiros",
+        null=True,
+        blank=True,
+    )
+    codigo_categoria = models.CharField(max_length=80, blank=True)
+    categoria_principal = models.ForeignKey(
+        CategoriaOmie,
+        on_delete=models.SET_NULL,
+        related_name="pesq_titulos_financeiros",
+        null=True,
+        blank=True,
+    )
+    natureza = models.CharField(max_length=1, blank=True)
+    origem = models.CharField(max_length=4, blank=True)
+    status = models.CharField(max_length=30, blank=True)
+    liquidado = models.BooleanField(default=False)
+    tipo_documento = models.CharField(max_length=5, blank=True)
+    numero_titulo = models.CharField(max_length=60, blank=True)
+    numero_documento_fiscal = models.CharField(max_length=60, blank=True)
+    cpf_cnpj_cliente = models.CharField(max_length=20, blank=True)
+    data_emissao = models.DateField(null=True, blank=True)
+    data_pagamento = models.DateField(null=True, blank=True)
+    data_previsao = models.DateField(null=True, blank=True)
+    data_registro = models.DateField(null=True, blank=True)
+    data_vencimento = models.DateField(null=True, blank=True)
+    valor_titulo = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_aberto = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_liquido = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_pago = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    desconto = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    juros = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    multa = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_cofins = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_csll = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_inss = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_ir = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_iss = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    valor_pis = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    observacao = models.TextField(blank=True)
+    categorias = models.JSONField(default=list, blank=True)
+    departamentos = models.JSONField(default=list, blank=True)
+    lancamentos = models.JSONField(default=list, blank=True)
+    cabec_titulo = models.JSONField(default=dict, blank=True)
+    resumo = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "empresas_pesq_titulofinanceiroomie"
+        ordering = ["data_previsao", "codigo_titulo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_titulo"],
+                name="pesq_tit_fin_emp_titulo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "data_previsao"],
+                name="pesq_tit_emp_prev_idx",
+            ),
+            models.Index(
+                fields=["empresa", "natureza", "status"],
+                name="pesq_tit_emp_nat_st_idx",
+            ),
+            models.Index(
+                fields=["empresa", "liquidado"],
+                name="pesq_tit_emp_liq_idx",
+            ),
+        ]
+        verbose_name = "titulo financeiro pesquisado OMIE"
+        verbose_name_plural = "titulos financeiros pesquisados OMIE"
+
+    def __str__(self):
+        return self.numero_titulo or str(self.codigo_titulo)
+
+
 class ContaDRE(models.Model):
     class Sinal(models.TextChoices):
         SOMA = "+", "Somatória (+)"

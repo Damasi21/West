@@ -34,6 +34,7 @@ from apps.empresas.models import (
     PedidoCompraOmie,
     PedidoItemOmie,
     PedidoOmie,
+    PesqTituloFinanceiroOmie,
     PosicaoEstoqueOmie,
     ProdutoOmie,
     ProjetoOmie,
@@ -3167,6 +3168,113 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(
             contexto["indicadores"][2]["valor_completo"],
             "R$ 5.000,00",
+        )
+
+    def test_fluxo_de_caixa_inclui_saldo_aberto_de_titulo_pago_pesquisado(self):
+        conta = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=711,
+            descricao="Conta principal",
+            saldo_atual=1000,
+        )
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=9990499663,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="LEVISA",
+        )
+        categoria = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="2.05.02",
+            descricao="Servicos Prestados",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=71003,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            fornecedor=fornecedor,
+            categoria_principal=categoria,
+            codigo_categoria=categoria.codigo,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_documento=6444,
+            valor_a_pagar=6444,
+            status_titulo="PAGO",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=71004,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            fornecedor=fornecedor,
+            categoria_principal=categoria,
+            codigo_categoria=categoria.codigo,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_documento=1200,
+            valor_a_pagar=1200,
+            status_titulo="ATRASADO",
+        )
+        PesqTituloFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=71003,
+            codigo_cliente_fornecedor=fornecedor.codigo_cliente_omie,
+            cliente_fornecedor=fornecedor,
+            codigo_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            codigo_categoria=categoria.codigo,
+            categoria_principal=categoria,
+            natureza="P",
+            status="PAGO",
+            liquidado=False,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_titulo=6444,
+            valor_aberto=1444,
+            valor_liquido=5000,
+            valor_pago=5000,
+        )
+        PesqTituloFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=71004,
+            codigo_cliente_fornecedor=fornecedor.codigo_cliente_omie,
+            cliente_fornecedor=fornecedor,
+            codigo_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            codigo_categoria=categoria.codigo,
+            categoria_principal=categoria,
+            natureza="P",
+            status="ATRASADO",
+            liquidado=False,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_titulo=1200,
+            valor_aberto=700,
+            valor_liquido=500,
+            valor_pago=500,
+        )
+
+        contexto = fluxo_de_caixa(
+            self.empresa,
+            f"mes-{date.today().year}-{date.today().month:02d}",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(
+            contexto["indicadores"][2]["valor_completo"],
+            "R$ 2.644,00",
+        )
+        self.assertEqual(len(contexto["detalhes_previstos"]["saidas"]), 2)
+        self.assertIn(
+            {
+                "data": date.today().strftime("%d/%m/%Y"),
+                "nome": "LEVISA",
+                "categoria": "Servicos Prestados",
+                "valor": 1444.0,
+                "valor_fmt": "R$ 1.444,00",
+            },
+            contexto["detalhes_previstos"]["saidas"],
         )
 
     def test_fluxo_de_caixa_deduplica_previstos_entre_movimentos_e_contas(self):

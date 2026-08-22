@@ -23,6 +23,7 @@ from .models import (
     PedidoCompraOmie,
     PedidoItemOmie,
     PedidoOmie,
+    PesqTituloFinanceiroOmie,
     PosicaoEstoqueOmie,
     ProdutoOmie,
     ProjetoOmie,
@@ -785,6 +786,40 @@ class MovimentoFinanceiroOmieAdmin(admin.ModelAdmin):
     )
     readonly_fields = (
         "detalhes",
+        "resumo",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
+
+
+@admin.register(PesqTituloFinanceiroOmie)
+class PesqTituloFinanceiroOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "numero_titulo",
+        "codigo_titulo",
+        "cliente_fornecedor",
+        "natureza",
+        "status",
+        "data_previsao",
+        "valor_aberto",
+        "valor_pago",
+        "liquidado",
+        "empresa",
+    )
+    list_filter = ("empresa", "natureza", "status", "liquidado", "data_previsao")
+    search_fields = (
+        "numero_titulo",
+        "numero_documento_fiscal",
+        "codigo_titulo",
+        "cliente_fornecedor__razao_social",
+        "cliente_fornecedor__nome_fantasia",
+    )
+    readonly_fields = (
+        "categorias",
+        "departamentos",
+        "lancamentos",
+        "cabec_titulo",
         "resumo",
         "dados_originais",
         "sincronizado_em",
