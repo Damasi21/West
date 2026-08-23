@@ -2884,6 +2884,79 @@ class DashboardPermissaoTests(TestCase):
             contexto["detalhes_previstos"]["saidas"],
         )
 
+    def test_fluxo_de_caixa_inclui_saldo_aberto_de_titulo_recebido_pesquisado(self):
+        conta = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=712,
+            descricao="Conta principal",
+            saldo_atual=1000,
+        )
+        cliente = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=10453065883,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="ECOSYSTEM",
+        )
+        categoria = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01.02",
+            descricao="Servicos Prestados",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=72003,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            cliente=cliente,
+            categoria_principal=categoria,
+            codigo_categoria=categoria.codigo,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_documento=3000,
+            valor_a_receber=3000,
+            status_titulo="RECEBIDO",
+        )
+        PesqTituloFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=72003,
+            codigo_cliente_fornecedor=cliente.codigo_cliente_omie,
+            cliente_fornecedor=cliente,
+            codigo_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            codigo_categoria=categoria.codigo,
+            categoria_principal=categoria,
+            natureza="R",
+            status="RECEBIDO",
+            liquidado=False,
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_titulo=3000,
+            valor_aberto=935.5,
+            valor_liquido=2064.5,
+            valor_pago=2064.5,
+        )
+
+        contexto = fluxo_de_caixa(
+            self.empresa,
+            f"mes-{date.today().year}-{date.today().month:02d}",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(
+            contexto["indicadores"][1]["valor_completo"],
+            "R$ 935,50",
+        )
+        self.assertIn(
+            {
+                "data": date.today().strftime("%d/%m/%Y"),
+                "nome": "ECOSYSTEM",
+                "categoria": "Servicos Prestados",
+                "valor": 935.5,
+                "valor_fmt": "R$ 935,50",
+            },
+            contexto["detalhes_previstos"]["entradas"],
+        )
+
     def test_fluxo_de_caixa_deduplica_previstos_entre_movimentos_e_contas(self):
         conta = ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
