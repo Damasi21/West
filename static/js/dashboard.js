@@ -231,7 +231,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const openCashflowDetails = (detail) => {
             if (!detailModal || !detailRows || !detailTitle || !detailKind) return;
             detailKind.textContent = detail.tipo === "entradas" ? "ENTRADAS" : "SAIDAS";
-            detailTitle.textContent = `${detail.rotulo} - ${detail.label}`;
+            detailTitle.textContent = detail.rotulo ? `${detail.rotulo} - ${detail.label}` : detail.label;
             currentDetailRows = [...(detail.rows || [])];
             currentDetailSortField = "valor";
             currentDetailSort = "desc";
@@ -359,7 +359,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const title = button.dataset.cashflowKpiTitle || "Previstos";
                 openCashflowDetails({
                     tipo,
-                    rotulo: "Ate hoje",
+                    rotulo: "",
                     label: title,
                     rows: kpiDetails[tipo] || [],
                     dateLabel: "Previsao",

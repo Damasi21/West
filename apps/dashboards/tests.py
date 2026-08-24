@@ -2708,12 +2708,177 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(contexto["saldo_acumulado"], [0.0])
         self.assertEqual(
             contexto["indicadores"][1]["valor_completo"],
-            "R$ 150,00",
+            "R$ 90,00",
         )
         self.assertEqual(
             contexto["indicadores"][2]["valor_completo"],
-            "R$ 110,00",
+            "R$ 40,00",
         )
+
+    def test_fluxo_de_caixa_previstos_respeitam_fim_do_periodo_filtrado(self):
+        conta = ContaCorrenteOmie.objects.create(
+            empresa=self.empresa,
+            codigo_omie=601,
+            descricao="Conta principal",
+            saldo_atual=1000,
+        )
+        cliente = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=6001,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente ABC",
+        )
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=6002,
+            tipo=CadastroOmie.Tipo.FORNECEDOR,
+            nome_fantasia="Fornecedor ABC",
+        )
+
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61001,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            cliente=cliente,
+            data_previsao=date(2026, 7, 20),
+            data_vencimento=date(2026, 7, 20),
+            valor_documento=100,
+            valor_a_receber=100,
+            status_titulo="ATRASADO",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61002,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            cliente=cliente,
+            data_previsao=date(2026, 8, 31),
+            data_vencimento=date(2026, 8, 31),
+            valor_documento=200,
+            valor_a_receber=200,
+            status_titulo="A VENCER",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61003,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            cliente=cliente,
+            data_previsao=date(2026, 9, 1),
+            data_vencimento=date(2026, 9, 1),
+            valor_documento=300,
+            valor_a_receber=300,
+            status_titulo="A VENCER",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=61004,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            cliente=cliente,
+            data_previsao=date(2026, 8, 15),
+            data_vencimento=date(2026, 8, 15),
+            valor_documento=400,
+            valor_a_receber=400,
+            status_titulo="RECEBIDO",
+        )
+        PesqTituloFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=61004,
+            cliente_fornecedor=cliente,
+            codigo_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            natureza="R",
+            status="RECEBIDO",
+            data_previsao=date(2026, 8, 15),
+            data_vencimento=date(2026, 8, 15),
+            valor_titulo=400,
+            valor_aberto=40,
+            valor_liquido=360,
+            valor_pago=360,
+        )
+
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=62001,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            fornecedor=fornecedor,
+            data_previsao=date(2026, 7, 25),
+            data_vencimento=date(2026, 7, 25),
+            valor_documento=50,
+            valor_a_pagar=50,
+            status_titulo="ATRASADO",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=62002,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            fornecedor=fornecedor,
+            data_previsao=date(2026, 8, 31),
+            data_vencimento=date(2026, 8, 31),
+            valor_documento=70,
+            valor_a_pagar=70,
+            status_titulo="A VENCER",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=62003,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            fornecedor=fornecedor,
+            data_previsao=date(2026, 9, 1),
+            data_vencimento=date(2026, 9, 1),
+            valor_documento=90,
+            valor_a_pagar=90,
+            status_titulo="A VENCER",
+        )
+        ContaPagarOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=62004,
+            id_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            fornecedor=fornecedor,
+            data_previsao=date(2026, 8, 15),
+            data_vencimento=date(2026, 8, 15),
+            valor_documento=300,
+            valor_a_pagar=300,
+            status_titulo="PAGO",
+        )
+        PesqTituloFinanceiroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_titulo=62004,
+            cliente_fornecedor=fornecedor,
+            codigo_conta_corrente=conta.codigo_omie,
+            conta_corrente=conta,
+            natureza="P",
+            status="PAGO",
+            data_previsao=date(2026, 8, 15),
+            data_vencimento=date(2026, 8, 15),
+            valor_titulo=300,
+            valor_aberto=30,
+            valor_liquido=270,
+            valor_pago=270,
+        )
+
+        contexto = fluxo_de_caixa(
+            self.empresa,
+            "mes-2026-08",
+            empresas_ids=[self.empresa.pk],
+        )
+
+        self.assertEqual(
+            contexto["indicadores"][1]["valor_completo"],
+            "R$ 340,00",
+        )
+        self.assertEqual(
+            contexto["indicadores"][2]["valor_completo"],
+            "R$ 150,00",
+        )
+        self.assertEqual(len(contexto["detalhes_previstos"]["entradas"]), 3)
+        self.assertEqual(len(contexto["detalhes_previstos"]["saidas"]), 3)
 
     def test_fluxo_de_caixa_inclui_saldo_aberto_de_movimentos_parciais(self):
         conta = ContaCorrenteOmie.objects.create(

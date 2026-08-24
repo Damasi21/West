@@ -115,11 +115,11 @@ def _query_pagar_aberto_por_vencimento(inicio, fim, empresas_ids, projetos):
     return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
-def _query_receber_previsto_omie(hoje, empresas_ids, projetos):
+def _query_receber_previsto_omie(data_limite, empresas_ids, projetos):
     queryset = ContaReceberOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
-        data_previsao__lte=hoje,
+        data_previsao__lte=data_limite,
     )
     queryset = _excluir_status_fechados(
         queryset,
@@ -131,11 +131,11 @@ def _query_receber_previsto_omie(hoje, empresas_ids, projetos):
     return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
-def _query_pagar_previsto_omie(hoje, empresas_ids, projetos):
+def _query_pagar_previsto_omie(data_limite, empresas_ids, projetos):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
-        data_previsao__lte=hoje,
+        data_previsao__lte=data_limite,
     )
     queryset = _excluir_status_fechados(
         queryset,
@@ -147,7 +147,7 @@ def _query_pagar_previsto_omie(hoje, empresas_ids, projetos):
     return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
-def _query_movimentos_previstos_omie(hoje, empresas_ids, projetos, natureza):
+def _query_movimentos_previstos_omie(data_limite, empresas_ids, projetos, natureza):
     grupo = "CONTA_A_RECEBER" if natureza == "R" else "CONTA_A_PAGAR"
     queryset = MovimentoFinanceiroOmie.objects.filter(
         empresa_id__in=empresas_ids,
@@ -155,20 +155,25 @@ def _query_movimentos_previstos_omie(hoje, empresas_ids, projetos, natureza):
         grupo=grupo,
         natureza=natureza,
         valor_aberto__gt=0,
-        data_previsao__lte=hoje,
+        data_previsao__lte=data_limite,
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
     return registros_com_conta_visivel_financeiro(queryset, "codigo_conta_corrente")
 
 
-def _query_pagar_pago_parcial_pesq_titulo(hoje, empresas_ids, projetos, codigos_movimentos):
+def _query_pagar_pago_parcial_pesq_titulo(
+    data_limite,
+    empresas_ids,
+    projetos,
+    codigos_movimentos,
+):
     titulos = PesqTituloFinanceiroOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
         natureza="P",
         valor_aberto__gt=0,
-        data_previsao__lte=hoje,
+        data_previsao__lte=data_limite,
     )
     if codigos_movimentos:
         titulos = titulos.exclude(codigo_titulo__in=codigos_movimentos)
@@ -202,7 +207,7 @@ def _query_pagar_pago_parcial_pesq_titulo(hoje, empresas_ids, projetos, codigos_
 
 
 def _query_receber_recebido_parcial_pesq_titulo(
-    hoje,
+    data_limite,
     empresas_ids,
     projetos,
     codigos_movimentos,
@@ -212,7 +217,7 @@ def _query_receber_recebido_parcial_pesq_titulo(
         ativo_omie=True,
         natureza="R",
         valor_aberto__gt=0,
-        data_previsao__lte=hoje,
+        data_previsao__lte=data_limite,
     )
     if codigos_movimentos:
         titulos = titulos.exclude(codigo_titulo__in=codigos_movimentos)
@@ -1255,11 +1260,12 @@ def fluxo_de_caixa(
     )
     entradas_realizadas = sum(entradas_realizadas_mes.values(), Decimal("0"))
     saidas_realizadas = sum(saidas_realizadas_mes.values(), Decimal("0"))
+    limite_previstos = fim
     movimentos_receber_previstos = list(
-        _query_movimentos_previstos_omie(hoje, empresas_ids, projetos, "R")
+        _query_movimentos_previstos_omie(limite_previstos, empresas_ids, projetos, "R")
     )
     movimentos_pagar_previstos = list(
-        _query_movimentos_previstos_omie(hoje, empresas_ids, projetos, "P")
+        _query_movimentos_previstos_omie(limite_previstos, empresas_ids, projetos, "P")
     )
     entradas_previstas, codigos_receber_movimentos = _total_previsto_movimentos(
         movimentos_receber_previstos
@@ -1268,26 +1274,26 @@ def fluxo_de_caixa(
         movimentos_pagar_previstos
     )
     receber_pesq_titulos_parciais = _query_receber_recebido_parcial_pesq_titulo(
-        hoje,
+        limite_previstos,
         empresas_ids,
         projetos,
         codigos_receber_movimentos,
     )
     pagar_pesq_titulos_parciais = _query_pagar_pago_parcial_pesq_titulo(
-        hoje,
+        limite_previstos,
         empresas_ids,
         projetos,
         codigos_pagar_movimentos,
     )
     entradas_previstas += _total_receber_aberto_sem_movimento(
-        _query_receber_previsto_omie(hoje, empresas_ids, projetos),
+        _query_receber_previsto_omie(limite_previstos, empresas_ids, projetos),
         codigos_receber_movimentos,
     )
     entradas_previstas += _total_pesq_titulos_parciais(
         receber_pesq_titulos_parciais
     )
     saidas_previstas += _total_pagar_aberto_sem_movimento(
-        _query_pagar_previsto_omie(hoje, empresas_ids, projetos),
+        _query_pagar_previsto_omie(limite_previstos, empresas_ids, projetos),
         codigos_pagar_movimentos,
     )
     saidas_previstas += _total_pesq_titulos_parciais(
@@ -1296,8 +1302,8 @@ def fluxo_de_caixa(
     detalhes_previstos = _detalhes_previstos(
         movimentos_receber_previstos,
         movimentos_pagar_previstos,
-        _query_receber_previsto_omie(hoje, empresas_ids, projetos),
-        _query_pagar_previsto_omie(hoje, empresas_ids, projetos),
+        _query_receber_previsto_omie(limite_previstos, empresas_ids, projetos),
+        _query_pagar_previsto_omie(limite_previstos, empresas_ids, projetos),
         receber_pesq_titulos_parciais,
         pagar_pesq_titulos_parciais,
         codigos_receber_movimentos,
