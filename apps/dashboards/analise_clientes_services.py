@@ -47,7 +47,7 @@ def _decimal(valor):
 
 
 def _formatar_percentual(valor):
-    return f"{_decimal(valor):.0f}%".replace(".", ",")
+    return f"{_decimal(valor):.0f}%"
 
 
 def _media(total, quantidade):

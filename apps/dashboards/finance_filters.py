@@ -21,6 +21,15 @@ def contas_correntes_visiveis_financeiro(queryset):
     return queryset.exclude(nao_fluxo=True, nao_resumo=True)
 
 
+def filtrar_por_categorias_financeiras(queryset, categorias):
+    if not categorias:
+        return queryset
+    return queryset.filter(
+        Q(codigo_categoria__in=categorias)
+        | Q(categoria_principal__codigo__in=categorias)
+    )
+
+
 def registros_com_conta_visivel_financeiro(
     queryset,
     codigo_field,

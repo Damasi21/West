@@ -41,9 +41,42 @@ document.addEventListener("DOMContentLoaded", () => {
             input.addEventListener("change", updateSummary);
         });
 
+        if (filter.matches("[data-category-filter]")) {
+            const updateParents = () => {
+                filter.querySelectorAll(".category-group").forEach((group) => {
+                    const parent = group.querySelector("[data-category-parent]");
+                    if (!parent) return;
+                    const children = group.querySelectorAll("[data-category-child]");
+                    const checked = group.querySelectorAll("[data-category-child]:checked").length;
+                    parent.checked = children.length === 0 || checked === children.length;
+                    parent.indeterminate = checked > 0 && checked < children.length;
+                });
+            };
+
+            filter.querySelectorAll("[data-category-parent]").forEach((parent) => {
+                parent.addEventListener("change", () => {
+                    const group = parent.closest(".category-group");
+                    group?.querySelectorAll("[data-category-child]").forEach((child) => {
+                        child.checked = parent.checked;
+                    });
+                    parent.indeterminate = false;
+                    updateSummary();
+                });
+            });
+
+            filter.querySelectorAll("[data-category-child]").forEach((child) => {
+                child.addEventListener("change", () => {
+                    updateParents();
+                    updateSummary();
+                });
+            });
+            updateParents();
+        }
+
         filter.querySelector("[data-select-all]")?.addEventListener("click", () => {
             filter.querySelectorAll("input[type='checkbox']").forEach((input) => {
                 input.checked = true;
+                input.indeterminate = false;
             });
             updateSummary();
         });
@@ -51,6 +84,7 @@ document.addEventListener("DOMContentLoaded", () => {
         filter.querySelector("[data-clear-all]")?.addEventListener("click", () => {
             filter.querySelectorAll("input[type='checkbox']").forEach((input) => {
                 input.checked = false;
+                input.indeterminate = false;
             });
             updateSummary();
         });

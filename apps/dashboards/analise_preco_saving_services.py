@@ -32,10 +32,7 @@ def _formatar_moeda(valor):
 
 
 def _formatar_percentual(valor):
-    return f"{_numero(valor).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}%".replace(
-        ".",
-        ",",
-    )
+    return f"{_numero(valor).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}%"
 
 
 def _resolver_datas(periodo_selecionado, data_inicio, data_fim):

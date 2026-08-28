@@ -267,6 +267,32 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Análise de clientes")
         self.assertContains(response, "Margem e Rentabilidade")
 
+    def test_area_exibe_data_da_ultima_sincronizacao_concluida(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        finalizada_em = timezone.now()
+        SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            status=SincronizacaoOmie.Status.CONCLUIDA,
+            finalizada_em=finalizada_em,
+        )
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:area",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                },
+            )
+        )
+
+        self.assertContains(response, "Atualizado -")
+        self.assertContains(
+            response,
+            timezone.localtime(finalizada_em).strftime("%d/%m/%Y %H:%M"),
+        )
+
     def test_dashboard_da_area_pode_ser_aberto(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
         self.client.force_login(self.usuario)
@@ -284,6 +310,48 @@ class DashboardPermissaoTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Faturamento")
+
+    def test_filtro_de_categorias_aparece_apenas_no_financeiro(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        categoria_pai = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01",
+            descricao="Receitas",
+            totalizadora=True,
+        )
+        CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01.01",
+            categoria_superior=categoria_pai.codigo,
+            descricao="Receita de servicos",
+        )
+        self.client.force_login(self.usuario)
+
+        financeiro = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "visao-geral",
+                },
+            )
+        )
+        comercial = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "comercial",
+                    "dashboard_slug": "faturamento",
+                },
+            )
+        )
+
+        self.assertContains(financeiro, "Categorias")
+        self.assertContains(financeiro, "Receitas")
+        self.assertContains(financeiro, "Receita de servicos")
+        self.assertNotContains(comercial, "Categorias")
 
     def test_area_compras_exibe_dashboard_budget(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
@@ -759,9 +827,9 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Distribuicao por classe")
         self.assertContains(response, "Ranking de fornecedores")
         self.assertContains(response, "Fornecedor Alfa")
-        self.assertContains(response, "60,0%")
-        self.assertContains(response, "90,0%")
-        self.assertContains(response, "100,0%")
+        self.assertContains(response, "60.0%")
+        self.assertContains(response, "90.0%")
+        self.assertContains(response, "100.0%")
         self.assertIn("curva_abc_fornecedores", response.context)
         dados = response.context["curva_abc_fornecedores"]
         self.assertEqual(dados["fornecedores_ativos"], 3)
@@ -1026,7 +1094,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Faturado")
         self.assertContains(response, "Meta do periodo")
-        self.assertContains(response, "R$ 10,00 Mil")
+        self.assertContains(response, "R$ 10.00 Mil")
         self.assertContains(response, "Pedidos emitidos")
         self.assertContains(response, "Ticket medio")
         self.assertContains(response, "Maria Vendas")
@@ -1511,11 +1579,11 @@ class DashboardPermissaoTests(TestCase):
             empresas_ids=[self.empresa.pk],
         )
 
-        self.assertEqual(contexto["indicadores"][0]["valor"], "40,0%")
+        self.assertEqual(contexto["indicadores"][0]["valor"], "40.0%")
         self.assertEqual(contexto["indicadores"][1]["valor"], "R$ 500,00")
         self.assertEqual(len(contexto["top_rentaveis"]), 1)
         self.assertEqual(contexto["top_rentaveis"][0]["receita"], Decimal("500.0000"))
-        self.assertEqual(contexto["top_rentaveis"][0]["margem_fmt"], "40,0%")
+        self.assertEqual(contexto["top_rentaveis"][0]["margem_fmt"], "40.0%")
 
     def test_dashboard_permite_multisselecao_de_filtros(self):
         ano_atual = date.today().year
@@ -1959,7 +2027,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Deducoes e gastos variaveis")
         self.assertContains(response, "DRE Gerencial")
         self.assertContains(response, "Custos Variaveis")
-        self.assertContains(response, "R$ -1,20 Mi")
+        self.assertContains(response, "R$ -1.20 Mi")
         self.assertContains(response, 'title="R$ -1.200.000,00"')
         self.assertContains(response, "data-dre-expand-all")
         self.assertContains(response, "data-dre-values-chart")
@@ -2038,6 +2106,61 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "data-overview-flow-chart")
         self.assertContains(response, "data-overview-margin-chart")
         self.assertContains(response, 'option value="competencia" selected')
+
+    def test_visao_geral_filtra_por_categoria_financeira(self):
+        categoria_pai = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01",
+            descricao="Receitas",
+            totalizadora=True,
+        )
+        categoria_selecionada = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01.01",
+            categoria_superior=categoria_pai.codigo,
+            descricao="Receita selecionada",
+        )
+        categoria_fora = CategoriaOmie.objects.create(
+            empresa=self.empresa,
+            codigo="1.01.02",
+            categoria_superior=categoria_pai.codigo,
+            descricao="Receita fora",
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=88001,
+            codigo_categoria=categoria_selecionada.codigo,
+            categoria_principal=categoria_selecionada,
+            data_registro=date.today(),
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_documento=100,
+            valor_a_receber=100,
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=88002,
+            codigo_categoria=categoria_fora.codigo,
+            categoria_principal=categoria_fora,
+            data_registro=date.today(),
+            data_previsao=date.today(),
+            data_vencimento=date.today(),
+            valor_documento=900,
+            valor_a_receber=900,
+        )
+
+        contexto = visao_geral_financeira(
+            self.empresa,
+            f"mes-{date.today().year}-{date.today().month:02d}",
+            empresas_ids=[self.empresa.pk],
+            regime_financeiro="competencia",
+            categorias_selecionadas=[
+                f"{self.empresa.pk}:{categoria_selecionada.codigo}"
+            ],
+        )
+
+        self.assertEqual(contexto["indicadores"][0]["valor_completo"], "R$ 100,00")
+        self.assertEqual(contexto["indicadores"][2]["valor_completo"], "R$ 100,00")
 
     def test_visao_geral_caixa_usa_lancamentos_de_conta_corrente(self):
         ano_atual = date.today().year
@@ -2329,7 +2452,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Saidas previstas")
         self.assertContains(response, 'title="R$ 15.000,00"')
         self.assertContains(response, "Saldo projetado")
-        self.assertContains(response, "Prazo medio de pagamento")
+        self.assertContains(response, "Prazo medio de recebimento")
         self.assertContains(response, "Recebimentos pendentes - criticos")
         self.assertContains(response, "Cliente Critico")
         self.assertContains(response, "Fornecedor Critico")
@@ -2568,7 +2691,8 @@ class DashboardPermissaoTests(TestCase):
         self.assertNotContains(response, "Todos os projetos")
         self.assertNotContains(response, "Todos os departamentos")
         self.assertNotContains(response, "Limpar filtros")
-        self.assertNotContains(response, "Atualizar")
+        self.assertContains(response, "Categorias")
+        self.assertContains(response, "Atualizar")
         self.assertContains(response, "Cliente recorrente")
         self.assertContains(response, 'data-payment-modal')
         self.assertContains(response, 'data-payment-success-modal')

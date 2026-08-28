@@ -4,6 +4,7 @@ from datetime import date
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
 from django.shortcuts import render
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
@@ -30,11 +31,13 @@ from apps.dashboards.fluxo_caixa_services import (
     fluxo_de_caixa_horizontal,
 )
 from apps.dashboards.inadimplencia_services import inadimplencia
+from apps.dashboards.kardex_services import kardex_estoque
 from apps.dashboards.margem_rentabilidade_services import (
     margem_rentabilidade_comercial,
 )
 from apps.dashboards.score_fornecedores_services import score_fornecedores_compras
 from apps.dashboards.visao_geral_services import visao_geral_financeira
+from apps.empresas.models import SincronizacaoOmie
 from apps.empresas.services import (
     areas_permitidas_usuario,
     dashboards_permitidos_usuario,
@@ -160,6 +163,12 @@ AREAS = {
         "imagem": "estoque.png",
         "cor": "info",
         "dashboards": [
+            {
+                "slug": "kardex",
+                "titulo": "Kardex",
+                "descricao": "Acompanhe saldos, valor, cobertura e ultimas movimentacoes por produto.",
+                "icone": "bi-clipboard-data",
+            },
             {
                 "slug": "posicao-de-estoque",
                 "titulo": "Posição de estoque",
@@ -338,6 +347,53 @@ def _valores_para_consulta(selecionados, opcoes):
     return selecionados
 
 
+def _codigos_filtro_composto(selecionados):
+    codigos = []
+    for valor in selecionados:
+        partes = str(valor).split(":", 1)
+        codigos.append(partes[1] if len(partes) == 2 else str(valor))
+    return codigos
+
+
+def _categorias_em_arvore(categorias):
+    pais = []
+    filhos_por_pai = {}
+    avulsas = []
+    for categoria in categorias:
+        item = {
+            "valor": f"{categoria.empresa_id}:{categoria.codigo}",
+            "codigo": categoria.codigo,
+            "nome": categoria.descricao or categoria.codigo,
+            "empresa": categoria.empresa.nome_fantasia,
+        }
+        if categoria.totalizadora or categoria.eh_conta_pai:
+            pais.append(item)
+            continue
+        if categoria.categoria_superior:
+            filhos_por_pai.setdefault(categoria.categoria_superior, []).append(item)
+        else:
+            avulsas.append(item)
+
+    grupos = []
+    for pai in pais:
+        filhos = filhos_por_pai.pop(pai["codigo"], [])
+        grupos.append({**pai, "filhos": filhos})
+
+    for filhos in filhos_por_pai.values():
+        avulsas.extend(filhos)
+    if avulsas:
+        grupos.append(
+            {
+                "valor": "",
+                "codigo": "",
+                "nome": "Sem grupo",
+                "empresa": "",
+                "filhos": avulsas,
+            }
+        )
+    return grupos
+
+
 def _regime_financeiro_valido(valor):
     return valor if valor in REGIMES_FINANCEIROS else "caixa"
 
@@ -378,6 +434,21 @@ def _empresas_inicio_selecionadas(request, empresa, empresas):
     )
 
 
+def _ultima_atualizacao_omie(empresa):
+    sincronizacao = (
+        SincronizacaoOmie.objects.filter(
+            empresa=empresa,
+            status=SincronizacaoOmie.Status.CONCLUIDA,
+            finalizada_em__isnull=False,
+        )
+        .order_by("-finalizada_em")
+        .first()
+    )
+    if not sincronizacao:
+        return ""
+    return timezone.localtime(sincronizacao.finalizada_em).strftime("%d/%m/%Y %H:%M")
+
+
 def _contexto_base(request, empresa_slug):
     empresa = obter_empresa_permitida(request.user, empresa_slug)
     return {
@@ -385,6 +456,7 @@ def _contexto_base(request, empresa_slug):
         "areas": areas_permitidas_usuario(request.user, empresa, AREAS),
         "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
         "pode_ver_parametros": usuario_gestor_empresa(request.user, empresa),
+        "ultima_atualizacao_omie": _ultima_atualizacao_omie(empresa),
     }
 
 
@@ -491,7 +563,12 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
     empresas_consulta_ids = empresas_selecionadas or [
         str(item.pk) for item in empresas
     ]
-    from apps.empresas.models import DepartamentoOmie, ProjetoOmie, VendedorOmie
+    from apps.empresas.models import (
+        CategoriaOmie,
+        DepartamentoOmie,
+        ProjetoOmie,
+        VendedorOmie,
+    )
 
     projetos = ProjetoOmie.objects.filter(
         empresa_id__in=empresas_consulta_ids,
@@ -508,6 +585,14 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         ativo_omie=True,
         inativo=False,
     ).select_related("empresa")
+    categorias = CategoriaOmie.objects.none()
+    if area_slug == "financeiro":
+        categorias = CategoriaOmie.objects.filter(
+            empresa_id__in=empresas_consulta_ids,
+            ativo_omie=True,
+            conta_inativa=False,
+            nao_exibir=False,
+        ).select_related("empresa")
 
     projetos_opcoes = [
         {
@@ -537,6 +622,15 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         {"valor": valor, "nome": rotulo, "empresa": ""}
         for valor, rotulo in TIPOS_FATURAMENTO.items()
     ]
+    categorias_opcoes = [
+        {
+            "valor": f"{categoria.empresa_id}:{categoria.codigo}",
+            "nome": categoria.descricao or categoria.codigo,
+            "empresa": categoria.empresa.nome_fantasia,
+        }
+        for categoria in categorias
+    ]
+    categorias_arvore = _categorias_em_arvore(categorias)
 
     if "limpar_filtros" in request.GET:
         projetos_selecionados = [item["valor"] for item in projetos_opcoes]
@@ -544,6 +638,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             item["valor"] for item in departamentos_opcoes
         ]
         vendedores_selecionados = [item["valor"] for item in vendedores_opcoes]
+        categorias_selecionadas = [item["valor"] for item in categorias_opcoes]
         tipos_faturamento_selecionados = list(TIPOS_FATURAMENTO)
         budget_dimensao = "produto"
         periodo_selecionado = f"ano-{date.today().year}"
@@ -557,6 +652,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "projetos": projetos_selecionados,
             "departamentos": departamentos_selecionados,
             "vendedores": vendedores_selecionados,
+            "categorias": categorias_selecionadas,
             "tipos_faturamento": tipos_faturamento_selecionados,
             "budget_dimensao": budget_dimensao,
         }
@@ -573,6 +669,10 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         vendedores_selecionados = _valores_validos(
             request.GET.getlist("vendedor"),
             (item["valor"] for item in vendedores_opcoes),
+        )
+        categorias_selecionadas = _valores_validos(
+            request.GET.getlist("categoria"),
+            (item["valor"] for item in categorias_opcoes),
         )
         tipos_faturamento_selecionados = _valores_validos(
             request.GET.getlist("tipo_faturamento"),
@@ -600,6 +700,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "projetos": projetos_selecionados,
             "departamentos": departamentos_selecionados,
             "vendedores": vendedores_selecionados,
+            "categorias": categorias_selecionadas,
             "tipos_faturamento": tipos_faturamento_selecionados,
             "budget_dimensao": budget_dimensao,
         }
@@ -616,6 +717,10 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         vendedores_selecionados = _valores_validos(
             estado.get("vendedores", []),
             (item["valor"] for item in vendedores_opcoes),
+        )
+        categorias_selecionadas = _valores_validos(
+            estado.get("categorias", [item["valor"] for item in categorias_opcoes]),
+            (item["valor"] for item in categorias_opcoes),
         )
         tipos_faturamento_selecionados = _valores_validos(
             estado.get("tipos_faturamento", list(TIPOS_FATURAMENTO)),
@@ -649,6 +754,12 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         tipos_faturamento_selecionados,
         tipos_faturamento_opcoes,
     ) or list(TIPOS_FATURAMENTO)
+    categorias_consulta = _codigos_filtro_composto(
+        _valores_para_consulta(
+            categorias_selecionadas,
+            categorias_opcoes,
+        )
+    )
 
     periodo_foi_compartilhado = "compartilhar_periodo" in request.GET
     if periodo_foi_compartilhado:
@@ -704,6 +815,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "departamentos_selecionados": departamentos_selecionados,
             "vendedores": vendedores_opcoes,
             "vendedores_selecionados": vendedores_selecionados,
+            "categorias_arvore": categorias_arvore,
+            "categorias_total": len(categorias_opcoes),
+            "categorias_selecionadas": categorias_selecionadas,
             "tipos_faturamento": tipos_faturamento_opcoes,
             "tipos_faturamento_selecionados": tipos_faturamento_selecionados,
             "budget_dimensao": budget_dimensao,
@@ -796,6 +910,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             empresas_consulta_ids,
             projetos_consulta,
             regime_financeiro,
+            categorias_consulta,
         )
     if area_slug == "financeiro" and dashboard_slug == "visao-geral":
         contexto["visao_geral"] = visao_geral_financeira(
@@ -806,6 +921,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             empresas_consulta_ids,
             projetos_consulta,
             regime_financeiro,
+            categorias_consulta,
         )
     if area_slug == "financeiro" and dashboard_slug == "fluxo-de-caixa":
         contexto["fluxo_caixa"] = fluxo_de_caixa(
@@ -815,6 +931,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_fim,
             empresas_consulta_ids,
             projetos_consulta,
+            categorias_consulta,
         )
     if area_slug == "financeiro" and dashboard_slug == "inadimplencia":
         contexto["inadimplencia"] = inadimplencia(
@@ -824,6 +941,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_fim,
             empresas_consulta_ids,
             projetos_consulta,
+            categorias_consulta,
         )
     if area_slug == "financeiro" and dashboard_slug == "aprovacao-de-pagamentos":
         aprovacao_inicio, aprovacao_fim = _periodo_aprovacao_pagamentos(request)
@@ -839,11 +957,17 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             empresa=empresa,
             empresas_ids=empresas_consulta_ids,
             projetos_selecionados=projetos_consulta,
+            categorias_selecionadas=categorias_consulta,
             periodo_inicio=aprovacao_inicio,
             periodo_fim=aprovacao_fim,
             historico_inicio=historico_inicio,
             historico_fim=historico_fim,
             abrir_modal=aprovacao_modal,
+        )
+    if area_slug == "estoque" and dashboard_slug == "kardex":
+        contexto["kardex"] = kardex_estoque(
+            empresa,
+            empresas_consulta_ids,
         )
     return render(request, "dashboards/dashboard.html", contexto)
 

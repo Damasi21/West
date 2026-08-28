@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Controle de log | MD21 BI{% endblock %}
+
+{% block content %}
+<section class="settings-heading">
+    <div class="container py-4 py-lg-5">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb small mb-3">
+                <li class="breadcrumb-item"><a href="{% url 'empresas:lista' %}">Painel inicial</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'dashboards:home' empresa.slug %}">{{ empresa.nome_fantasia }}</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'dashboards:parametros' empresa.slug %}">Configura&ccedil;&otilde;es</a></li>
+                <li class="breadcrumb-item active">Controle de log</li>
+            </ol>
+        </nav>
+        <div class="d-flex justify-content-between align-items-end gap-3 flex-wrap">
+            <div>
+                <span class="eyebrow">CONFIGURA&Ccedil;&Otilde;ES</span>
+                <h1 class="mb-2">Controle de log</h1>
+                <p class="text-secondary mb-0">Acompanhe acessos, cliques de navega&ccedil;&atilde;o, altera&ccedil;&otilde;es e exclus&otilde;es da {{ empresa.nome_fantasia }}.</p>
+            </div>
+            <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-2"></i>Voltar
+            </a>
+        </div>
+    </div>
+</section>
+
+<section class="container pb-5">
+    <form class="settings-card p-3 p-lg-4 mb-4" method="get">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label small text-secondary" for="filtro-q">Buscar</label>
+                <input class="form-control" id="filtro-q" name="q" value="{{ filtros.q }}" placeholder="Usuario, descricao ou caminho">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-secondary" for="filtro-tipo">Tipo</label>
+                <select class="form-select" id="filtro-tipo" name="tipo">
+                    <option value="">Todos</option>
+                    {% for valor, rotulo in tipos %}
+                        <option value="{{ valor }}" {% if filtros.tipo == valor %}selected{% endif %}>{{ rotulo }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-secondary" for="filtro-inicio">Inicio</label>
+                <input class="form-control" id="filtro-inicio" type="date" name="inicio" value="{{ filtros.inicio }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-secondary" for="filtro-fim">Fim</label>
+                <input class="form-control" id="filtro-fim" type="date" name="fim" value="{{ filtros.fim }}">
+            </div>
+            <div class="col-12 d-flex justify-content-end gap-2">
+                <a class="btn btn-outline-secondary" href="{% url 'dashboards:controle_logs' empresa.slug %}">Limpar</a>
+                <button class="btn btn-primary" type="submit">
+                    <i class="bi bi-search me-2"></i>Filtrar
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <div class="settings-card">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Data e hora</th>
+                        <th>Usuario</th>
+                        <th>Tipo</th>
+                        <th>Descricao</th>
+                        <th>Caminho</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                        <tr>
+                            <td class="text-nowrap">{{ log.criado_em|date:"d/m/Y H:i:s" }}</td>
+                            <td>
+                                {% if log.usuario %}
+                                    <strong class="d-block">{{ log.usuario.get_full_name|default:log.usuario.username }}</strong>
+                                    <small class="text-secondary">{{ log.usuario.email|default:log.usuario.username }}</small>
+                                {% else %}
+                                    <span class="text-secondary">Usuario removido</span>
+                                {% endif %}
+                            </td>
+                            <td><span class="badge text-bg-light border">{{ log.get_tipo_display }}</span></td>
+                            <td>{{ log.descricao }}</td>
+                            <td>
+                                <small class="text-secondary d-block">{{ log.metodo }}</small>
+                                <span class="small">{{ log.caminho }}</span>
+                            </td>
+                            <td class="text-nowrap">{{ log.ip|default:"-" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-secondary py-5">Nenhum log encontrado.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <p class="text-secondary small mt-3 mb-0">Exibindo ate 300 registros mais recentes.</p>
+</section>
+{% endblock %}

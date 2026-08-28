@@ -6,7 +6,10 @@ from decimal import Decimal
 from django.db.models import Sum
 from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
-from apps.dashboards.finance_filters import registros_com_conta_visivel_financeiro
+from apps.dashboards.finance_filters import (
+    filtrar_por_categorias_financeiras,
+    registros_com_conta_visivel_financeiro,
+)
 from apps.dashboards.dre_services import (
     _formatar_moeda,
     _intervalo_periodo,
@@ -28,10 +31,10 @@ def _formatar_moeda_curta(valor):
     valor = _decimal(valor)
     absoluto = abs(valor)
     if absoluto >= Decimal("1000000"):
-        texto = f"{valor / Decimal('1000000'):.2f}".replace(".", ",")
+        texto = f"{valor / Decimal('1000000'):.2f}"
         return f"R$ {texto} Mi"
     if absoluto >= Decimal("1000"):
-        texto = f"{valor / Decimal('1000'):.2f}".replace(".", ",")
+        texto = f"{valor / Decimal('1000'):.2f}"
         return f"R$ {texto} Mil"
     return _formatar_moeda(valor)
 
@@ -42,7 +45,7 @@ def _media(total, quantidade):
     return total / Decimal(quantidade)
 
 
-def _query_receber(inicio, fim, empresas_ids, projetos):
+def _query_receber(inicio, fim, empresas_ids, projetos, categorias):
     queryset = ContaReceberOmie.objects.annotate(
         data_referencia=Coalesce("data_registro", "data_previsao", "data_emissao"),
     ).filter(
@@ -53,10 +56,11 @@ def _query_receber(inicio, fim, empresas_ids, projetos):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = filtrar_por_categorias_financeiras(queryset, categorias)
     return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
-def _query_pagar(inicio, fim, empresas_ids, projetos):
+def _query_pagar(inicio, fim, empresas_ids, projetos, categorias):
     queryset = ContaPagarOmie.objects.annotate(
         data_referencia=Coalesce("data_entrada", "data_previsao", "data_vencimento"),
     ).filter(
@@ -67,10 +71,11 @@ def _query_pagar(inicio, fim, empresas_ids, projetos):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = filtrar_por_categorias_financeiras(queryset, categorias)
     return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
 
 
-def _query_caixa(inicio, fim, empresas_ids, projetos, natureza):
+def _query_caixa(inicio, fim, empresas_ids, projetos, natureza, categorias):
     queryset = LancamentoContaCorrenteOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
@@ -80,6 +85,7 @@ def _query_caixa(inicio, fim, empresas_ids, projetos, natureza):
     ).annotate(data_referencia=Coalesce("data_lancamento", "data_conciliacao"))
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = filtrar_por_categorias_financeiras(queryset, categorias)
     return registros_com_conta_visivel_financeiro(queryset, "codigo_conta_corrente")
 
 
@@ -173,21 +179,23 @@ def visao_geral_financeira(
     empresas_ids=None,
     projetos_selecionados=None,
     regime_financeiro="caixa",
+    categorias_selecionadas=None,
 ):
     empresas_ids = empresas_ids or [empresa.pk]
     inicio, fim = _intervalo_periodo(periodo, data_inicio, data_fim)
     meses = _meses_do_intervalo(inicio, fim)
     projetos = _normalizar_filtro_composto(projetos_selecionados or [])
+    categorias = _normalizar_filtro_composto(categorias_selecionadas or [])
     if regime_financeiro == "competencia":
-        receber = _query_receber(inicio, fim, empresas_ids, projetos)
-        pagar = _query_pagar(inicio, fim, empresas_ids, projetos)
+        receber = _query_receber(inicio, fim, empresas_ids, projetos, categorias)
+        pagar = _query_pagar(inicio, fim, empresas_ids, projetos, categorias)
         campo_receber = "valor_documento"
         campo_pagar = "valor_documento"
         maiores_clientes = _ranking(receber, "receita")
         maiores_fornecedores = _ranking(pagar, "despesa")
     else:
-        receber = _query_caixa(inicio, fim, empresas_ids, projetos, "R")
-        pagar = _query_caixa(inicio, fim, empresas_ids, projetos, "P")
+        receber = _query_caixa(inicio, fim, empresas_ids, projetos, "R", categorias)
+        pagar = _query_caixa(inicio, fim, empresas_ids, projetos, "P", categorias)
         campo_receber = "valor_lancamento"
         campo_pagar = "valor_lancamento"
         maiores_clientes = _ranking_caixa(receber, "Cliente nao informado")

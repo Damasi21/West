@@ -39,6 +39,11 @@
                                         <i class="bi bi-people me-2"></i>Usuários
                                     </a>
                                 </li>
+                                <li>
+                                    <a class="dropdown-item" href="{% url 'dashboards:controle_logs' empresa.slug %}">
+                                        <i class="bi bi-clock-history me-2"></i>Controle de log
+                                    </a>
+                                </li>
                             {% endif %}
                         </ul>
                     </div>

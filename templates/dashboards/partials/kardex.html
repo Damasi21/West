@@ -1,0 +1,114 @@
+<section class="inventory-kardex-dashboard" data-kardex-dashboard>
+    <div class="inventory-kardex-kpis">
+        <article class="inventory-kardex-kpi">
+            <span>Produtos ativos</span>
+            <strong>{{ dados.produtos_ativos }}</strong>
+            <small>{{ dados.sem_movimento }} sem movimentacao &gt;60 dias</small>
+        </article>
+        <article class="inventory-kardex-kpi">
+            <span>Valor em estoque</span>
+            <strong>{{ dados.valor_estoque }}</strong>
+            <small class="is-positive">{{ dados.valor_variacao }}</small>
+        </article>
+        <article class="inventory-kardex-kpi">
+            <span>Giro medio</span>
+            <strong>{{ dados.giro_medio }}</strong>
+            <small>no periodo selecionado</small>
+        </article>
+        <article class="inventory-kardex-kpi inventory-kardex-kpi-danger">
+            <span>Cobertura critica</span>
+            <strong>{{ dados.cobertura_critica }} produtos</strong>
+            <small>cobertura &lt; 7 dias</small>
+        </article>
+    </div>
+
+    <article class="inventory-kardex-card">
+        <header class="inventory-kardex-header">
+            <h2>Produtos - Saldo &amp; Movimentacao</h2>
+            <div class="inventory-kardex-legend" aria-label="Legenda do fluxo do periodo">
+                <span><i class="is-entry"></i>Entradas</span>
+                <span><i class="is-out"></i>Saidas</span>
+                <span><i class="is-adjust"></i>Ajustes</span>
+            </div>
+        </header>
+
+        <div class="inventory-kardex-table" role="table" aria-label="Produtos, saldo e movimentacao">
+            <div class="inventory-kardex-row inventory-kardex-head" role="row">
+                <span role="columnheader">Produto</span>
+                <span role="columnheader">Saldo atual</span>
+                <span role="columnheader">Valor (CMC)</span>
+                <span role="columnheader">Giro</span>
+                <span role="columnheader">Cobertura</span>
+                <span role="columnheader">Fluxo do periodo</span>
+                <span role="columnheader">Status</span>
+            </div>
+
+            {% for produto in dados.produtos %}
+                <button
+                    class="inventory-kardex-row inventory-kardex-product"
+                    type="button"
+                    role="row"
+                    aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}"
+                    data-kardex-row
+                >
+                    <span class="inventory-kardex-product-name" role="cell">
+                        <i class="bi {% if forloop.first %}bi-chevron-down{% else %}bi-chevron-right{% endif %}"></i>
+                        <strong>{{ produto.nome }}</strong>
+                        <small>{{ produto.codigo }} - {{ produto.tipo }}</small>
+                    </span>
+                    <span role="cell">{{ produto.saldo }}</span>
+                    <span role="cell">
+                        <strong>{{ produto.valor }}</strong>
+                        <small>CMC {{ produto.cmc }}</small>
+                    </span>
+                    <span role="cell">{{ produto.giro }}</span>
+                    <span role="cell">{{ produto.cobertura }}</span>
+                    <span role="cell">
+                        <i class="inventory-kardex-flow" aria-hidden="true">
+                            <b class="is-entry" style="width: {{ produto.entradas_pct }}%"></b>
+                            <b class="is-out" style="width: {{ produto.saidas_pct }}%"></b>
+                            <b class="is-adjust" style="width: {{ produto.ajustes_pct }}%"></b>
+                        </i>
+                    </span>
+                    <span role="cell">
+                        <mark class="inventory-kardex-status inventory-kardex-status-{{ produto.status_tom }}">
+                            {{ produto.status }}
+                        </mark>
+                    </span>
+                </button>
+
+                <div class="inventory-kardex-history" {% if not forloop.first %}hidden{% endif %} data-kardex-history>
+                    <h3>Ultimas movimentacoes - {{ produto.codigo }}</h3>
+                    <div class="inventory-kardex-history-table">
+                        <div class="inventory-kardex-history-row inventory-kardex-history-head">
+                            <span>Data</span>
+                            <span>Tipo</span>
+                            <span>Documento</span>
+                            <span>Descricao</span>
+                            <span>Qtd.</span>
+                            <span>Saldo apos</span>
+                        </div>
+                        {% for movimento in produto.movimentacoes %}
+                            <div class="inventory-kardex-history-row">
+                                <span>{{ movimento.data }}</span>
+                                <span>
+                                    <mark class="inventory-kardex-move inventory-kardex-move-{{ movimento.tom }}">
+                                        {{ movimento.tipo }}
+                                    </mark>
+                                </span>
+                                <span>{{ movimento.documento }}</span>
+                                <span>{{ movimento.descricao }}</span>
+                                <span>{{ movimento.quantidade }}</span>
+                                <span>{{ movimento.saldo_apos }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% empty %}
+                <div class="inventory-kardex-empty">
+                    Nenhum produto encontrado para o periodo selecionado.
+                </div>
+            {% endfor %}
+        </div>
+    </article>
+</section>

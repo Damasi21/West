@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.db.models import Sum
 
+from apps.dashboards.finance_filters import filtrar_por_categorias_financeiras
 from apps.dashboards.dre_services import (
     _formatar_moeda,
     _formatar_percentual,
@@ -32,7 +33,7 @@ def _decimal(valor):
     return valor or Decimal("0")
 
 
-def _query_carteira(inicio, fim, empresas_ids, projetos):
+def _query_carteira(inicio, fim, empresas_ids, projetos, categorias):
     queryset = ContaReceberOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
@@ -41,6 +42,7 @@ def _query_carteira(inicio, fim, empresas_ids, projetos):
     ).exclude(status_titulo__in=STATUS_CANCELADOS)
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = filtrar_por_categorias_financeiras(queryset, categorias)
     return queryset
 
 
@@ -79,7 +81,7 @@ def _dso(carteira):
     return f"{round(sum(prazos) / len(prazos))} dias"
 
 
-def _recuperado(inicio, fim, empresas_ids, projetos):
+def _recuperado(inicio, fim, empresas_ids, projetos, categorias):
     queryset = LancamentoContaCorrenteOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
@@ -89,6 +91,7 @@ def _recuperado(inicio, fim, empresas_ids, projetos):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = filtrar_por_categorias_financeiras(queryset, categorias)
     return abs(_decimal(queryset.aggregate(total=Sum("valor_lancamento"))["total"]))
 
 
@@ -96,7 +99,7 @@ def _fim_mes(ano, mes):
     return date(ano, mes, monthrange(ano, mes)[1])
 
 
-def _tendencia(meses, empresas_ids, projetos):
+def _tendencia(meses, empresas_ids, projetos, categorias):
     labels = []
     valores = []
     for mes in meses:
@@ -108,6 +111,7 @@ def _tendencia(meses, empresas_ids, projetos):
         ).exclude(status_titulo__in=STATUS_CANCELADOS)
         if projetos:
             carteira = carteira.filter(codigo_projeto__in=projetos)
+        carteira = filtrar_por_categorias_financeiras(carteira, categorias)
         total_carteira = abs(
             _decimal(carteira.aggregate(total=Sum("valor_documento"))["total"])
         )
@@ -154,13 +158,15 @@ def inadimplencia(
     data_fim="",
     empresas_ids=None,
     projetos_selecionados=None,
+    categorias_selecionadas=None,
 ):
     empresas_ids = empresas_ids or [empresa.pk]
     inicio, fim = _intervalo_periodo(periodo, data_inicio, data_fim)
     meses = _meses_do_intervalo(inicio, fim)
     projetos = _normalizar_filtro_composto(projetos_selecionados or [])
+    categorias = _normalizar_filtro_composto(categorias_selecionadas or [])
     data_referencia = min(date.today(), fim)
-    carteira = _query_carteira(inicio, fim, empresas_ids, projetos)
+    carteira = _query_carteira(inicio, fim, empresas_ids, projetos, categorias)
     inadimplentes = _query_inadimplentes(carteira, data_referencia)
 
     total_carteira = abs(
@@ -174,8 +180,8 @@ def inadimplencia(
         if total_carteira
         else Decimal("0")
     )
-    recuperado = _recuperado(inicio, fim, empresas_ids, projetos)
-    tendencia = _tendencia(meses, empresas_ids, projetos)
+    recuperado = _recuperado(inicio, fim, empresas_ids, projetos, categorias)
+    tendencia = _tendencia(meses, empresas_ids, projetos, categorias)
 
     return {
         "indicadores": [

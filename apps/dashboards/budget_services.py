@@ -18,7 +18,7 @@ def _decimal(valor):
 
 
 def _formatar_percentual(valor):
-    return f"{valor:.0f}%".replace(".", ",")
+    return f"{valor:.0f}%"
 
 
 def _opcoes_dimensao(empresa, empresas_ids):

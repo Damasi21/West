@@ -43,7 +43,7 @@ def _formatar_numero(valor):
 
 
 def _formatar_percentual(valor):
-    return f"{valor:.0f}%".replace(".", ",")
+    return f"{valor:.0f}%"
 
 
 def _tipos_validos(valores):

@@ -32,6 +32,11 @@ urlpatterns = [
         name="usuarios",
     ),
     path(
+        "parametros/logs/",
+        empresas_views.controle_logs,
+        name="controle_logs",
+    ),
+    path(
         "parametros/sincronizacao/",
         empresas_views.sincronizacao_omie,
         name="sincronizacao_omie",
@@ -45,6 +50,11 @@ urlpatterns = [
         "parametros/dre-categorias/planilha/exportar/",
         empresas_views.exportar_planilha_dre,
         name="exportar_planilha_dre",
+    ),
+    path(
+        "parametros/dre-categorias/padrao/",
+        empresas_views.criar_dre_padrao,
+        name="criar_dre_padrao",
     ),
     path(
         "parametros/dre-categorias/planilha/importar/",

@@ -6,10 +6,12 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 
@@ -21,6 +23,7 @@ from .forms import (
     IntegracaoOmieForm,
 )
 from .models import (
+    AcaoUsuarioLog,
     AgendamentoSincronizacaoOmie,
     CadastroOmie,
     CategoriaOmie,
@@ -69,6 +72,37 @@ MESES_METAS = [
 SINCRONIZACAO_OMIE_EXPIRA_APOS = timedelta(minutes=30)
 
 
+DRE_PADRAO = (
+    {"nome": "Receita Bruta Operacional", "tipo": "pai", "sinal": "+"},
+    {"nome": "Receitas Operacionais", "tipo": "filho", "sinal": "+"},
+    {"nome": "(-) Deducoes de Vendas", "tipo": "pai", "sinal": "-"},
+    {"nome": "Impostos Sobre Vendas", "tipo": "filho", "sinal": "-"},
+    {"nome": "Deducoes Comerciais/Vendas", "tipo": "filho", "sinal": "-"},
+    {"nome": "(=) Receita Liquida", "tipo": "resultado", "sinal": "="},
+    {"nome": "(-) Gastos Variaveis", "tipo": "pai", "sinal": "-"},
+    {"nome": "Custos Variaveis", "tipo": "filho", "sinal": "-"},
+    {"nome": "Despesas Variaveis", "tipo": "filho", "sinal": "-"},
+    {"nome": "(=) Margem de Contribuicao", "tipo": "resultado", "sinal": "="},
+    {"nome": "(-) Gastos Fixos", "tipo": "pai", "sinal": "-"},
+    {"nome": "Despesas Com Pessoal", "tipo": "filho", "sinal": "-"},
+    {"nome": "Despesas Administrativas", "tipo": "filho", "sinal": "-"},
+    {"nome": "Despesas de Vendas e Marketing", "tipo": "filho", "sinal": "-"},
+    {"nome": "(=) Resultado Operacional Liquido - EBIT", "tipo": "resultado", "sinal": "="},
+    {"nome": "(+) Movimentacao Financeiras", "tipo": "pai", "sinal": "+"},
+    {"nome": "Receitas Financeiras", "tipo": "filho", "sinal": "+"},
+    {"nome": "Despesas Financeiras", "tipo": "filho", "sinal": "-"},
+    {"nome": "(=) Resultado Liquido", "tipo": "resultado", "sinal": "="},
+    {"nome": "(-) Outros Tributos", "tipo": "pai", "sinal": "-"},
+    {"nome": "Impostos Sobre Lucro", "tipo": "filho", "sinal": "-"},
+    {"nome": "(+) Movimentacao Financeiras Nao-Operacional", "tipo": "pai", "sinal": "+"},
+    {"nome": "Entradas Nao - Operacionais", "tipo": "filho", "sinal": "+"},
+    {"nome": "Saidas Nao - Operacionais", "tipo": "filho", "sinal": "+"},
+    {"nome": "Investimentos", "tipo": "filho", "sinal": "+"},
+    {"nome": "Emprestimos e Divida", "tipo": "filho", "sinal": "+"},
+    {"nome": "(=) Resultado do Exercicio", "tipo": "resultado", "sinal": "="},
+)
+
+
 @login_required
 def lista_empresas(request):
     empresas = empresas_permitidas(request.user)
@@ -112,6 +146,52 @@ def configuracoes_empresas(request):
             "empresas": empresas,
             "total_empresas": empresas.count(),
             "total_ativas": empresas.filter(ativa=True).count(),
+        },
+    )
+
+
+@login_required
+def controle_logs(request, empresa_slug):
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
+    logs = AcaoUsuarioLog.objects.select_related("usuario", "empresa").filter(
+        empresa=empresa
+    )
+    filtros = {
+        "q": (request.GET.get("q") or "").strip(),
+        "tipo": (request.GET.get("tipo") or "").strip(),
+        "inicio": (request.GET.get("inicio") or "").strip(),
+        "fim": (request.GET.get("fim") or "").strip(),
+    }
+
+    if filtros["q"]:
+        logs = logs.filter(
+            Q(usuario__username__icontains=filtros["q"])
+            | Q(usuario__first_name__icontains=filtros["q"])
+            | Q(usuario__last_name__icontains=filtros["q"])
+            | Q(usuario__email__icontains=filtros["q"])
+            | Q(descricao__icontains=filtros["q"])
+            | Q(caminho__icontains=filtros["q"])
+        )
+    if filtros["tipo"] in dict(AcaoUsuarioLog.Tipo.choices):
+        logs = logs.filter(tipo=filtros["tipo"])
+    data_inicio = parse_date(filtros["inicio"])
+    data_fim = parse_date(filtros["fim"])
+    if data_inicio:
+        logs = logs.filter(criado_em__date__gte=data_inicio)
+    if data_fim:
+        logs = logs.filter(criado_em__date__lte=data_fim)
+
+    logs = logs.order_by("-criado_em")[:300]
+    return render(
+        request,
+        "empresas/controle_logs.html",
+        {
+            "logs": logs,
+            "filtros": filtros,
+            "tipos": AcaoUsuarioLog.Tipo.choices,
+            "empresa": empresa,
+            "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
         },
     )
 
@@ -637,6 +717,45 @@ def _obter_planilha_enviada(request):
     return arquivo
 
 
+def _substituir_estrutura_dre(empresa, contas):
+    with transaction.atomic():
+        empresa.contas_dre.filter(conta_pai__isnull=False).delete()
+        empresa.contas_dre.filter(conta_pai__isnull=True).delete()
+        pai_atual = None
+        ordem_pais = 0
+        ordem_filhas = 0
+        criadas = 0
+        for dados in contas:
+            tipo = dados["tipo"]
+            if tipo in {"pai", "resultado"}:
+                ordem_pais += 1
+                ordem_filhas = 0
+                conta_pai = None
+                ordem = ordem_pais
+            else:
+                if pai_atual is None:
+                    raise PlanilhaInvalida(
+                        "A estrutura padrao possui uma conta filha sem grupo pai."
+                    )
+                ordem_filhas += 1
+                conta_pai = pai_atual
+                ordem = ordem_filhas
+
+            conta = ContaDRE.objects.create(
+                empresa=empresa,
+                nome=dados["nome"],
+                conta_pai=conta_pai,
+                sinal=dados["sinal"],
+                ordem=ordem,
+            )
+            criadas += 1
+            if tipo == "pai":
+                pai_atual = conta
+            elif tipo == "resultado":
+                pai_atual = None
+    return criadas
+
+
 @login_required
 @require_GET
 def exportar_planilha_dre(request, empresa_slug):
@@ -646,6 +765,19 @@ def exportar_planilha_dre(request, empresa_slug):
         exportar_dre(empresa),
         f"dre-{slugify(empresa.nome_fantasia)}",
     )
+
+
+@login_required
+@require_POST
+def criar_dre_padrao(request, empresa_slug):
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
+    total = _substituir_estrutura_dre(empresa, DRE_PADRAO)
+    messages.success(
+        request,
+        f"Estrutura padrao do DRE criada com {total} contas.",
+    )
+    return redirect("dashboards:dre_categorias", empresa_slug=empresa.slug)
 
 
 @login_required

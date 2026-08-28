@@ -28,6 +28,16 @@
             </div>
             <div class="dre-heading-actions">
                 <div class="spreadsheet-actions">
+                    <form
+                        method="post"
+                        action="{% url 'dashboards:criar_dre_padrao' empresa.slug %}"
+                        data-dre-default-form
+                    >
+                        {% csrf_token %}
+                        <button class="btn btn-white" type="submit">
+                            <i class="bi bi-diagram-3 me-2"></i>DRE Padr&atilde;o
+                        </button>
+                    </form>
                     <a
                         href="{% url 'dashboards:exportar_planilha_dre' empresa.slug %}"
                         class="btn btn-white"
@@ -213,8 +223,17 @@
         const csrfToken = document.querySelector("[data-dre-form] [name=csrfmiddlewaretoken]").value;
         const status = document.querySelector("[data-reorder-status]");
         const importForm = document.querySelector("[data-spreadsheet-import]");
+        const defaultForm = document.querySelector("[data-dre-default-form]");
         let draggedItem = null;
         let sourceList = null;
+
+        if (defaultForm) {
+            defaultForm.addEventListener("submit", (event) => {
+                if (!window.confirm("Deseja criar uma estrutura padrÃ£o do DRE?")) {
+                    event.preventDefault();
+                }
+            });
+        }
 
         if (importForm) {
             const fileInput = importForm.querySelector("[data-spreadsheet-file]");

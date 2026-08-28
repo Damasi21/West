@@ -14,6 +14,7 @@ from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
 from .models import (
+    AcaoUsuarioLog,
     AgendamentoSincronizacaoOmie,
     CadastroOmie,
     CategoriaOmie,
@@ -28,6 +29,7 @@ from .models import (
     EmpresaUsuario,
     IntegracaoOmie,
     LancamentoContaCorrenteOmie,
+    LocalEstoqueOmie,
     MetaVendedorComercial,
     MovimentoFinanceiroOmie,
     OrdemServicoItemOmie,
@@ -42,6 +44,7 @@ from .models import (
     ProjetoOmie,
     RecebimentoNfeItemOmie,
     RecebimentoNfeOmie,
+    SaldoPendenteEstoqueOmie,
     ServicoOmie,
     SincronizacaoOmie,
     TipoContaCorrenteOmie,
@@ -57,6 +60,7 @@ from .omie import (
     consultar_contas_receber,
     consultar_extrato_conta_corrente,
     consultar_lancamentos_conta_corrente,
+    consultar_locais_estoque,
     consultar_movimentos_financeiros,
     consultar_ordens_servico,
     consultar_pedidos,
@@ -64,8 +68,10 @@ from .omie import (
     consultar_pesq_titulos_financeiros,
     consultar_recebimento_nfe,
     consultar_recebimentos_nfe,
+    consultar_posicao_estoque,
     consultar_posicoes_estoque,
     consultar_produtos,
+    consultar_saldos_pendentes_estoque,
     consultar_resumo_financas,
     consultar_servicos,
     consultar_tipos_conta_corrente,
@@ -222,12 +228,18 @@ class ConfiguracoesEmpresasTests(TestCase):
         User = get_user_model()
         self.administrador = User.objects.create_user(
             username="admin_oeste",
+            email="admin@oeste.com",
             password="senha-segura",
             is_staff=True,
         )
         self.cliente = User.objects.create_user(
             username="cliente_comum",
             password="senha-segura",
+        )
+        self.empresa = Empresa.objects.create(
+            nome="Cliente Controle Ltda",
+            nome_fantasia="Cliente Controle",
+            cnpj="12.345.678/0001-91",
         )
 
     def test_administrador_visualiza_configuracoes_na_tela_inicial(self):
@@ -236,6 +248,7 @@ class ConfiguracoesEmpresasTests(TestCase):
 
         self.assertContains(response, "Configurações")
         self.assertContains(response, reverse("empresas:cadastrar"))
+        self.assertNotContains(response, "Controle de log")
         self.assertNotContains(response, "Nova empresa")
         self.assertNotContains(response, "Parâmetros")
 
@@ -245,6 +258,112 @@ class ConfiguracoesEmpresasTests(TestCase):
         response = self.client.get(reverse("empresas:configuracoes"))
 
         self.assertEqual(response.status_code, 403)
+
+    def test_administrador_visualiza_controle_de_log(self):
+        self.client.force_login(self.administrador)
+        AcaoUsuarioLog.objects.create(
+            usuario=self.administrador,
+            empresa=self.empresa,
+            tipo=AcaoUsuarioLog.Tipo.ALTERACAO,
+            descricao="Executou alteracao em teste",
+            caminho="/teste/",
+        )
+        AcaoUsuarioLog.objects.create(
+            usuario=self.administrador,
+            tipo=AcaoUsuarioLog.Tipo.ALTERACAO,
+            descricao="Log global fora da empresa",
+            caminho="/teste-global/",
+        )
+
+        response = self.client.get(
+            reverse(
+                "dashboards:controle_logs",
+                kwargs={"empresa_slug": self.empresa.slug},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Controle de log")
+        self.assertContains(response, "Executou alteracao em teste")
+        self.assertNotContains(response, "Log global fora da empresa")
+
+    def test_cliente_nao_acessa_controle_de_log(self):
+        self.client.force_login(self.cliente)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:controle_logs",
+                kwargs={"empresa_slug": self.empresa.slug},
+            )
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_login_e_logout_sao_registrados(self):
+        response = self.client.post(
+            reverse("accounts:login"),
+            {"username": "admin@oeste.com", "password": "senha-segura"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.client.post(reverse("accounts:logout"))
+
+        self.assertTrue(
+            AcaoUsuarioLog.objects.filter(
+                usuario=self.administrador,
+                tipo=AcaoUsuarioLog.Tipo.LOGIN,
+            ).exists()
+        )
+        self.assertTrue(
+            AcaoUsuarioLog.objects.filter(
+                usuario=self.administrador,
+                tipo=AcaoUsuarioLog.Tipo.LOGOUT,
+            ).exists()
+        )
+
+    def test_acesso_a_modulo_dashboard_e_registrado(self):
+        empresa = Empresa.objects.create(
+            nome="Cliente Log Ltda",
+            nome_fantasia="Cliente Log",
+            cnpj="12.345.678/0001-92",
+        )
+        EmpresaUsuario.objects.create(
+            empresa=empresa,
+            usuario=self.administrador,
+            papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+        )
+        self.client.force_login(self.administrador)
+
+        self.client.get(
+            reverse(
+                "dashboards:area",
+                kwargs={"empresa_slug": empresa.slug, "area_slug": "financeiro"},
+            )
+        )
+        self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "visao-geral",
+                },
+            )
+        )
+
+        self.assertTrue(
+            AcaoUsuarioLog.objects.filter(
+                usuario=self.administrador,
+                empresa=empresa,
+                tipo=AcaoUsuarioLog.Tipo.MODULO,
+            ).exists()
+        )
+        self.assertTrue(
+            AcaoUsuarioLog.objects.filter(
+                usuario=self.administrador,
+                empresa=empresa,
+                tipo=AcaoUsuarioLog.Tipo.DASHBOARD,
+            ).exists()
+        )
 
     def test_administrador_cadastra_empresa(self):
         self.client.force_login(self.administrador)
@@ -833,6 +952,72 @@ class EstruturaDRETests(TestCase):
             ["Receita liquida", "Resultado", "="],
         )
 
+    def test_cria_estrutura_padrao_dre(self):
+        atual = ContaDRE.objects.create(
+            empresa=self.empresa,
+            nome="Estrutura antiga",
+            ordem=1,
+        )
+        self.client.force_login(self.administrador)
+        url = reverse(
+            "dashboards:criar_dre_padrao",
+            kwargs={"empresa_slug": self.empresa.slug},
+        )
+
+        get_response = self.client.get(url)
+        self.assertEqual(get_response.status_code, 405)
+
+        response = self.client.post(url)
+
+        self.assertRedirects(response, self.url)
+        self.assertFalse(ContaDRE.objects.filter(pk=atual.pk).exists())
+        self.assertEqual(ContaDRE.objects.filter(empresa=self.empresa).count(), 27)
+        receita_bruta = ContaDRE.objects.get(
+            empresa=self.empresa,
+            nome="Receita Bruta Operacional",
+        )
+        receitas = ContaDRE.objects.get(
+            empresa=self.empresa,
+            nome="Receitas Operacionais",
+        )
+        deducoes = ContaDRE.objects.get(
+            empresa=self.empresa,
+            nome="(-) Deducoes de Vendas",
+        )
+        impostos = ContaDRE.objects.get(
+            empresa=self.empresa,
+            nome="Impostos Sobre Vendas",
+        )
+        resultado = ContaDRE.objects.get(
+            empresa=self.empresa,
+            nome="(=) Resultado do Exercicio",
+        )
+        self.assertIsNone(receita_bruta.conta_pai)
+        self.assertEqual(receita_bruta.sinal, "+")
+        self.assertEqual(receitas.conta_pai, receita_bruta)
+        self.assertEqual(receitas.sinal, "+")
+        self.assertEqual(impostos.conta_pai, deducoes)
+        self.assertEqual(impostos.sinal, "-")
+        self.assertTrue(resultado.eh_resultado)
+
+    def test_botao_dre_padrao_aparece_na_tela(self):
+        self.client.force_login(self.administrador)
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, "DRE Padr")
+        self.assertContains(
+            response,
+            reverse(
+                "dashboards:criar_dre_padrao",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+        )
+        self.assertContains(
+            response,
+            "Deseja criar uma estrutura padr",
+        )
+
     def test_importa_planilha_dre_e_monta_relacao_pai_filho(self):
         self.client.force_login(self.administrador)
         planilha = arquivo_xlsx(
@@ -1369,14 +1554,17 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_movimentos_financeiros(self.integracao, 7)
         consultar_pesq_titulos_financeiros(self.integracao, 8)
         consultar_produtos(self.integracao, 9)
-        consultar_posicoes_estoque(self.integracao, 10)
-        consultar_pedidos(self.integracao, 11)
-        consultar_pedidos_compra(self.integracao, 12)
-        consultar_recebimentos_nfe(self.integracao, 13)
-        consultar_servicos(self.integracao, 14)
-        consultar_ordens_servico(self.integracao, 15)
-        consultar_contratos(self.integracao, 16)
-        consultar_vendedores(self.integracao, 17)
+        consultar_locais_estoque(self.integracao, 10)
+        consultar_posicoes_estoque(self.integracao, 11)
+        consultar_saldos_pendentes_estoque(self.integracao, 12)
+        consultar_posicao_estoque(self.integracao, 3293025013, 3036783070)
+        consultar_pedidos(self.integracao, 13)
+        consultar_pedidos_compra(self.integracao, 14)
+        consultar_recebimentos_nfe(self.integracao, 15)
+        consultar_servicos(self.integracao, 16)
+        consultar_ordens_servico(self.integracao, 17)
+        consultar_contratos(self.integracao, 18)
+        consultar_vendedores(self.integracao, 19)
         consultar_resumo_financas(self.integracao)
         conta_extrato = ContaCorrenteOmie.objects.create(
             empresa=self.empresa,
@@ -1504,7 +1692,19 @@ class SincronizacaoClientesOmieTests(TestCase):
             },
         )
 
-        requisicao_posicoes = urlopen_mock.call_args_list[8].args[0]
+        requisicao_locais = urlopen_mock.call_args_list[8].args[0]
+        payload_locais = json.loads(requisicao_locais.data)
+        self.assertTrue(requisicao_locais.full_url.endswith("/estoque/local/"))
+        self.assertEqual(payload_locais["call"], "ListarLocaisEstoque")
+        self.assertEqual(
+            payload_locais["param"][0],
+            {
+                "nPagina": 10,
+                "nRegPorPagina": 50,
+            },
+        )
+
+        requisicao_posicoes = urlopen_mock.call_args_list[9].args[0]
         payload_posicoes = json.loads(requisicao_posicoes.data)
         self.assertTrue(requisicao_posicoes.full_url.endswith("/estoque/consulta/"))
         self.assertEqual(payload_posicoes["call"], "ListarPosEstoque")
@@ -1512,27 +1712,59 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(
             payload_posicoes["param"][0],
             {
-                "nPagina": 10,
+                "nPagina": 11,
                 "nRegPorPagina": 50,
                 "cExibeTodos": "N",
                 "codigo_local_estoque": 0,
             },
         )
 
-        requisicao_pedidos = urlopen_mock.call_args_list[9].args[0]
+        requisicao_saldos_pendentes = urlopen_mock.call_args_list[10].args[0]
+        payload_saldos_pendentes = json.loads(requisicao_saldos_pendentes.data)
+        self.assertTrue(
+            requisicao_saldos_pendentes.full_url.endswith("/estoque/consulta/")
+        )
+        self.assertEqual(payload_saldos_pendentes["call"], "ListarSaldoPendente")
+        self.assertEqual(
+            payload_saldos_pendentes["param"][0],
+            {
+                "pagina": 12,
+                "registros_por_pagina": 50,
+                "codigo_local_estoque": 0,
+                "id_prod": 0,
+                "tipo": "TODOS",
+            },
+        )
+
+        requisicao_posicao = urlopen_mock.call_args_list[11].args[0]
+        payload_posicao = json.loads(requisicao_posicao.data)
+        self.assertTrue(requisicao_posicao.full_url.endswith("/estoque/consulta/"))
+        self.assertEqual(payload_posicao["call"], "PosicaoEstoque")
+        self.assertTrue(payload_posicao["param"][0].pop("data"))
+        self.assertEqual(
+            payload_posicao["param"][0],
+            {
+                "codigo_local_estoque": 3036783070,
+                "id_prod": 3293025013,
+                "cod_int": "",
+                "apenas_saldo": "N",
+            },
+        )
+
+        requisicao_pedidos = urlopen_mock.call_args_list[12].args[0]
         payload_pedidos = json.loads(requisicao_pedidos.data)
         self.assertTrue(requisicao_pedidos.full_url.endswith("/produtos/pedido/"))
         self.assertEqual(payload_pedidos["call"], "ListarPedidos")
         self.assertEqual(
             payload_pedidos["param"][0],
             {
-                "pagina": 11,
+                "pagina": 13,
                 "registros_por_pagina": 100,
                 "apenas_importado_api": "N",
             },
         )
 
-        requisicao_pedidos_compra = urlopen_mock.call_args_list[10].args[0]
+        requisicao_pedidos_compra = urlopen_mock.call_args_list[13].args[0]
         payload_pedidos_compra = json.loads(requisicao_pedidos_compra.data)
         self.assertTrue(
             requisicao_pedidos_compra.full_url.endswith(
@@ -1543,7 +1775,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(
             payload_pedidos_compra["param"][0],
             {
-                "nPagina": 12,
+                "nPagina": 14,
                 "nRegsPorPagina": 100,
                 "lApenasImportadoApi": "F",
                 "lExibirPedidosPendentes": "T",
@@ -1559,7 +1791,7 @@ class SincronizacaoClientesOmieTests(TestCase):
             },
         )
 
-        requisicao_recebimentos = urlopen_mock.call_args_list[11].args[0]
+        requisicao_recebimentos = urlopen_mock.call_args_list[14].args[0]
         payload_recebimentos = json.loads(requisicao_recebimentos.data)
         self.assertTrue(
             requisicao_recebimentos.full_url.endswith(
@@ -1570,36 +1802,36 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(
             payload_recebimentos["param"][0],
             {
-                "nPagina": 13,
+                "nPagina": 15,
             },
         )
 
-        requisicao_servicos = urlopen_mock.call_args_list[12].args[0]
+        requisicao_servicos = urlopen_mock.call_args_list[15].args[0]
         payload_servicos = json.loads(requisicao_servicos.data)
         self.assertTrue(requisicao_servicos.full_url.endswith("/servicos/servico/"))
         self.assertEqual(payload_servicos["call"], "ListarCadastroServico")
         self.assertEqual(
             payload_servicos["param"][0],
             {
-                "nPagina": 14,
+                "nPagina": 16,
                 "nRegPorPagina": 20,
             },
         )
 
-        requisicao_os = urlopen_mock.call_args_list[13].args[0]
+        requisicao_os = urlopen_mock.call_args_list[16].args[0]
         payload_os = json.loads(requisicao_os.data)
         self.assertTrue(requisicao_os.full_url.endswith("/servicos/os/"))
         self.assertEqual(payload_os["call"], "ListarOS")
         self.assertEqual(
             payload_os["param"][0],
             {
-                "pagina": 15,
+                "pagina": 17,
                 "registros_por_pagina": 50,
                 "apenas_importado_api": "N",
             },
         )
 
-        requisicao_contratos = urlopen_mock.call_args_list[14].args[0]
+        requisicao_contratos = urlopen_mock.call_args_list[17].args[0]
         payload_contratos = json.loads(requisicao_contratos.data)
         self.assertTrue(
             requisicao_contratos.full_url.endswith("/servicos/contrato/")
@@ -1608,25 +1840,25 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(
             payload_contratos["param"][0],
             {
-                "pagina": 16,
+                "pagina": 18,
                 "registros_por_pagina": 50,
                 "apenas_importado_api": "N",
             },
         )
 
-        requisicao_vendedores = urlopen_mock.call_args_list[15].args[0]
+        requisicao_vendedores = urlopen_mock.call_args_list[18].args[0]
         payload_vendedores = json.loads(requisicao_vendedores.data)
         self.assertTrue(requisicao_vendedores.full_url.endswith("/geral/vendedores/"))
         self.assertEqual(payload_vendedores["call"], "ListarVendedores")
         self.assertEqual(
             payload_vendedores["param"][0],
             {
-                "pagina": 17,
+                "pagina": 19,
                 "registros_por_pagina": 100,
                 "apenas_importado_api": "N",
             },
         )
-        requisicao_resumo = urlopen_mock.call_args_list[16].args[0]
+        requisicao_resumo = urlopen_mock.call_args_list[19].args[0]
         payload_resumo = json.loads(requisicao_resumo.data)
         self.assertTrue(requisicao_resumo.full_url.endswith("/financas/resumo/"))
         self.assertEqual(payload_resumo["call"], "ObterResumoFinancas")
@@ -1637,7 +1869,7 @@ class SincronizacaoClientesOmieTests(TestCase):
                 "lApenasResumo": True,
             },
         )
-        requisicao_extrato = urlopen_mock.call_args_list[17].args[0]
+        requisicao_extrato = urlopen_mock.call_args_list[20].args[0]
         payload_extrato = json.loads(requisicao_extrato.data)
         self.assertTrue(requisicao_extrato.full_url.endswith("/financas/extrato/"))
         self.assertEqual(payload_extrato["call"], "ListarExtrato")
@@ -2015,7 +2247,9 @@ class SincronizacaoClientesOmieTests(TestCase):
             "consultar_departamentos": {"total_de_paginas": 1, "total_de_registros": 0, "departamentos": []},
             "consultar_vendedores": {"total_de_paginas": 1, "total_de_registros": 0, "cadastro": []},
             "consultar_produtos": {"total_de_paginas": 1, "total_de_registros": 0, "produto_servico_cadastro": []},
+            "consultar_locais_estoque": {"nTotPaginas": 1, "nTotRegistros": 0, "locaisEncontrados": []},
             "consultar_posicoes_estoque": {"nTotPaginas": 1, "nTotRegistros": 0, "produtos": []},
+            "consultar_saldos_pendentes_estoque": {"total_de_paginas": 1, "total_de_registros": 0, "saldo_pendente_lista": []},
             "consultar_pedidos_compra": {"nTotPaginas": 1, "nTotRegistros": 0, "pedidos_pesquisa": []},
             "consultar_recebimentos_nfe": {"nTotPaginas": 1, "nTotRegistros": 0, "recebimentos": []},
             "consultar_categorias": {"total_de_paginas": 1, "total_de_registros": 0, "categoria_cadastro": []},
@@ -2027,6 +2261,7 @@ class SincronizacaoClientesOmieTests(TestCase):
             "consultar_contas_pagar": {"total_de_paginas": 1, "total_de_registros": 0, "conta_pagar_cadastro": []},
             "consultar_contas_receber": {"total_de_paginas": 1, "total_de_registros": 0, "conta_receber_cadastro": []},
             "consultar_movimentos_financeiros": {"nTotPaginas": 1, "nTotRegistros": 0, "movimentos": []},
+            "consultar_pesq_titulos_financeiros": {"nTotPaginas": 1, "nTotRegistros": 0, "titulosEncontrados": []},
             "consultar_lancamentos_conta_corrente": {"nTotPaginas": 1, "nTotRegistros": 0, "listaLancamentos": []},
             "consultar_resumo_financas": {},
         }
@@ -2074,7 +2309,9 @@ class SincronizacaoClientesOmieTests(TestCase):
     @patch("apps.empresas.omie.consultar_recebimentos_nfe")
     @patch("apps.empresas.omie.consultar_pedidos_compra")
     @patch("apps.empresas.omie.consultar_pedidos")
+    @patch("apps.empresas.omie.consultar_saldos_pendentes_estoque")
     @patch("apps.empresas.omie.consultar_posicoes_estoque")
+    @patch("apps.empresas.omie.consultar_locais_estoque")
     @patch("apps.empresas.omie.consultar_produtos")
     @patch("apps.empresas.omie.consultar_pesq_titulos_financeiros")
     @patch("apps.empresas.omie.consultar_lancamentos_conta_corrente")
@@ -2103,7 +2340,9 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_lancamentos_conta_corrente_mock,
         consultar_pesq_titulos_financeiros_mock,
         consultar_produtos_mock,
+        consultar_locais_estoque_mock,
         consultar_posicoes_estoque_mock,
+        consultar_saldos_pendentes_estoque_mock,
         consultar_pedidos_mock,
         consultar_pedidos_compra_mock,
         consultar_recebimentos_nfe_mock,
@@ -2258,6 +2497,32 @@ class SincronizacaoClientesOmieTests(TestCase):
                 }
             ],
         }
+        consultar_locais_estoque_mock.return_value = {
+            "nPagina": 1,
+            "nTotPaginas": 1,
+            "nRegistros": 1,
+            "nTotRegistros": 1,
+            "locaisEncontrados": [
+                {
+                    "codigo": "PADRAO",
+                    "codigo_local_estoque": 3036783070,
+                    "dAlt": "07/07/2024",
+                    "dInc": "07/07/2024",
+                    "descricao": "Local de Estoque Padrao",
+                    "dispConsumoOP": "S",
+                    "dispOrdemProducao": "S",
+                    "dispRemessa": "S",
+                    "dispVenda": "S",
+                    "hAlt": "22:54:31",
+                    "hInc": "22:54:31",
+                    "inativo": "N",
+                    "padrao": "S",
+                    "tipo": "1",
+                    "uAlt": "P000025347",
+                    "uInc": "P000025347",
+                }
+            ],
+        }
         consultar_posicoes_estoque_mock.return_value = {
             "nPagina": 1,
             "nTotPaginas": 1,
@@ -2277,6 +2542,20 @@ class SincronizacaoClientesOmieTests(TestCase):
                     "nPrecoUnitario": 2.1,
                     "nSaldo": 8,
                     "reservado": 1,
+                }
+            ],
+        }
+        consultar_saldos_pendentes_estoque_mock.return_value = {
+            "pagina": 1,
+            "total_de_paginas": 1,
+            "registros": 1,
+            "total_de_registros": 1,
+            "saldo_pendente_lista": [
+                {
+                    "codigo_local_estoque": 3036783070,
+                    "id_prod": -3293025013,
+                    "qtde_entrada": 9950,
+                    "qtde_saida": 0,
                 }
             ],
         }
@@ -2974,8 +3253,8 @@ class SincronizacaoClientesOmieTests(TestCase):
 
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA)
-        self.assertEqual(sincronizacao.pagina_atual, 21)
-        self.assertEqual(sincronizacao.registros_processados, 21)
+        self.assertEqual(sincronizacao.pagina_atual, 23)
+        self.assertEqual(sincronizacao.registros_processados, 23)
         self.assertEqual(CadastroOmie.objects.count(), 2)
         self.assertEqual(
             CadastroOmie.objects.get(codigo_cliente_omie=101).tipo,
@@ -3006,14 +3285,35 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(produto.ncm, "3915.90.00")
         self.assertFalse(produto.inativo)
         self.assertEqual(produto.info["dAlt"], "02/07/2021")
+        local_estoque = LocalEstoqueOmie.objects.get(
+            codigo_local_estoque=3036783070
+        )
+        self.assertEqual(local_estoque.codigo, "PADRAO")
+        self.assertEqual(local_estoque.descricao, "Local de Estoque Padrao")
+        self.assertEqual(local_estoque.tipo, "1")
+        self.assertTrue(local_estoque.padrao)
+        self.assertFalse(local_estoque.inativo)
+        self.assertTrue(local_estoque.disponivel_venda)
+        self.assertEqual(local_estoque.data_inclusao.isoformat(), "2024-07-07")
+        self.assertEqual(local_estoque.hora_alteracao, "22:54:31")
         posicao = PosicaoEstoqueOmie.objects.get(codigo_produto=3293025013)
         self.assertEqual(posicao.produto, produto)
+        self.assertEqual(posicao.local_estoque, local_estoque)
         self.assertEqual(posicao.codigo, "PRD00041")
         self.assertEqual(posicao.codigo_local_estoque, 3036783070)
         self.assertEqual(str(posicao.cmc), "1.2500")
         self.assertEqual(str(posicao.saldo), "8.0000")
         self.assertEqual(str(posicao.fisico), "10.0000")
         self.assertEqual(posicao.dados_originais["nCMC"], 1.25)
+        saldo_pendente = SaldoPendenteEstoqueOmie.objects.get(
+            codigo_produto=3293025013
+        )
+        self.assertEqual(saldo_pendente.produto, produto)
+        self.assertEqual(saldo_pendente.local_estoque, local_estoque)
+        self.assertEqual(saldo_pendente.codigo_local_estoque, 3036783070)
+        self.assertEqual(str(saldo_pendente.quantidade_entrada), "9950.0000")
+        self.assertEqual(str(saldo_pendente.quantidade_saida), "0.0000")
+        self.assertEqual(saldo_pendente.dados_originais["id_prod"], -3293025013)
         categoria = CategoriaOmie.objects.get(codigo="0.01")
         self.assertEqual(categoria.descricao, "Transferência")
         self.assertEqual(categoria.categoria_superior, "0")

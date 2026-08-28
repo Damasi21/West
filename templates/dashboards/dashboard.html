@@ -76,6 +76,9 @@
             {% include "dashboards/partials/multiselect_filter.html" with nome="projeto" titulo="Projetos" icone="bi-kanban" opcoes=projetos selecionados=projetos_selecionados vazio="Todos os projetos" %}
             {% include "dashboards/partials/multiselect_filter.html" with nome="departamento" titulo="Departamentos" icone="bi-diagram-3" opcoes=departamentos selecionados=departamentos_selecionados vazio="Todos os departamentos" %}
         {% endif %}
+        {% if area_slug == "financeiro" %}
+            {% include "dashboards/partials/category_tree_filter.html" with categorias=categorias_arvore selecionados=categorias_selecionadas categorias_total=categorias_total %}
+        {% endif %}
 
         {% if area_slug == "comercial" and dashboard_slug == "faturamento" or area_slug == "comercial" and dashboard_slug == "desempenho-de-vendedores" %}
             {% include "dashboards/partials/multiselect_filter.html" with nome="vendedor" titulo="Vendedores" icone="bi-person-badge" opcoes=vendedores selecionados=vendedores_selecionados vazio="Todos os vendedores" %}
@@ -124,6 +127,11 @@
         <button class="btn btn-primary" type="submit">
             <i class="bi bi-arrow-repeat me-2"></i>Atualizar
         </button>
+        {% elif area_slug == "financeiro" %}
+            {% include "dashboards/partials/category_tree_filter.html" with categorias=categorias_arvore selecionados=categorias_selecionadas categorias_total=categorias_total %}
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-arrow-repeat me-2"></i>Atualizar
+            </button>
         {% endif %}
     </form>
 </div>
@@ -161,6 +169,8 @@
     {% include "dashboards/partials/curva_abc_fornecedores.html" with dados=curva_abc_fornecedores %}
 {% elif analise_preco_saving %}
     {% include "dashboards/partials/analise_preco_saving.html" with dados=analise_preco_saving %}
+{% elif kardex %}
+    {% include "dashboards/partials/kardex.html" with dados=kardex %}
 {% else %}
 <div class="row g-3 mb-4">
     {% for item in "1234" %}

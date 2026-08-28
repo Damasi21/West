@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    AcaoUsuarioLog,
     AgendamentoSincronizacaoOmie,
     CadastroOmie,
     CategoriaOmie,
@@ -15,6 +16,7 @@ from .models import (
     EmpresaUsuario,
     IntegracaoOmie,
     LancamentoContaCorrenteOmie,
+    LocalEstoqueOmie,
     MetaVendedorComercial,
     MovimentoFinanceiroOmie,
     OrdemServicoItemOmie,
@@ -29,11 +31,45 @@ from .models import (
     ProjetoOmie,
     RecebimentoNfeItemOmie,
     RecebimentoNfeOmie,
+    SaldoPendenteEstoqueOmie,
     ServicoOmie,
     SincronizacaoOmie,
     TipoContaCorrenteOmie,
     VendedorOmie,
 )
+
+
+@admin.register(AcaoUsuarioLog)
+class AcaoUsuarioLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "criado_em",
+        "usuario",
+        "empresa",
+        "tipo",
+        "descricao",
+        "metodo",
+        "ip",
+    )
+    list_filter = ("tipo", "empresa", "criado_em")
+    search_fields = (
+        "usuario__username",
+        "usuario__email",
+        "descricao",
+        "caminho",
+        "ip",
+    )
+    readonly_fields = (
+        "usuario",
+        "empresa",
+        "tipo",
+        "descricao",
+        "metodo",
+        "caminho",
+        "ip",
+        "user_agent",
+        "dados",
+        "criado_em",
+    )
 
 
 class EmpresaUsuarioInline(admin.TabularInline):
@@ -174,6 +210,22 @@ class ProdutoOmieAdmin(admin.ModelAdmin):
     )
 
 
+@admin.register(LocalEstoqueOmie)
+class LocalEstoqueOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "descricao",
+        "codigo",
+        "codigo_local_estoque",
+        "tipo",
+        "padrao",
+        "inativo",
+        "empresa",
+    )
+    list_filter = ("empresa", "tipo", "padrao", "inativo")
+    search_fields = ("descricao", "codigo", "codigo_local_estoque")
+    readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
+
+
 @admin.register(PosicaoEstoqueOmie)
 class PosicaoEstoqueOmieAdmin(admin.ModelAdmin):
     list_display = (
@@ -181,14 +233,35 @@ class PosicaoEstoqueOmieAdmin(admin.ModelAdmin):
         "descricao",
         "codigo_produto",
         "codigo_local_estoque",
+        "local_estoque",
         "cmc",
         "saldo",
         "fisico",
         "data_posicao",
         "empresa",
     )
-    list_filter = ("empresa", "codigo_local_estoque", "data_posicao")
+    list_filter = ("empresa", "local_estoque", "codigo_local_estoque", "data_posicao")
     search_fields = ("codigo", "descricao", "codigo_produto")
+    readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
+
+
+@admin.register(SaldoPendenteEstoqueOmie)
+class SaldoPendenteEstoqueOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "codigo_produto",
+        "codigo_local_estoque",
+        "quantidade_entrada",
+        "quantidade_saida",
+        "produto",
+        "local_estoque",
+        "empresa",
+    )
+    list_filter = ("empresa", "local_estoque", "codigo_local_estoque")
+    search_fields = (
+        "codigo_produto",
+        "produto__codigo",
+        "produto__descricao",
+    )
     readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
 
 

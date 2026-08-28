@@ -19,17 +19,17 @@ def _formatar_percentual(valor, casas=1):
     quantizador = Decimal("1") if casas == 0 else Decimal("0.1")
     texto = str(
         Decimal(str(valor)).quantize(quantizador, rounding=ROUND_HALF_UP)
-    ).replace(".", ",")
+    )
     return f"{texto}%"
 
 
 def _formatar_moeda(valor):
     valor = _numero(valor)
     if valor >= Decimal("1000000"):
-        return f"R$ {str((valor / Decimal('1000000')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)).replace('.', ',')} mi"
+        return f"R$ {str((valor / Decimal('1000000')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))} mi"
     if valor >= Decimal("1000"):
         mil = (valor / Decimal("1000")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        return f"R$ {str(mil).replace('.', ',')} mil"
+        return f"R$ {str(mil)} mil"
     return f"R$ {str(valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)).replace('.', ',')}"
 
 

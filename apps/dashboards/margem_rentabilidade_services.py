@@ -27,13 +27,13 @@ def _decimal(valor):
 
 
 def _formatar_percentual(valor):
-    return f"{_decimal(valor):.1f}%".replace(".", ",")
+    return f"{_decimal(valor):.1f}%"
 
 
 def _formatar_pp(valor):
     valor = _decimal(valor)
     sinal = "+" if valor > 0 else ""
-    return f"{sinal}{valor:.1f}pp".replace(".", ",")
+    return f"{sinal}{valor:.1f}pp"
 
 
 def _periodo_anterior(inicio, fim):

@@ -9,6 +9,7 @@ from django.db.models import Sum
 from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
 from apps.dashboards.finance_filters import (
+    filtrar_por_categorias_financeiras,
     registros_com_conta_visivel_dre,
     registros_com_conta_visivel_financeiro,
 )
@@ -51,16 +52,16 @@ def _formatar_moeda_curta(valor):
     valor = _decimal(valor)
     absoluto = abs(valor)
     if absoluto >= Decimal("1000000"):
-        texto = f"{valor / Decimal('1000000'):.2f}".replace(".", ",")
+        texto = f"{valor / Decimal('1000000'):.2f}"
         return f"R$ {texto} Mi"
     if absoluto >= Decimal("1000"):
-        texto = f"{valor / Decimal('1000'):.2f}".replace(".", ",")
+        texto = f"{valor / Decimal('1000'):.2f}"
         return f"R$ {texto} Mil"
     return _formatar_moeda(valor)
 
 
 def _formatar_percentual(valor):
-    return f"{valor:.1f}%".replace(".", ",")
+    return f"{valor:.1f}%"
 
 
 def _mes_anterior(ano, mes):
@@ -154,7 +155,7 @@ def _normalizar_filtro_composto(valores):
     return normalizados
 
 
-def _mapa_lancamentos_caixa(fim, meses, empresas_ids, projetos):
+def _mapa_lancamentos_caixa(fim, meses, empresas_ids, projetos, categorias):
     ano_primeiro, mes_primeiro = _mes_anterior(meses[0]["ano"], meses[0]["mes"])
     data_inicio_consulta = date(ano_primeiro, mes_primeiro, 1)
     queryset = LancamentoContaCorrenteOmie.objects.filter(
@@ -166,6 +167,7 @@ def _mapa_lancamentos_caixa(fim, meses, empresas_ids, projetos):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = filtrar_por_categorias_financeiras(queryset, categorias)
     queryset = registros_com_conta_visivel_financeiro(
         queryset,
         "codigo_conta_corrente",
@@ -187,7 +189,7 @@ def _mapa_lancamentos_caixa(fim, meses, empresas_ids, projetos):
     return totais
 
 
-def _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos):
+def _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos, categorias):
     ano_primeiro, mes_primeiro = _mes_anterior(meses[0]["ano"], meses[0]["mes"])
     data_inicio_consulta = date(ano_primeiro, mes_primeiro, 1)
     totais = defaultdict(Decimal)
@@ -212,6 +214,8 @@ def _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos):
     if projetos:
         receber = receber.filter(codigo_projeto__in=projetos)
         pagar = pagar.filter(codigo_projeto__in=projetos)
+    receber = filtrar_por_categorias_financeiras(receber, categorias)
+    pagar = filtrar_por_categorias_financeiras(pagar, categorias)
     receber = registros_com_conta_visivel_dre(receber, "id_conta_corrente")
     pagar = registros_com_conta_visivel_dre(pagar, "id_conta_corrente")
 
@@ -234,10 +238,10 @@ def _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos):
     return totais
 
 
-def _mapa_lancamentos(fim, meses, empresas_ids, projetos, regime_financeiro):
+def _mapa_lancamentos(fim, meses, empresas_ids, projetos, regime_financeiro, categorias):
     if regime_financeiro == "competencia":
-        return _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos)
-    return _mapa_lancamentos_caixa(fim, meses, empresas_ids, projetos)
+        return _mapa_lancamentos_competencia(fim, meses, empresas_ids, projetos, categorias)
+    return _mapa_lancamentos_caixa(fim, meses, empresas_ids, projetos, categorias)
 
 
 def _valor_conta(conta, totais_lancamentos, ano, mes):
@@ -342,7 +346,7 @@ def _classificar_indicadores(linhas_pai):
     ]
 
 
-def _fornecedores_caixa(conta, inicio, fim, empresas_ids, receitas_mes, meses):
+def _fornecedores_caixa(conta, inicio, fim, empresas_ids, receitas_mes, meses, categorias):
     base = LancamentoContaCorrenteOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
@@ -350,6 +354,7 @@ def _fornecedores_caixa(conta, inicio, fim, empresas_ids, receitas_mes, meses):
         data_lancamento__lte=fim,
         categoria_principal__conta_dre=conta,
     )
+    base = filtrar_por_categorias_financeiras(base, categorias)
     base = registros_com_conta_visivel_dre(base, "codigo_conta_corrente")
     fornecedores = (
         base
@@ -422,6 +427,7 @@ def _pessoas_competencia(
     receitas_mes,
     meses,
     projetos,
+    categorias,
 ):
     bases = [
         (
@@ -456,6 +462,7 @@ def _pessoas_competencia(
     for base, prefixo, padrao in bases:
         if projetos:
             base = base.filter(codigo_projeto__in=projetos)
+        base = filtrar_por_categorias_financeiras(base, categorias)
         base = registros_com_conta_visivel_dre(base, "id_conta_corrente")
         pessoas = (
             base.values(f"{prefixo}__razao_social", f"{prefixo}__nome_fantasia")
@@ -501,6 +508,7 @@ def _fornecedores_da_conta(
     meses,
     regime_financeiro,
     projetos=None,
+    categorias=None,
 ):
     if regime_financeiro == "competencia":
         return _pessoas_competencia(
@@ -511,8 +519,17 @@ def _fornecedores_da_conta(
             receitas_mes,
             meses,
             projetos or [],
+            categorias or [],
         )
-    return _fornecedores_caixa(conta, inicio, fim, empresas_ids, receitas_mes, meses)
+    return _fornecedores_caixa(
+        conta,
+        inicio,
+        fim,
+        empresas_ids,
+        receitas_mes,
+        meses,
+        categorias or [],
+    )
 
 
 def dre_gerencial(
@@ -523,17 +540,20 @@ def dre_gerencial(
     empresas_ids=None,
     projetos_selecionados=None,
     regime_financeiro="caixa",
+    categorias_selecionadas=None,
 ):
     empresas_ids = empresas_ids or [empresa.pk]
     inicio, fim = _intervalo_periodo(periodo, data_inicio, data_fim)
     meses = _meses_do_intervalo(inicio, fim)
     projetos = _normalizar_filtro_composto(projetos_selecionados or [])
+    categorias = _normalizar_filtro_composto(categorias_selecionadas or [])
     totais_lancamentos = _mapa_lancamentos(
         fim,
         meses,
         empresas_ids,
         projetos,
         regime_financeiro,
+        categorias,
     )
     contas = list(
         ContaDRE.objects.filter(empresa_id=empresa.pk)
@@ -638,6 +658,7 @@ def dre_gerencial(
                     meses,
                     regime_financeiro,
                     projetos,
+                    categorias,
                 )
             )
 

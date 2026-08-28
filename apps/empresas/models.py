@@ -100,6 +100,55 @@ class EmpresaUsuario(models.Model):
         return f"{self.usuario} - {self.empresa} ({self.get_papel_display()})"
 
 
+class AcaoUsuarioLog(models.Model):
+    class Tipo(models.TextChoices):
+        LOGIN = "login", "Login"
+        LOGOUT = "logout", "Logout"
+        ERRO_LOGIN = "erro_login", "Erro de login"
+        ACESSO_EMPRESA = "acesso_empresa", "Acesso a empresa"
+        MODULO = "modulo", "Modulo"
+        DASHBOARD = "dashboard", "Dashboard"
+        ALTERACAO = "alteracao", "Alteracao"
+        EXCLUSAO = "exclusao", "Exclusao"
+
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="logs_acoes",
+    )
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="logs_acoes",
+    )
+    tipo = models.CharField(max_length=30, choices=Tipo.choices, db_index=True)
+    descricao = models.CharField(max_length=255)
+    metodo = models.CharField(max_length=10, blank=True)
+    caminho = models.CharField(max_length=500, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    dados = models.JSONField(default=dict, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+        indexes = [
+            models.Index(fields=["empresa", "criado_em"], name="log_acao_emp_data_idx"),
+            models.Index(fields=["usuario", "criado_em"], name="log_acao_usr_data_idx"),
+            models.Index(fields=["tipo", "criado_em"], name="log_acao_tipo_data_idx"),
+        ]
+        verbose_name = "log de acao do usuario"
+        verbose_name_plural = "logs de acoes dos usuarios"
+
+    def __str__(self):
+        usuario = self.usuario or "usuario removido"
+        return f"{self.get_tipo_display()} - {usuario} - {self.criado_em:%d/%m/%Y %H:%M}"
+
+
 class IntegracaoOmie(models.Model):
     empresa = models.OneToOneField(
         Empresa,
@@ -376,6 +425,61 @@ class ProdutoOmie(models.Model):
         return self.descricao or self.codigo or str(self.codigo_produto)
 
 
+class LocalEstoqueOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="locais_estoque_omie",
+    )
+    codigo_local_estoque = models.BigIntegerField()
+    codigo = models.CharField(max_length=50, blank=True)
+    descricao = models.CharField(max_length=250, blank=True)
+    tipo = models.CharField(max_length=1, blank=True)
+    codigo_cliente = models.BigIntegerField(null=True, blank=True)
+    padrao = models.BooleanField(default=False)
+    inativo = models.BooleanField(default=False)
+    disponivel_ordem_producao = models.BooleanField(default=False)
+    disponivel_consumo_op = models.BooleanField(default=False)
+    disponivel_remessa = models.BooleanField(default=False)
+    disponivel_venda = models.BooleanField(default=False)
+    considera_sugestao_compra = models.BooleanField(default=False)
+    data_inclusao = models.DateField(null=True, blank=True)
+    hora_inclusao = models.CharField(max_length=8, blank=True)
+    usuario_inclusao = models.CharField(max_length=20, blank=True)
+    data_alteracao = models.DateField(null=True, blank=True)
+    hora_alteracao = models.CharField(max_length=8, blank=True)
+    usuario_alteracao = models.CharField(max_length=20, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["descricao", "codigo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_local_estoque"],
+                name="local_est_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "codigo"],
+                name="local_est_omie_emp_codigo_idx",
+            ),
+            models.Index(
+                fields=["empresa", "inativo"],
+                name="local_est_omie_emp_ativo_idx",
+            ),
+        ]
+        verbose_name = "local de estoque OMIE"
+        verbose_name_plural = "locais de estoque OMIE"
+
+    def __str__(self):
+        return self.descricao or self.codigo or str(self.codigo_local_estoque)
+
+
 class PosicaoEstoqueOmie(models.Model):
     class Origem(models.TextChoices):
         MANUAL = "manual", "Manual"
@@ -388,6 +492,13 @@ class PosicaoEstoqueOmie(models.Model):
     )
     produto = models.ForeignKey(
         ProdutoOmie,
+        on_delete=models.SET_NULL,
+        related_name="posicoes_estoque_omie",
+        null=True,
+        blank=True,
+    )
+    local_estoque = models.ForeignKey(
+        LocalEstoqueOmie,
         on_delete=models.SET_NULL,
         related_name="posicoes_estoque_omie",
         null=True,
@@ -435,6 +546,61 @@ class PosicaoEstoqueOmie(models.Model):
 
     def __str__(self):
         return self.descricao or self.codigo or str(self.codigo_produto)
+
+
+class SaldoPendenteEstoqueOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="saldos_pendentes_estoque_omie",
+    )
+    produto = models.ForeignKey(
+        ProdutoOmie,
+        on_delete=models.SET_NULL,
+        related_name="saldos_pendentes_estoque_omie",
+        null=True,
+        blank=True,
+    )
+    local_estoque = models.ForeignKey(
+        LocalEstoqueOmie,
+        on_delete=models.SET_NULL,
+        related_name="saldos_pendentes_estoque_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_produto = models.BigIntegerField()
+    codigo_local_estoque = models.BigIntegerField(default=0)
+    quantidade_entrada = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    quantidade_saida = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["codigo_produto", "codigo_local_estoque"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_produto", "codigo_local_estoque"],
+                name="saldo_pend_est_emp_prod_local_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "codigo_produto"],
+                name="saldo_pend_est_emp_prod_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_local_estoque"],
+                name="saldo_pend_est_emp_local_idx",
+            ),
+        ]
+        verbose_name = "saldo pendente de estoque OMIE"
+        verbose_name_plural = "saldos pendentes de estoque OMIE"
+
+    def __str__(self):
+        return str(self.codigo_produto)
 
 
 class ServicoOmie(models.Model):

@@ -1,0 +1,69 @@
+<div class="dashboard-filter category-filter" data-filter-dropdown data-category-filter>
+    <button class="filter-trigger" type="button" aria-expanded="false">
+        <i class="bi bi-tags"></i>
+        <span
+            data-filter-summary
+            data-empty-label="Todas as categorias"
+            data-total="{{ categorias_total }}"
+        >
+            {% if not selecionados or selecionados|length == categorias_total %}Todas as categorias{% elif selecionados|length == 1 %}1 selecionada{% else %}{{ selecionados|length }} selecionadas{% endif %}
+        </span>
+        <i class="bi bi-chevron-down filter-chevron"></i>
+    </button>
+    <div class="filter-popover category-filter-popover">
+        <strong class="filter-title">Categorias</strong>
+        <p class="filter-hint">Desmarque um grupo para remover todos os filhos do dashboard.</p>
+        <div class="category-tree">
+            {% for grupo in categorias %}
+                <details class="category-group">
+                    <summary>
+                        {% if grupo.valor %}
+                            <label class="filter-option category-parent">
+                                <input
+                                    type="checkbox"
+                                    name="categoria"
+                                    value="{{ grupo.valor }}"
+                                    data-category-parent
+                                    {% if grupo.valor in selecionados %}checked{% endif %}
+                                >
+                                <span>
+                                    {{ grupo.nome }}
+                                    {% if empresas_filtro|length > 1 %}<small>{{ grupo.empresa }}</small>{% endif %}
+                                </span>
+                            </label>
+                        {% else %}
+                            <span class="category-parent-title">{{ grupo.nome }}</span>
+                        {% endif %}
+                    </summary>
+                    <div class="category-children">
+                        {% for categoria in grupo.filhos %}
+                            <label class="filter-option category-child">
+                                <input
+                                    type="checkbox"
+                                    name="categoria"
+                                    value="{{ categoria.valor }}"
+                                    data-category-child
+                                    {% if categoria.valor in selecionados %}checked{% endif %}
+                                >
+                                <span>
+                                    {{ categoria.nome }}
+                                    {% if empresas_filtro|length > 1 %}<small>{{ categoria.empresa }}</small>{% endif %}
+                                </span>
+                            </label>
+                        {% empty %}
+                            <span class="filter-empty">Sem categorias filhas.</span>
+                        {% endfor %}
+                    </div>
+                </details>
+            {% empty %}
+                <span class="filter-empty">Nenhuma categoria ativa.</span>
+            {% endfor %}
+        </div>
+        {% if categorias_total %}
+            <div class="filter-actions">
+                <button type="button" data-select-all>Marcar todas</button>
+                <button type="button" data-clear-all>Limpar</button>
+            </div>
+        {% endif %}
+    </div>
+</div>

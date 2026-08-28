@@ -111,6 +111,26 @@ document.addEventListener("DOMContentLoaded", () => {
     setupSidebarToggle();
     setupChartZoom();
 
+    const kardexDashboard = document.querySelector("[data-kardex-dashboard]");
+    if (kardexDashboard) {
+        kardexDashboard.querySelectorAll("[data-kardex-row]").forEach((row) => {
+            row.addEventListener("click", () => {
+                const expanded = row.getAttribute("aria-expanded") === "true";
+                const history = row.nextElementSibling?.matches("[data-kardex-history]")
+                    ? row.nextElementSibling
+                    : null;
+                row.setAttribute("aria-expanded", String(!expanded));
+                const icon = row.querySelector(".inventory-kardex-product-name i");
+                if (icon) {
+                    icon.className = expanded ? "bi bi-chevron-right" : "bi bi-chevron-down";
+                }
+                if (history) {
+                    history.hidden = expanded;
+                }
+            });
+        });
+    }
+
     const overview = document.querySelector("[data-finance-overview]");
     if (overview && typeof Chart !== "undefined") {
         const labels = JSON.parse(document.getElementById("overview-chart-labels").textContent);
@@ -184,7 +204,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         ...chartBaseOptions.plugins,
                         tooltip: {
                             callbacks: {
-                                label: (context) => `${(context.parsed.y || 0).toFixed(1).replace(".", ",")}%`,
+                                label: (context) => `${(context.parsed.y || 0).toFixed(1)}%`,
                             },
                         },
                     },
@@ -415,7 +435,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     shortValue.toLocaleString("pt-BR", {
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 1,
-                    })
+                    }).replace(",", ".")
                 );
 
                 if (abs >= 1000000) {
@@ -738,7 +758,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         ...chartBaseOptions.plugins,
                         tooltip: {
                             callbacks: {
-                                label: (context) => `${(context.parsed.y || 0).toFixed(1).replace(".", ",")}%`,
+                                label: (context) => `${(context.parsed.y || 0).toFixed(1)}%`,
                             },
                         },
                     },
@@ -801,7 +821,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     shortValue.toLocaleString("pt-BR", {
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 1,
-                    })
+                    }).replace(",", ".")
                 );
 
                 if (abs >= 1000000) {
@@ -1338,7 +1358,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                     return [
                                         `Codigo: ${item.codigo}`,
                                         `Receita: ${moneyFormatter.format(item.x || 0)}`,
-                                        `Margem: ${(item.y || 0).toFixed(1).replace(".", ",")}%`,
+                                        `Margem: ${(item.y || 0).toFixed(1)}%`,
                                         `Volume: ${(item.volume || 0).toLocaleString("pt-BR")}`,
                                     ];
                                 },
@@ -1940,7 +1960,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ...chartBaseOptions.plugins,
                 tooltip: {
                     callbacks: {
-                        label: (context) => `${(context.parsed.y || 0).toFixed(1).replace(".", ",")}%`,
+                        label: (context) => `${(context.parsed.y || 0).toFixed(1)}%`,
                     },
                 },
             },

@@ -24,9 +24,46 @@ class EntrarView(LoginView):
     authentication_form = LoginForm
     redirect_authenticated_user = True
 
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        from apps.empresas.auditoria import registrar_acao
+        from apps.empresas.models import AcaoUsuarioLog
+
+        registrar_acao(
+            usuario=form.get_user(),
+            tipo=AcaoUsuarioLog.Tipo.LOGIN,
+            descricao="Login realizado",
+            request=self.request,
+        )
+        return response
+
+    def form_invalid(self, form):
+        response = super().form_invalid(form)
+        from apps.empresas.auditoria import registrar_acao
+        from apps.empresas.models import AcaoUsuarioLog
+
+        registrar_acao(
+            tipo=AcaoUsuarioLog.Tipo.ERRO_LOGIN,
+            descricao="Tentativa de login sem sucesso",
+            request=self.request,
+            dados={"username": self.request.POST.get("username", "")[:150]},
+        )
+        return response
+
 
 class SairView(LogoutView):
-    pass
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            from apps.empresas.auditoria import registrar_acao
+            from apps.empresas.models import AcaoUsuarioLog
+
+            registrar_acao(
+                usuario=request.user,
+                tipo=AcaoUsuarioLog.Tipo.LOGOUT,
+                descricao="Logout realizado",
+                request=request,
+            )
+        return super().dispatch(request, *args, **kwargs)
 
 
 def cadastrar(request):

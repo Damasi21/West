@@ -11,6 +11,7 @@ from django.utils.dateparse import parse_date
 from apps.dashboards.dre_services import _formatar_moeda
 from apps.dashboards.finance_filters import (
     contas_correntes_visiveis_financeiro,
+    filtrar_por_categorias_financeiras,
     registros_com_conta_visivel_financeiro,
 )
 from apps.dashboards.fluxo_caixa_services import (
@@ -78,7 +79,7 @@ def _saldo_contas_correntes(empresas_ids):
     return _decimal(total)
 
 
-def _contas_pagar_do_periodo(inicio, fim, empresas_ids, projetos):
+def _contas_pagar_do_periodo(inicio, fim, empresas_ids, projetos, categorias):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
@@ -91,13 +92,14 @@ def _contas_pagar_do_periodo(inicio, fim, empresas_ids, projetos):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = filtrar_por_categorias_financeiras(queryset, categorias)
     return registros_com_conta_visivel_financeiro(
         queryset,
         "id_conta_corrente",
     ).select_related("empresa", "fornecedor", "categoria_principal")
 
 
-def _contas_pagar_historico(inicio, fim, empresas_ids, projetos):
+def _contas_pagar_historico(inicio, fim, empresas_ids, projetos, categorias):
     queryset = ContaPagarOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
@@ -114,6 +116,7 @@ def _contas_pagar_historico(inicio, fim, empresas_ids, projetos):
     )
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = filtrar_por_categorias_financeiras(queryset, categorias)
     return registros_com_conta_visivel_financeiro(
         queryset,
         "id_conta_corrente",
@@ -126,7 +129,7 @@ def _contas_pagar_historico(inicio, fim, empresas_ids, projetos):
     ).distinct()
 
 
-def _contas_receber_do_periodo(inicio, fim, empresas_ids, projetos):
+def _contas_receber_do_periodo(inicio, fim, empresas_ids, projetos, categorias):
     queryset = ContaReceberOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
@@ -135,6 +138,7 @@ def _contas_receber_do_periodo(inicio, fim, empresas_ids, projetos):
     ).exclude(status_titulo__in=STATUS_FECHADOS_RECEBER)
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
+    queryset = filtrar_por_categorias_financeiras(queryset, categorias)
     return registros_com_conta_visivel_financeiro(
         queryset,
         "id_conta_corrente",
@@ -229,6 +233,7 @@ def painel_aprovacao_pagamentos(
     empresa,
     empresas_ids=None,
     projetos_selecionados=None,
+    categorias_selecionadas=None,
     periodo_inicio=None,
     periodo_fim=None,
     historico_inicio=None,
@@ -243,6 +248,10 @@ def painel_aprovacao_pagamentos(
             projetos.append(int(codigo))
         except (TypeError, ValueError):
             continue
+    categorias = []
+    for item in categorias_selecionadas or []:
+        partes = str(item).split(":", 1)
+        categorias.append(partes[1] if len(partes) == 2 else str(item))
 
     periodo_inicio = periodo_inicio or date.today()
     periodo_fim = periodo_fim or periodo_inicio
@@ -254,18 +263,21 @@ def painel_aprovacao_pagamentos(
         periodo_fim,
         empresas_ids,
         projetos,
+        categorias,
     )
     contas_receber = _contas_receber_do_periodo(
         periodo_inicio,
         periodo_fim,
         empresas_ids,
         projetos,
+        categorias,
     )
     contas_historico = _contas_pagar_historico(
         historico_inicio,
         historico_fim,
         empresas_ids,
         projetos,
+        categorias,
     )
     pagamentos = _linhas_pagamentos(contas_pagar)
     recebimentos = _linhas_recebimentos(contas_receber)
@@ -321,7 +333,7 @@ def painel_aprovacao_pagamentos(
         "total_receber": _formatar_moeda(total_receber),
         "pendente_total": _formatar_moeda(pendente_total),
         "aprovado_total": _formatar_moeda(aprovado_total),
-        "comprometimento": f"{comprometimento:.1f}".replace(".", ","),
+        "comprometimento": f"{comprometimento:.1f}",
         "comprometimento_largura": min(int(comprometimento), 100),
         "taxa_aprovacao": taxa_aprovacao,
         "pagamentos_count": len(pagamentos),
