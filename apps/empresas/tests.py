@@ -476,7 +476,7 @@ class ParametrosOmieTests(TestCase):
                 kwargs={"empresa_slug": self.empresa.slug},
             ),
         )
-        self.assertNotContains(response, "Limite de 4 atualizacoes por dia.")
+        self.assertNotContains(response, "Limite de 3 atualizacoes por dia.")
 
     def test_pagina_de_sincronizacao_exibe_configuracao_completa(self):
         self.client.force_login(self.administrador)
@@ -498,7 +498,7 @@ class ParametrosOmieTests(TestCase):
 
         self.assertContains(response, "Sincronizacao")
         self.assertContains(response, "Sincronizacao automatica ativa")
-        self.assertContains(response, "Limite de 4 atualizacoes por dia.")
+        self.assertContains(response, "Limite de 3 atualizacoes por dia.")
         self.assertContains(response, "Dia da semana")
         self.assertContains(response, "Todo dia")
         self.assertContains(response, "multiple")
@@ -572,7 +572,6 @@ class ParametrosOmieTests(TestCase):
                 "horario_1": "07:00",
                 "horario_2": "12:30",
                 "horario_3": "18:00",
-                "horario_4": "21:15",
             },
         )
 
@@ -586,17 +585,17 @@ class ParametrosOmieTests(TestCase):
         agendamento = AgendamentoSincronizacaoOmie.objects.get(empresa=self.empresa)
         self.assertTrue(agendamento.ativo)
         self.assertEqual(agendamento.dias_semana, [0, 2, 4])
-        self.assertEqual(agendamento.horarios, ["07:00", "12:30", "18:00", "21:15"])
+        self.assertEqual(agendamento.horarios, ["07:00", "12:30", "18:00"])
         self.assertEqual(agendamento.atualizado_por, self.administrador)
 
-    def test_agendamento_limita_quatro_horarios_por_dia(self):
+    def test_agendamento_limita_tres_horarios_por_dia(self):
         agendamento = AgendamentoSincronizacaoOmie(
             empresa=self.empresa,
             ativo=True,
-            horarios=["07:00", "10:00", "13:00", "16:00", "19:00"],
+            horarios=["07:00", "10:00", "13:00", "16:00"],
         )
 
-        with self.assertRaisesMessage(Exception, "maximo 4 horarios"):
+        with self.assertRaisesMessage(Exception, "maximo 3 horarios"):
             agendamento.full_clean()
 
 
