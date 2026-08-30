@@ -1,12 +1,16 @@
 import json
+from io import BytesIO
 from datetime import date
 
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 from apps.dashboards.analise_clientes_services import analise_clientes_comercial
 from apps.dashboards.analise_preco_saving_services import (
@@ -24,7 +28,9 @@ from apps.dashboards.desempenho_vendedores_services import desempenho_vendedores
 from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import (
     TIPOS_FATURAMENTO,
+    TIPOS_FATURAMENTO_PADRAO,
     faturamento_comercial,
+    linhas_excel_faturamento_produtos,
 )
 from apps.dashboards.fluxo_caixa_services import (
     fluxo_de_caixa,
@@ -423,6 +429,154 @@ def _periodo_historico_aprovacao_pagamentos(request, periodo_inicio, periodo_fim
     return inicio, fim
 
 
+def _filtros_exportacao_faturamento(request, empresa):
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+    empresas_selecionadas = _empresas_inicio_selecionadas(
+        request,
+        empresa,
+        empresas,
+    )
+    empresas_consulta_ids = empresas_selecionadas or [
+        str(item.pk) for item in empresas
+    ]
+    from apps.empresas.models import ProjetoOmie, VendedorOmie
+
+    projetos_opcoes = [
+        {
+            "valor": f"{projeto.empresa_id}:{projeto.codigo}",
+            "nome": projeto.nome,
+            "empresa": projeto.empresa.nome_fantasia,
+        }
+        for projeto in ProjetoOmie.objects.filter(
+            empresa_id__in=empresas_consulta_ids,
+            ativo_omie=True,
+            inativo=False,
+        ).select_related("empresa")
+    ]
+    vendedores_opcoes = [
+        {
+            "valor": f"{vendedor.empresa_id}:{vendedor.codigo}",
+            "nome": vendedor.nome or str(vendedor.codigo),
+            "empresa": vendedor.empresa.nome_fantasia,
+        }
+        for vendedor in VendedorOmie.objects.filter(
+            empresa_id__in=empresas_consulta_ids,
+            ativo_omie=True,
+            inativo=False,
+        ).select_related("empresa")
+    ]
+    estado = request.session.get(
+        f"filtros_dashboard:{empresa.pk}:comercial:faturamento",
+        {},
+    )
+    if "_filtrar" in request.GET:
+        projetos_selecionados = _valores_validos(
+            request.GET.getlist("projeto"),
+            (item["valor"] for item in projetos_opcoes),
+        )
+        vendedores_selecionados = _valores_validos(
+            request.GET.getlist("vendedor"),
+            (item["valor"] for item in vendedores_opcoes),
+        )
+        periodo = _valor_periodo_valido(request.GET.get("periodo", ""))
+        data_inicio, data_fim = _datas_periodo_especifico(
+            periodo,
+            request.GET.get("data_inicio"),
+            request.GET.get("data_fim"),
+        )
+    else:
+        projetos_selecionados = _valores_validos(
+            estado.get("projetos", []),
+            (item["valor"] for item in projetos_opcoes),
+        )
+        vendedores_selecionados = _valores_validos(
+            estado.get("vendedores", []),
+            (item["valor"] for item in vendedores_opcoes),
+        )
+        estado_modulo = request.session.get(
+            f"filtros_modulo:{empresa.pk}:comercial",
+            {},
+        )
+        fonte_periodo = estado if estado.get("periodo") else estado_modulo
+        periodo = _valor_periodo_valido(fonte_periodo.get("periodo") or "")
+        data_inicio, data_fim = _datas_periodo_especifico(
+            periodo,
+            fonte_periodo.get("data_inicio"),
+            fonte_periodo.get("data_fim"),
+        )
+    if periodo == "personalizado" and not data_inicio:
+        periodo = _valor_periodo_valido("")
+        data_inicio, data_fim = "", ""
+    return {
+        "empresas_ids": empresas_consulta_ids,
+        "periodo": periodo,
+        "data_inicio": data_inicio,
+        "data_fim": data_fim,
+        "projetos": _valores_para_consulta(
+            projetos_selecionados,
+            projetos_opcoes,
+        ),
+        "vendedores": _valores_para_consulta(
+            vendedores_selecionados,
+            vendedores_opcoes,
+        ),
+    }
+
+
+def _resposta_excel_faturamento_produtos(linhas, periodo):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Faturamento"
+    headers = [
+        "Data de Emissao",
+        "Cliente",
+        "Numero da NF",
+        "Total de Mercadoria",
+        "Frete",
+        "Total da Nota Fiscal",
+    ]
+    worksheet.append(headers)
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in worksheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for linha in linhas:
+        worksheet.append(
+            [
+                linha["data_emissao_fmt"],
+                linha["cliente"],
+                linha["numero_nf"],
+                float(linha["total_mercadoria"]),
+                float(linha["frete"]),
+                float(linha["total_nota"]),
+            ]
+        )
+
+    for coluna in ("D", "E", "F"):
+        for cell in worksheet[coluna][1:]:
+            cell.number_format = '"R$" #,##0.00'
+    larguras = [18, 36, 18, 22, 16, 22]
+    for indice, largura in enumerate(larguras, start=1):
+        worksheet.column_dimensions[get_column_letter(indice)].width = largura
+
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    response = HttpResponse(
+        stream.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="faturamento-produtos-{periodo}.xlsx"'
+    )
+    return response
+
+
 def _chave_empresas_inicio(empresa):
     return f"filtros_inicio:{empresa.pk}:empresas"
 
@@ -639,7 +793,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         ]
         vendedores_selecionados = [item["valor"] for item in vendedores_opcoes]
         categorias_selecionadas = [item["valor"] for item in categorias_opcoes]
-        tipos_faturamento_selecionados = list(TIPOS_FATURAMENTO)
+        tipos_faturamento_selecionados = TIPOS_FATURAMENTO_PADRAO[:]
         budget_dimensao = "produto"
         periodo_selecionado = f"ano-{date.today().year}"
         regime_financeiro = _regime_financeiro_valido("")
@@ -677,7 +831,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         tipos_faturamento_selecionados = _valores_validos(
             request.GET.getlist("tipo_faturamento"),
             TIPOS_FATURAMENTO.keys(),
-        ) or list(TIPOS_FATURAMENTO)
+        ) or TIPOS_FATURAMENTO_PADRAO[:]
         budget_dimensao = request.GET.get("budget_dimensao", "")
         periodo_selecionado = _valor_periodo_valido(
             request.GET.get("periodo", "")
@@ -723,9 +877,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             (item["valor"] for item in categorias_opcoes),
         )
         tipos_faturamento_selecionados = _valores_validos(
-            estado.get("tipos_faturamento", list(TIPOS_FATURAMENTO)),
+            estado.get("tipos_faturamento", TIPOS_FATURAMENTO_PADRAO[:]),
             TIPOS_FATURAMENTO.keys(),
-        ) or list(TIPOS_FATURAMENTO)
+        ) or TIPOS_FATURAMENTO_PADRAO[:]
         budget_dimensao = estado.get("budget_dimensao", "")
         fonte_periodo = estado if estado.get("periodo") else estado_modulo
         periodo_selecionado = _valor_periodo_valido(
@@ -750,10 +904,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         vendedores_selecionados,
         vendedores_opcoes,
     )
-    tipos_faturamento_consulta = _valores_para_consulta(
-        tipos_faturamento_selecionados,
-        tipos_faturamento_opcoes,
-    ) or list(TIPOS_FATURAMENTO)
+    tipos_faturamento_consulta = tipos_faturamento_selecionados or TIPOS_FATURAMENTO_PADRAO[:]
     categorias_consulta = _codigos_filtro_composto(
         _valores_para_consulta(
             categorias_selecionadas,
@@ -1130,3 +1281,27 @@ def salvar_aprovacao_pagamentos(request, empresa_slug):
 
     resultado = salvar_aprovacoes_pagamentos(empresa, request.user, itens)
     return JsonResponse(resultado, status=200 if resultado["sucesso"] else 207)
+
+
+@login_required
+def exportar_faturamento_produtos(request, empresa_slug):
+    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    if not usuario_pode_acessar_dashboard(
+        request.user,
+        empresa,
+        "comercial",
+        "faturamento",
+    ):
+        raise Http404("Dashboard nao encontrado.")
+
+    filtros = _filtros_exportacao_faturamento(request, empresa)
+    linhas = linhas_excel_faturamento_produtos(
+        empresa,
+        filtros["periodo"],
+        filtros["data_inicio"],
+        filtros["data_fim"],
+        filtros["empresas_ids"],
+        filtros["projetos"],
+        filtros["vendedores"],
+    )
+    return _resposta_excel_faturamento_produtos(linhas, filtros["periodo"])

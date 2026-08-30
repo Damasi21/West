@@ -15,8 +15,17 @@
         <div class="dre-chart-header">
             <div>
                 <small>FATURAMENTO</small>
-                <h2>Produtos, servicos e faturado do periodo</h2>
+                <h2>{{ dados.grafico_titulo }}</h2>
             </div>
+            <a
+                class="chart-excel-button"
+                href="{% url 'dashboards:exportar_faturamento_produtos' empresa.slug %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                title="Exportar produtos para Excel"
+                aria-label="Exportar produtos para Excel"
+            >
+                <i class="bi bi-file-earmark-spreadsheet"></i>
+                <span>Excel</span>
+            </a>
         </div>
         <div class="billing-chart-scroll">
             <div class="billing-chart-canvas billing-chart-canvas-large" data-billing-main-chart-canvas>
@@ -80,8 +89,13 @@
 
     {{ dados.labels|json_script:"billing-chart-labels" }}
     {{ dados.produtos|json_script:"billing-chart-products" }}
+    {{ dados.produtos_mercadorias|json_script:"billing-chart-products-goods" }}
+    {{ dados.produtos_frete_despesas|json_script:"billing-chart-products-expenses" }}
+    {{ dados.produtos_impostos|json_script:"billing-chart-products-taxes" }}
+    {{ dados.servicos_impostos|json_script:"billing-chart-services-taxes" }}
     {{ dados.servicos|json_script:"billing-chart-services" }}
     {{ dados.media_anterior|json_script:"billing-chart-previous-average" }}
     {{ dados.acumulado|json_script:"billing-chart-accumulated" }}
     {{ dados.meta|json_script:"billing-chart-goal" }}
+    {{ dados.tipos|json_script:"billing-chart-types" }}
 </section>

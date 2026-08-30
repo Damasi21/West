@@ -101,6 +101,11 @@ urlpatterns = [
         views.fluxo_caixa_horizontal,
         name="fluxo_caixa_horizontal",
     ),
+    path(
+        "comercial/faturamento/produtos/exportar/",
+        views.exportar_faturamento_produtos,
+        name="exportar_faturamento_produtos",
+    ),
     path("<slug:area_slug>/", views.area, name="area"),
     path(
         "<slug:area_slug>/<slug:dashboard_slug>/",
