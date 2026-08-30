@@ -288,6 +288,18 @@
                     <span>Periodo do historico</span>
                     <strong>{{ dados.historico_periodo_rotulo }}</strong>
                 </div>
+                <button
+                    type="submit"
+                    class="payment-history-export-button"
+                    formaction="{% url 'dashboards:exportar_historico_aprovacao_pagamentos' empresa.slug %}"
+                    formmethod="get"
+                    data-confirm-payment-history-export
+                    title="Exportar historico para Excel"
+                    aria-label="Exportar historico para Excel"
+                >
+                    <i class="bi bi-file-earmark-spreadsheet"></i>
+                    <span>Excel</span>
+                </button>
                 <label>
                     <span>Data inicial</span>
                     <input type="date" name="historico_inicio" value="{{ dados.historico_inicio_iso }}">

@@ -428,6 +428,119 @@ def _periodo_historico_aprovacao_pagamentos(request, periodo_inicio, periodo_fim
         inicio, fim = fim, inicio
     return inicio, fim
 
+def _filtros_exportacao_aprovacao_pagamentos(request, empresa):
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+    empresas_selecionadas = _empresas_inicio_selecionadas(
+        request,
+        empresa,
+        empresas,
+    )
+    empresas_consulta_ids = empresas_selecionadas or [
+        str(item.pk) for item in empresas
+    ]
+    from apps.empresas.models import CategoriaOmie, ProjetoOmie
+
+    projetos_opcoes = [
+        {
+            "valor": f"{projeto.empresa_id}:{projeto.codigo}",
+            "nome": projeto.nome,
+            "empresa": projeto.empresa.nome_fantasia,
+        }
+        for projeto in ProjetoOmie.objects.filter(
+            empresa_id__in=empresas_consulta_ids,
+            ativo_omie=True,
+            inativo=False,
+        ).select_related("empresa")
+    ]
+    categorias_opcoes = [
+        {
+            "valor": f"{categoria.empresa_id}:{categoria.codigo}",
+            "nome": categoria.descricao or categoria.codigo,
+            "empresa": categoria.empresa.nome_fantasia,
+        }
+        for categoria in CategoriaOmie.objects.filter(
+            empresa_id__in=empresas_consulta_ids,
+            ativo_omie=True,
+            conta_inativa=False,
+            nao_exibir=False,
+        ).select_related("empresa")
+    ]
+    estado = request.session.get(
+        f"filtros_dashboard:{empresa.pk}:financeiro:aprovacao-de-pagamentos",
+        {},
+    )
+    projetos_selecionados = _valores_validos(
+        estado.get("projetos", []),
+        (item["valor"] for item in projetos_opcoes),
+    )
+    categorias_selecionadas = _valores_validos(
+        estado.get("categorias", [item["valor"] for item in categorias_opcoes]),
+        (item["valor"] for item in categorias_opcoes),
+    )
+    return {
+        "empresas_ids": empresas_consulta_ids,
+        "projetos": _valores_para_consulta(
+            projetos_selecionados,
+            projetos_opcoes,
+        ),
+        "categorias": _codigos_filtro_composto(
+            _valores_para_consulta(
+                categorias_selecionadas,
+                categorias_opcoes,
+            )
+        ),
+    }
+
+
+def _resposta_excel_historico_aprovacao_pagamentos(dados):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Historico"
+    headers = ["Empresa", "Fornecedor / categoria", "Previsao", "Valor", "Status"]
+    worksheet.append(headers)
+
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in worksheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for pagamento in dados["historico_pagamentos"]:
+        worksheet.append(
+            [
+                pagamento["empresa"],
+                f"{pagamento['nome']}\n{pagamento['categoria']}",
+                f"{pagamento['previsao_fmt']}\nVenc. {pagamento['vencimento_fmt']}",
+                pagamento["valor_fmt"],
+                pagamento["status"],
+            ]
+        )
+
+    for row in worksheet.iter_rows(min_row=2):
+        row[1].alignment = Alignment(wrap_text=True, vertical="top")
+        row[2].alignment = Alignment(wrap_text=True, vertical="top")
+
+    larguras = [24, 38, 22, 18, 18]
+    for indice, largura in enumerate(larguras, start=1):
+        worksheet.column_dimensions[get_column_letter(indice)].width = largura
+
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    response = HttpResponse(
+        stream.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+    inicio = dados["historico_inicio_iso"]
+    fim = dados["historico_fim_iso"]
+    response["Content-Disposition"] = (
+        f'attachment; filename="historico-aprovacao-pagamentos-{inicio}-{fim}.xlsx"'
+    )
+    return response
+
 
 def _filtros_exportacao_faturamento(request, empresa):
     empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
@@ -1281,6 +1394,36 @@ def salvar_aprovacao_pagamentos(request, empresa_slug):
 
     resultado = salvar_aprovacoes_pagamentos(empresa, request.user, itens)
     return JsonResponse(resultado, status=200 if resultado["sucesso"] else 207)
+
+@login_required
+def exportar_historico_aprovacao_pagamentos(request, empresa_slug):
+    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    if not usuario_pode_acessar_dashboard(
+        request.user,
+        empresa,
+        "financeiro",
+        "aprovacao-de-pagamentos",
+    ):
+        raise Http404("Dashboard nao encontrado.")
+
+    periodo_inicio, periodo_fim = _periodo_aprovacao_pagamentos(request)
+    historico_inicio, historico_fim = _periodo_historico_aprovacao_pagamentos(
+        request,
+        periodo_inicio,
+        periodo_fim,
+    )
+    filtros = _filtros_exportacao_aprovacao_pagamentos(request, empresa)
+    dados = painel_aprovacao_pagamentos(
+        empresa,
+        empresas_ids=filtros["empresas_ids"],
+        projetos_selecionados=filtros["projetos"],
+        categorias_selecionadas=filtros["categorias"],
+        periodo_inicio=periodo_inicio,
+        periodo_fim=periodo_fim,
+        historico_inicio=historico_inicio,
+        historico_fim=historico_fim,
+    )
+    return _resposta_excel_historico_aprovacao_pagamentos(dados)
 
 
 @login_required

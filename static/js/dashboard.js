@@ -1773,6 +1773,11 @@ document.addEventListener("DOMContentLoaded", () => {
         paymentApproval.querySelector("[data-open-history-modal]")?.addEventListener("click", () => {
             setModalVisible(historyModal, true);
         });
+        paymentApproval.querySelector("[data-confirm-payment-history-export]")?.addEventListener("click", (event) => {
+            if (!window.confirm("Deseja exportar para Excel ?")) {
+                event.preventDefault();
+            }
+        });
         paymentApproval.querySelector("[data-close-history-modal]")?.addEventListener("click", () => {
             setModalVisible(historyModal, false);
         });

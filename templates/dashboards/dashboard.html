@@ -4,6 +4,7 @@
 {% block title %}{{ dashboard_atual.titulo }} - {{ empresa.nome_fantasia }}{% endblock %}
 
 {% block content %}
+<div class="dashboard-page dashboard-area-{{ area_slug }}">
 <div class="page-heading">
     <div>
         <span class="eyebrow">{{ area_atual.titulo|upper }}</span>
@@ -211,4 +212,5 @@
     </div>
 </div>
 {% endif %}
+</div>
 {% endblock %}

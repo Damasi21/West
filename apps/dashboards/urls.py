@@ -97,6 +97,11 @@ urlpatterns = [
         name="salvar_aprovacao_pagamentos",
     ),
     path(
+        "financeiro/aprovacao-de-pagamentos/historico/exportar/",
+        views.exportar_historico_aprovacao_pagamentos,
+        name="exportar_historico_aprovacao_pagamentos",
+    ),
+    path(
         "financeiro/fluxo-de-caixa/horizontal/",
         views.fluxo_caixa_horizontal,
         name="fluxo_caixa_horizontal",

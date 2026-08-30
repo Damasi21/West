@@ -499,6 +499,50 @@
     border-radius: 16px;
 }
 .metric-card { padding: 1.25rem; min-height: 130px; }
+.dashboard-area-estoque {
+    --dashboard-kpi-accent: #e86629;
+    --dashboard-kpi-border: #f2b38f;
+    --dashboard-kpi-shadow: rgba(232, 102, 41, .08);
+}
+.dashboard-area-compras {
+    --dashboard-kpi-accent: #dc2626;
+    --dashboard-kpi-border: #fecaca;
+    --dashboard-kpi-shadow: rgba(220, 38, 38, .08);
+}
+.dashboard-area-financeiro {
+    --dashboard-kpi-accent: #16a34a;
+    --dashboard-kpi-border: #bbf7d0;
+    --dashboard-kpi-shadow: rgba(22, 163, 74, .08);
+}
+.dashboard-area-comercial {
+    --dashboard-kpi-accent: #2563eb;
+    --dashboard-kpi-border: #bfdbfe;
+    --dashboard-kpi-shadow: rgba(37, 99, 235, .08);
+}
+.dashboard-page :is(
+    .metric-card,
+    .dre-metric,
+    .finance-kpi,
+    .delinquency-kpi,
+    .billing-kpi,
+    .seller-performance-kpi,
+    .client-analysis-kpi,
+    .margin-kpi,
+    .payment-approval-kpi,
+    .purchase-budget-kpi,
+    .supplier-score-kpi,
+    .abc-suppliers-kpis article,
+    .price-saving-kpi,
+    .inventory-kardex-kpi
+) {
+    border: 1px solid var(--dashboard-kpi-border, var(--border));
+    box-shadow:
+        inset 3px 0 0 var(--dashboard-kpi-accent, #305ec4),
+        0 12px 30px var(--dashboard-kpi-shadow, rgba(15, 23, 42, .04));
+}
+.dashboard-page .price-saving-kpi::before {
+    display: none;
+}
 .metric-value-with-tooltip {
     cursor: help;
     white-space: nowrap;
@@ -2478,6 +2522,31 @@
     min-height: 38px;
     white-space: nowrap;
 }
+.payment-history-export-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .35rem;
+    min-height: 38px;
+    padding: .45rem .75rem;
+    color: #17653a;
+    background: #f5fbf7;
+    border: 1px solid #b9e4c8;
+    border-radius: 8px;
+    font-size: .78rem;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.payment-history-export-button:hover {
+    border-color: #68c18a;
+    box-shadow: 0 8px 18px rgba(22, 101, 52, .1);
+    transform: translateY(-1px);
+}
+.payment-history-export-button:focus-visible {
+    outline: 3px solid rgba(34, 197, 94, .22);
+    outline-offset: 2px;
+}
 .payment-table-wrap {
     overflow: auto;
 }
@@ -3991,6 +4060,9 @@
     }
     .payment-history-period-form {
         grid-template-columns: 1fr;
+    }
+    .payment-history-export-button {
+        width: 100%;
     }
     .payment-category-row {
         grid-template-columns: minmax(0, 1fr);

@@ -2821,6 +2821,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Historico")
         self.assertContains(response, "Historico de aprovacao")
         self.assertContains(response, 'data-history-modal')
+        self.assertContains(response, 'data-confirm-payment-history-export')
         self.assertContains(response, 'name="historico_inicio"')
         self.assertContains(response, 'name="historico_fim"')
         self.assertContains(response, "Amazon AWS")
@@ -2898,6 +2899,33 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "AWS anterior")
         self.assertContains(response, "Aprovado")
         self.assertContains(response, "Pendente")
+
+        response = self.client.get(
+            reverse(
+                "dashboards:exportar_historico_aprovacao_pagamentos",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            {
+                "aprovacao_inicio": hoje.isoformat(),
+                "aprovacao_fim": hoje.isoformat(),
+                "historico_inicio": (hoje - timedelta(days=7)).isoformat(),
+                "historico_fim": hoje.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        workbook = load_workbook(BytesIO(response.content))
+        worksheet = workbook.active
+        self.assertEqual(
+            [cell.value for cell in worksheet[1]],
+            ["Empresa", "Fornecedor / categoria", "Previsao", "Valor", "Status"],
+        )
+        self.assertEqual(worksheet["B2"].value, "AWS anterior\nServicos em nuvem")
+        self.assertEqual(worksheet["E2"].value, "Pendente")
 
     @patch("apps.dashboards.aprovacao_pagamentos_services.consultar_conta_pagar")
     @patch("apps.dashboards.aprovacao_pagamentos_services.alterar_conta_pagar")
