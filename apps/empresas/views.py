@@ -290,7 +290,7 @@ def parametros(request, empresa_slug):
         },
         {
             "titulo": "Sincronizacao",
-            "descricao": "Agende atualizacoes automaticas da OMIE com ate 4 horarios por dia.",
+            "descricao": "Agende atualizacoes automaticas da OMIE com ate 3 horarios por dia.",
             "icone": "bi-robot",
             "status": "Disponivel",
             "url": reverse(

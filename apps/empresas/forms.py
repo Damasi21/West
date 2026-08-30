@@ -140,12 +140,6 @@ class AgendamentoSincronizacaoOmieForm(forms.ModelForm):
         required=False,
         widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
     )
-    horario_4 = forms.TimeField(
-        label="Horario 4",
-        required=False,
-        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
-    )
-
     class Meta:
         model = AgendamentoSincronizacaoOmie
         fields = ("ativo", "tipo_agendamento", "dias_semana")
@@ -172,7 +166,7 @@ class AgendamentoSincronizacaoOmieForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         horarios = []
-        for indice in range(1, 5):
+        for indice in range(1, 4):
             horario = cleaned.get(f"horario_{indice}")
             if horario:
                 valor = horario.strftime("%H:%M")
@@ -184,8 +178,8 @@ class AgendamentoSincronizacaoOmieForm(forms.ModelForm):
         tipo = cleaned.get("tipo_agendamento")
         if ativo and not horarios:
             raise forms.ValidationError("Informe ao menos um horario de sincronizacao.")
-        if len(horarios) > 4:
-            raise forms.ValidationError("Informe no maximo 4 horarios por dia.")
+        if len(horarios) > 3:
+            raise forms.ValidationError("Informe no maximo 3 horarios por dia.")
         if tipo == AgendamentoSincronizacaoOmie.Tipo.DIAS_SEMANA and not cleaned.get(
             "dias_semana"
         ):

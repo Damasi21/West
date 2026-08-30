@@ -2447,8 +2447,8 @@ class AgendamentoSincronizacaoOmie(models.Model):
 
     def clean(self):
         horarios = self.horarios or []
-        if len(horarios) > 4:
-            raise ValidationError({"horarios": "Informe no maximo 4 horarios por dia."})
+        if len(horarios) > 3:
+            raise ValidationError({"horarios": "Informe no maximo 3 horarios por dia."})
         if self.ativo and not horarios:
             raise ValidationError({"horarios": "Informe ao menos um horario."})
         if self.tipo_agendamento == self.Tipo.DIAS_SEMANA and not self.dias_semana:
