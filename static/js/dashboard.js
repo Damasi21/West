@@ -771,11 +771,22 @@ document.addEventListener("DOMContentLoaded", () => {
     if (billing && typeof Chart !== "undefined") {
         const labels = JSON.parse(document.getElementById("billing-chart-labels").textContent);
         const products = JSON.parse(document.getElementById("billing-chart-products").textContent);
+        const productGoods = JSON.parse(document.getElementById("billing-chart-products-goods").textContent);
+        const productExpenses = JSON.parse(document.getElementById("billing-chart-products-expenses").textContent);
+        const productTaxes = JSON.parse(document.getElementById("billing-chart-products-taxes").textContent);
+        const serviceTaxes = JSON.parse(document.getElementById("billing-chart-services-taxes").textContent);
         const services = JSON.parse(document.getElementById("billing-chart-services").textContent);
         const previousAverage = JSON.parse(document.getElementById("billing-chart-previous-average").textContent);
         const accumulated = JSON.parse(document.getElementById("billing-chart-accumulated").textContent);
         const goal = JSON.parse(document.getElementById("billing-chart-goal").textContent);
-        const totalByPeriod = products.map((value, index) => value + (services[index] || 0));
+        const billingTypes = JSON.parse(document.getElementById("billing-chart-types").textContent);
+        const taxesMode = billingTypes.includes("impostos");
+        const productStackTotal = productGoods.map((value, index) => (
+            value + (productExpenses[index] || 0)
+        ));
+        const totalByPeriod = taxesMode
+            ? productTaxes.map((value, index) => value + (serviceTaxes[index] || 0))
+            : productStackTotal.map((value, index) => value + (services[index] || 0));
         const mainCanvas = billing.querySelector("[data-billing-main-chart]");
         const goalCanvas = billing.querySelector("[data-billing-goal-chart]");
 
@@ -791,7 +802,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 const x = sourceEvent.clientX - rect.left;
                 const y = sourceEvent.clientY - rect.top;
 
-                for (const datasetIndex of [0, 1]) {
+                const hoverBarIndexes = taxesMode ? [0, 1] : [0, 1, 2];
+                for (const datasetIndex of hoverBarIndexes) {
                     const meta = chart.getDatasetMeta(datasetIndex);
                     const item = meta.data.find((bar) => {
                         const props = bar.getProps(["x", "y", "base", "width"], true);
@@ -806,12 +818,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 }
 
-                const billedMeta = chart.getDatasetMeta(3);
+                const billedDatasetIndex = taxesMode ? 3 : 4;
+                const billedMeta = chart.getDatasetMeta(billedDatasetIndex);
                 const point = billedMeta.data.find((element) => {
                     const props = element.getProps(["x", "y"], true);
                     return Math.hypot(x - props.x, y - props.y) <= 12;
                 });
-                return point ? { datasetIndex: 3, index: billedMeta.data.indexOf(point) } : null;
+                return point ? { datasetIndex: billedDatasetIndex, index: billedMeta.data.indexOf(point) } : null;
             };
             const formatBillingShortValue = (value) => {
                 const number = Number(value || 0);
@@ -843,11 +856,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     ctx.fillStyle = "#344054";
                     ctx.textAlign = "center";
 
-                    [0, 1].forEach((datasetIndex) => {
+                    const labelIndexes = taxesMode ? [0, 1] : [1, 2];
+                    labelIndexes.forEach((datasetIndex) => {
                         const meta = chart.getDatasetMeta(datasetIndex);
                         const dataset = chart.data.datasets[datasetIndex];
                         meta.data.forEach((bar, index) => {
-                            const value = Number(dataset.data[index] || 0);
+                            const value = !taxesMode && datasetIndex === 1
+                                ? Number(productStackTotal[index] || 0)
+                                : Number(dataset.data[index] || 0);
+                            if (!value) return;
                             const props = bar.getProps(["x", "y", "base"], true);
                             const isPositive = props.y <= props.base;
                             const y = isPositive
@@ -861,59 +878,140 @@ document.addEventListener("DOMContentLoaded", () => {
                     ctx.restore();
                 },
             };
+            const productStackRadius = (segment) => (context) => {
+                const index = context.dataIndex;
+                const goods = Number(productGoods[index] || 0);
+                const expenses = Number(productExpenses[index] || 0);
+                const topSegment = expenses ? "expenses" : "goods";
+                const bottomSegment = goods ? "goods" : "expenses";
+                const radius = {
+                    topLeft: segment === topSegment ? 4 : 0,
+                    topRight: segment === topSegment ? 4 : 0,
+                    bottomLeft: segment === bottomSegment ? 4 : 0,
+                    bottomRight: segment === bottomSegment ? 4 : 0,
+                };
+                return radius;
+            };
+            const mainDatasets = taxesMode ? [
+                {
+                    type: "bar",
+                    label: "Impostos de produtos",
+                    data: productTaxes,
+                    backgroundColor: "#ef4444",
+                    borderRadius: 4,
+                    barPercentage: .5,
+                    categoryPercentage: .68,
+                    maxBarThickness: 26,
+                    yAxisID: "y",
+                },
+                {
+                    type: "bar",
+                    label: "Impostos de servicos",
+                    data: serviceTaxes,
+                    backgroundColor: "#fca5a5",
+                    borderRadius: 4,
+                    barPercentage: .5,
+                    categoryPercentage: .68,
+                    maxBarThickness: 26,
+                    yAxisID: "y",
+                },
+                {
+                    type: "line",
+                    label: "Media anterior",
+                    data: previousAverage,
+                    borderColor: "#8a8f98",
+                    backgroundColor: "#8a8f98",
+                    borderDash: [6, 5],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    stack: "media-anterior",
+                    tension: .35,
+                    yAxisID: "y",
+                },
+                {
+                    type: "line",
+                    label: "Total de impostos",
+                    data: accumulated,
+                    borderColor: "#b91c1c",
+                    backgroundColor: "#b91c1c",
+                    borderWidth: 3,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointHitRadius: 10,
+                    stack: "impostos",
+                    tension: .35,
+                    yAxisID: "y",
+                },
+            ] : [
+                {
+                    type: "bar",
+                    label: "Mercadorias",
+                    data: productGoods,
+                    backgroundColor: "#f59e0b",
+                    borderRadius: productStackRadius("goods"),
+                    stack: "produtos",
+                    barPercentage: .5,
+                    categoryPercentage: .68,
+                    maxBarThickness: 26,
+                    yAxisID: "y",
+                },
+                {
+                    type: "bar",
+                    label: "Frete e outras despesas",
+                    data: productExpenses,
+                    backgroundColor: "#facc15",
+                    borderRadius: productStackRadius("expenses"),
+                    stack: "produtos",
+                    barPercentage: .5,
+                    categoryPercentage: .68,
+                    maxBarThickness: 26,
+                    yAxisID: "y",
+                },
+                {
+                    type: "bar",
+                    label: "Servicos",
+                    data: services,
+                    backgroundColor: "#93c5fd",
+                    borderRadius: 4,
+                    stack: "servicos",
+                    barPercentage: .5,
+                    categoryPercentage: .68,
+                    maxBarThickness: 26,
+                    yAxisID: "y",
+                },
+                {
+                    type: "line",
+                    label: "Media anterior",
+                    data: previousAverage,
+                    borderColor: "#8a8f98",
+                    backgroundColor: "#8a8f98",
+                    borderDash: [6, 5],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    stack: "media-anterior",
+                    tension: .35,
+                    yAxisID: "y",
+                },
+                {
+                    type: "line",
+                    label: "Faturado",
+                    data: accumulated,
+                    borderColor: "#10b981",
+                    backgroundColor: "#10b981",
+                    borderWidth: 3,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointHitRadius: 10,
+                    stack: "faturado",
+                    tension: .35,
+                    yAxisID: "y",
+                },
+            ];
             new Chart(mainCanvas, {
                 plugins: [billingBarLabelsPlugin],
                 data: {
                     labels,
-                    datasets: [
-                        {
-                            type: "bar",
-                            label: "Produtos",
-                            data: products,
-                            backgroundColor: "#f59e0b",
-                            borderRadius: 4,
-                            barPercentage: .5,
-                            categoryPercentage: .68,
-                            maxBarThickness: 26,
-                            yAxisID: "y",
-                        },
-                        {
-                            type: "bar",
-                            label: "Servicos",
-                            data: services,
-                            backgroundColor: "#93c5fd",
-                            borderRadius: 4,
-                            barPercentage: .5,
-                            categoryPercentage: .68,
-                            maxBarThickness: 26,
-                            yAxisID: "y",
-                        },
-                        {
-                            type: "line",
-                            label: "Media anterior",
-                            data: previousAverage,
-                            borderColor: "#8a8f98",
-                            backgroundColor: "#8a8f98",
-                            borderDash: [6, 5],
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            tension: .35,
-                            yAxisID: "y",
-                        },
-                        {
-                            type: "line",
-                            label: "Faturado",
-                            data: accumulated,
-                            borderColor: "#10b981",
-                            backgroundColor: "#10b981",
-                            borderWidth: 3,
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
-                            pointHitRadius: 10,
-                            tension: .35,
-                            yAxisID: "y",
-                        },
-                    ],
+                    datasets: mainDatasets,
                 },
                 options: {
                     ...chartBaseOptions,
@@ -942,7 +1040,16 @@ document.addEventListener("DOMContentLoaded", () => {
                             },
                         },
                     },
-                    scales: chartBaseOptions.scales,
+                    scales: {
+                        x: {
+                            ...chartBaseOptions.scales.x,
+                            stacked: !taxesMode,
+                        },
+                        y: {
+                            ...chartBaseOptions.scales.y,
+                            stacked: !taxesMode,
+                        },
+                    },
                     onHover: (event, elements, chart) => {
                         const item = findBillingHoverItem(chart, event);
                         chart.canvas.style.cursor = item ? "default" : "default";

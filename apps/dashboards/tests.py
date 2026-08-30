@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -7,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import load_workbook
 
 from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import faturamento_comercial
@@ -1025,6 +1027,12 @@ class DashboardPermissaoTests(TestCase):
             codigo="NB-15",
             descricao="Notebook Pro 15",
         )
+        cliente = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=150,
+            tipo=CadastroOmie.Tipo.CLIENTE,
+            nome_fantasia="Cliente Excel",
+        )
         servico = ServicoOmie.objects.create(
             empresa=self.empresa,
             codigo_servico=200,
@@ -1035,11 +1043,18 @@ class DashboardPermissaoTests(TestCase):
             empresa=self.empresa,
             codigo_pedido=300,
             numero_pedido="PV-300",
+            codigo_cliente=cliente.codigo_cliente_omie,
+            cliente=cliente,
             codigo_vendedor=vendedor.codigo,
             data_inclusao=date(ano_atual, 1, 5),
             data_faturamento=date(ano_atual, 1, 8),
             faturado=True,
+            valor_mercadorias=2700,
+            valor_frete=100,
+            valor_seguro=50,
+            frete={"outras_despesas": 150},
             valor_total_pedido=3000,
+            dados_originais={"nNF": "NF-9001"},
         )
         PedidoItemOmie.objects.create(
             empresa=self.empresa,
@@ -1051,6 +1066,8 @@ class DashboardPermissaoTests(TestCase):
             quantidade=2,
             valor_unitario=1500,
             valor_total=3000,
+            valor_mercadoria=2700,
+            imposto={"valor_icms": 200},
         )
         ordem = OrdemServicoOmie.objects.create(
             empresa=self.empresa,
@@ -1100,11 +1117,25 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Maria Vendas")
         self.assertContains(response, "Produtos")
         self.assertContains(response, "Servicos")
+        self.assertContains(response, "Impostos")
         self.assertContains(response, "Notebook Pro 15")
         self.assertContains(response, "Suporte tecnico")
         self.assertContains(response, "data-billing-main-chart")
         self.assertContains(response, "data-billing-goal-chart")
+        self.assertContains(response, "Exportar produtos para Excel")
         self.assertContains(response, "[10000.0]")
+        self.assertEqual(
+            response.context["faturamento"]["produtos_mercadorias"],
+            [2700.0],
+        )
+        self.assertEqual(
+            response.context["faturamento"]["produtos_frete_despesas"],
+            [300.0],
+        )
+        self.assertEqual(
+            response.context["faturamento"]["produtos_impostos"],
+            [0],
+        )
         self.assertEqual(
             response.context["faturamento"]["indicadores"][0]["valor_completo"],
             "R$ 4.200,00",
@@ -1118,6 +1149,42 @@ class DashboardPermissaoTests(TestCase):
             response.context["tipos_faturamento_selecionados"],
             ["produtos", "servicos"],
         )
+
+        response = self.client.get(
+            reverse(
+                "dashboards:exportar_faturamento_produtos",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+                "vendedor": f"{self.empresa.pk}:{vendedor.codigo}",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        workbook = load_workbook(BytesIO(response.content))
+        worksheet = workbook.active
+        self.assertEqual(
+            [cell.value for cell in worksheet[1]],
+            [
+                "Data de Emissao",
+                "Cliente",
+                "Numero da NF",
+                "Total de Mercadoria",
+                "Frete",
+                "Total da Nota Fiscal",
+            ],
+        )
+        self.assertEqual(worksheet["B2"].value, "Cliente Excel")
+        self.assertEqual(worksheet["C2"].value, "NF-9001")
+        self.assertEqual(worksheet["D2"].value, 2700)
+        self.assertEqual(worksheet["E2"].value, 300)
+        self.assertEqual(worksheet["F2"].value, 3000)
 
     def test_faturamento_linha_faturado_usa_total_mensal(self):
         ano_atual = date.today().year
@@ -1165,6 +1232,89 @@ class DashboardPermissaoTests(TestCase):
         )
 
         self.assertEqual(contexto["acumulado"], [1300.0, 2400.0, 0.0])
+
+    def test_faturamento_produtos_considera_impostos_do_json_omie(self):
+        ano_atual = date.today().year
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=330,
+            numero_pedido="PV-330",
+            data_inclusao=date(ano_atual, 1, 5),
+            data_faturamento=date(ano_atual, 1, 8),
+            faturado=True,
+            valor_mercadorias=1000,
+            valor_frete=100,
+            valor_seguro=50,
+            frete={"outras_despesas": 25},
+            valor_total_pedido=1175,
+            dados_originais={
+                "total_pedido": {
+                    "valor_icms": 120,
+                    "valor_pis": 15,
+                    "valor_cofins": 35,
+                }
+            },
+        )
+
+        contexto = faturamento_comercial(
+            self.empresa,
+            f"mes-{ano_atual}-01",
+            empresas_ids=[self.empresa.pk],
+            tipos_selecionados=["impostos"],
+        )
+
+        self.assertEqual(contexto["produtos_mercadorias"], [0])
+        self.assertEqual(contexto["produtos_frete_despesas"], [0])
+        self.assertEqual(contexto["produtos_impostos"], [170.0])
+        self.assertEqual(contexto["servicos_impostos"], [0])
+        self.assertEqual(contexto["acumulado"], [170.0])
+        self.assertEqual(contexto["indicadores"][0]["valor_completo"], "R$ 170,00")
+
+    def test_faturamento_impostos_considera_servicos_sem_retencao_e_iss(self):
+        ano_atual = date.today().year
+        ordem = OrdemServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_os=430,
+            numero_os="OS-430",
+            data_inclusao=date(ano_atual, 1, 5),
+            data_faturamento=date(ano_atual, 1, 9),
+            faturada=True,
+            valor_total=1000,
+        )
+        OrdemServicoItemOmie.objects.create(
+            empresa=self.empresa,
+            ordem_servico=ordem,
+            codigo_item=431,
+            descricao="Servico tributado",
+            quantidade=1,
+            valor_unitario=1000,
+            valor_iss=50,
+            impostos={
+                "nValorCOFINS": 30,
+                "nValorCSLL": 10,
+                "nValorINSS": 40,
+                "nValorIRRF": 15,
+                "nValorISS": 50,
+                "nValorPIS": 7,
+                "cRetemCOFINS": "N",
+                "cRetemCSLL": "S",
+                "cRetemINSS": "N",
+                "cRetemIRRF": "S",
+                "cRetemPIS": "N",
+            },
+        )
+
+        contexto = faturamento_comercial(
+            self.empresa,
+            f"mes-{ano_atual}-01",
+            empresas_ids=[self.empresa.pk],
+            tipos_selecionados=["impostos"],
+        )
+
+        self.assertEqual(contexto["produtos_impostos"], [0])
+        self.assertEqual(contexto["servicos_impostos"], [127.0])
+        self.assertEqual(contexto["acumulado"], [127.0])
+        self.assertEqual(contexto["indicadores"][0]["valor_completo"], "R$ 127,00")
 
     def test_desempenho_vendedores_exibe_indicadores_graficos_e_carteira(self):
         ano_atual = date.today().year
