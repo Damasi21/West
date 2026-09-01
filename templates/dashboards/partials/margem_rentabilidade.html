@@ -3,7 +3,7 @@
         {% for indicador in dados.indicadores %}
             <article class="margin-kpi margin-kpi-{{ indicador.tom }}">
                 <span>{{ indicador.titulo }}</span>
-                <strong>{{ indicador.valor }}</strong>
+                <strong class="metric-value-with-tooltip" title="{{ indicador.valor_completo|default:indicador.valor }}">{{ indicador.valor }}</strong>
                 <small>{{ indicador.subvalor }}</small>
             </article>
         {% endfor %}

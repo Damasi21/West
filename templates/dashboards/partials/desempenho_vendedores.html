@@ -4,7 +4,7 @@
             <article class="seller-performance-kpi seller-performance-kpi-{{ indicador.tom }}">
                 <div>
                     <span>{{ indicador.titulo }}</span>
-                    <strong>{{ indicador.valor }}</strong>
+                    <strong class="metric-value-with-tooltip" title="{{ indicador.valor_completo|default:indicador.valor }}">{{ indicador.valor }}</strong>
                     {% if indicador.subvalor %}<small>{{ indicador.subvalor }} da meta</small>{% endif %}
                 </div>
                 <i class="bi {{ indicador.icone }}"></i>

@@ -862,6 +862,77 @@ class OrdemServicoItemOmie(models.Model):
         return self.descricao or str(self.codigo_item)
 
 
+class NfseOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="nfses_omie",
+    )
+    codigo_nf = models.BigIntegerField()
+    numero_nfse = models.CharField(max_length=40, blank=True)
+    serie_nfse = models.CharField(max_length=20, blank=True)
+    status_nfse = models.CharField(max_length=1, blank=True)
+    codigo_os = models.BigIntegerField(null=True, blank=True)
+    numero_os = models.CharField(max_length=30, blank=True)
+    ordem_servico = models.ForeignKey(
+        OrdemServicoOmie,
+        on_delete=models.SET_NULL,
+        related_name="nfses",
+        null=True,
+        blank=True,
+    )
+    codigo_cliente = models.BigIntegerField(null=True, blank=True)
+    cliente = models.ForeignKey(
+        CadastroOmie,
+        on_delete=models.SET_NULL,
+        related_name="nfses_omie",
+        null=True,
+        blank=True,
+    )
+    data_emissao = models.DateField(null=True, blank=True)
+    valor_nfse = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    cabecalho = models.JSONField(default=dict, blank=True)
+    ordem_servico_dados = models.JSONField(default=dict, blank=True)
+    rps = models.JSONField(default=dict, blank=True)
+    adicionais = models.JSONField(default=dict, blank=True)
+    servicos = models.JSONField(default=list, blank=True)
+    valores = models.JSONField(default=dict, blank=True)
+    emissao = models.JSONField(default=dict, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data_emissao", "-codigo_nf"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_nf"],
+                name="nfse_omie_empresa_codigo_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "codigo_os"],
+                name="nfse_omie_emp_os_idx",
+            ),
+            models.Index(
+                fields=["empresa", "status_nfse"],
+                name="nfse_omie_emp_status_idx",
+            ),
+            models.Index(
+                fields=["empresa", "data_emissao"],
+                name="nfse_omie_emp_emissao_idx",
+            ),
+        ]
+        verbose_name = "NFS-e OMIE"
+        verbose_name_plural = "NFS-es OMIE"
+
+    def __str__(self):
+        return self.numero_nfse or str(self.codigo_nf)
+
+
 class ContratoOmie(models.Model):
     empresa = models.ForeignKey(
         Empresa,

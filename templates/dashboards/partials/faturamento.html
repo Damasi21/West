@@ -17,15 +17,26 @@
                 <small>FATURAMENTO</small>
                 <h2>{{ dados.grafico_titulo }}</h2>
             </div>
-            <a
-                class="chart-excel-button"
-                href="{% url 'dashboards:exportar_faturamento_produtos' empresa.slug %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
-                title="Exportar produtos para Excel"
-                aria-label="Exportar produtos para Excel"
-            >
-                <i class="bi bi-file-earmark-spreadsheet"></i>
-                <span>Excel</span>
-            </a>
+            <div class="chart-header-actions">
+                <button
+                    class="chart-detail-button"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#billingProductsModal"
+                >
+                    <i class="bi bi-box-seam"></i>
+                    <span>Produtos</span>
+                </button>
+                <button
+                    class="chart-detail-button"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#billingServicesModal"
+                >
+                    <i class="bi bi-tools"></i>
+                    <span>Serviços</span>
+                </button>
+            </div>
         </div>
         <div class="billing-chart-scroll">
             <div class="billing-chart-canvas billing-chart-canvas-large" data-billing-main-chart-canvas>
@@ -33,6 +44,100 @@
             </div>
         </div>
     </article>
+
+    <div class="modal fade billing-details-modal" id="billingProductsModal" tabindex="-1" aria-labelledby="billingProductsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <small>FATURAMENTO</small>
+                        <h2 class="modal-title" id="billingProductsModalLabel">Produtos</h2>
+                    </div>
+                    <div class="billing-modal-actions">
+                        <a
+                            class="chart-excel-button"
+                            href="{% url 'dashboards:exportar_faturamento_produtos' empresa.slug %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                            title="Exportar produtos para Excel"
+                            aria-label="Exportar produtos para Excel"
+                        >
+                            <i class="bi bi-file-earmark-spreadsheet"></i>
+                            <span>Excel Produtos</span>
+                        </a>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <div class="billing-details-table">
+                        <div class="billing-details-row billing-details-head">
+                            <span>Data de Emissão</span>
+                            <span>Cliente</span>
+                            <span>Número da NF</span>
+                            <span>Total de Mercadoria</span>
+                            <span>Frete</span>
+                            <span>Total da Nota Fiscal</span>
+                        </div>
+                        {% for linha in faturamento_produtos_linhas %}
+                            <div class="billing-details-row">
+                                <span>{{ linha.data_emissao_fmt }}</span>
+                                <strong>{{ linha.cliente }}</strong>
+                                <span>{{ linha.numero_nf }}</span>
+                                <span>{{ linha.total_mercadoria_fmt }}</span>
+                                <span>{{ linha.frete_fmt }}</span>
+                                <span>{{ linha.total_nota_fmt }}</span>
+                            </div>
+                        {% empty %}
+                            <div class="billing-details-empty">Sem produtos faturados no período.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade billing-details-modal" id="billingServicesModal" tabindex="-1" aria-labelledby="billingServicesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <small>FATURAMENTO</small>
+                        <h2 class="modal-title" id="billingServicesModalLabel">Serviços</h2>
+                    </div>
+                    <div class="billing-modal-actions">
+                        <a
+                            class="chart-excel-button"
+                            href="{% url 'dashboards:exportar_faturamento_servicos' empresa.slug %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                            title="Exportar serviços para Excel"
+                            aria-label="Exportar serviços para Excel"
+                        >
+                            <i class="bi bi-file-earmark-spreadsheet"></i>
+                            <span>Excel Serviços</span>
+                        </a>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <div class="billing-details-table billing-details-table-services">
+                        <div class="billing-details-row billing-details-head">
+                            <span>Data de Emissão</span>
+                            <span>Cliente</span>
+                            <span>NFS-e ou Recibo</span>
+                            <span>Total da Nota Fiscal</span>
+                        </div>
+                        {% for linha in faturamento_servicos_linhas %}
+                            <div class="billing-details-row">
+                                <span>{{ linha.data_emissao_fmt }}</span>
+                                <strong>{{ linha.cliente }}</strong>
+                                <span>{{ linha.numero_documento }}</span>
+                                <span>{{ linha.total_nota_fmt }}</span>
+                            </div>
+                        {% empty %}
+                            <div class="billing-details-empty">Sem serviços faturados no período.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="billing-bottom-grid">
         <article class="dre-chart-card billing-chart-card">

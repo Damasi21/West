@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
+from django.db.models import Count, DecimalField, Exists, ExpressionWrapper, F, OuterRef, Q, Sum
 from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
 from apps.dashboards.dre_services import (
@@ -20,6 +20,7 @@ from apps.empresas.models import (
     MetaVendedorComercial,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
+    NfseOmie,
     PedidoItemOmie,
     PedidoOmie,
 )
@@ -204,7 +205,16 @@ def _query_ordens_faturadas(inicio, fim, empresas_ids, vendedores):
         faturada=True,
         data_faturamento__gte=inicio,
         data_faturamento__lte=fim,
-    )
+    ).annotate(
+        nfse_faturada=Exists(
+            NfseOmie.objects.filter(
+                empresa_id=OuterRef("empresa_id"),
+                codigo_os=OuterRef("codigo_os"),
+                ativo_omie=True,
+                status_nfse="F",
+            )
+        )
+    ).filter(Q(nfse_faturada=True) | ~Q(numero_recibo__in=["", "0"]))
     if vendedores:
         queryset = queryset.filter(codigo_vendedor__in=vendedores)
     return queryset
@@ -374,6 +384,16 @@ def _nome_cliente_pedido(pedido):
     )
 
 
+def _nome_cliente_ordem(ordem):
+    cliente = ordem.cliente
+    return (
+        getattr(cliente, "nome_fantasia", "")
+        or getattr(cliente, "razao_social", "")
+        or str(ordem.codigo_cliente or "")
+        or "Cliente nao informado"
+    )
+
+
 def _numero_nf_pedido(pedido):
     valor = _buscar_valor_json(
         pedido.dados_originais,
@@ -388,6 +408,31 @@ def _numero_nf_pedido(pedido):
         },
     )
     return str(valor or pedido.numero_pedido or "")
+
+
+def _numero_documento_ordem(ordem):
+    nfse_registrada = (
+        ordem.nfses.filter(ativo_omie=True, status_nfse="F")
+        .order_by("-data_emissao", "-codigo_nf")
+        .first()
+    )
+    if nfse_registrada and nfse_registrada.numero_nfse:
+        return nfse_registrada.numero_nfse
+
+    nfse = _buscar_valor_json(
+        ordem.dados_originais,
+        {"nNfse", "numero_nfse", "numero_nfs_e"},
+    )
+    if nfse not in (None, "", "0", 0):
+        return str(nfse)
+
+    recibo = (
+        ordem.numero_recibo
+        or _buscar_valor_json(ordem.dados_originais, {"cNumRecibo", "numero_recibo"})
+    )
+    if recibo not in (None, "", "0", 0):
+        return str(recibo)
+    return str(ordem.numero_os or "")
 
 
 def linhas_excel_faturamento_produtos(
@@ -414,6 +459,7 @@ def linhas_excel_faturamento_produtos(
     linhas = []
     for pedido in pedidos:
         componentes = _componentes_produtos_pedido(pedido)
+        total_nota = _decimal(pedido.valor_total_pedido)
         linhas.append(
             {
                 "data_emissao": pedido.data_faturamento,
@@ -425,8 +471,50 @@ def linhas_excel_faturamento_produtos(
                 "cliente": _nome_cliente_pedido(pedido),
                 "numero_nf": _numero_nf_pedido(pedido),
                 "total_mercadoria": componentes["mercadorias"],
+                "total_mercadoria_fmt": _formatar_moeda(componentes["mercadorias"]),
                 "frete": componentes["frete_despesas"],
-                "total_nota": _decimal(pedido.valor_total_pedido),
+                "frete_fmt": _formatar_moeda(componentes["frete_despesas"]),
+                "total_nota": total_nota,
+                "total_nota_fmt": _formatar_moeda(total_nota),
+            }
+        )
+    return linhas
+
+
+def linhas_excel_faturamento_servicos(
+    empresa,
+    periodo,
+    data_inicio="",
+    data_fim="",
+    empresas_ids=None,
+    projetos_selecionados=None,
+    vendedores_selecionados=None,
+):
+    empresas_ids = empresas_ids or [empresa.pk]
+    inicio, fim = _intervalo_periodo(periodo, data_inicio, data_fim)
+    vendedores = _codigos_vendedores(vendedores_selecionados or [])
+    ordens = _query_ordens_faturadas(
+        inicio,
+        fim,
+        empresas_ids,
+        vendedores,
+    ).select_related("cliente").order_by("data_faturamento", "numero_os")
+
+    linhas = []
+    for ordem in ordens:
+        total_nota = _decimal(ordem.valor_total)
+        linhas.append(
+            {
+                "data_emissao": ordem.data_faturamento,
+                "data_emissao_fmt": (
+                    ordem.data_faturamento.strftime("%d/%m/%Y")
+                    if ordem.data_faturamento
+                    else ""
+                ),
+                "cliente": _nome_cliente_ordem(ordem),
+                "numero_documento": _numero_documento_ordem(ordem),
+                "total_nota": total_nota,
+                "total_nota_fmt": _formatar_moeda(total_nota),
             }
         )
     return linhas

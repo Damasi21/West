@@ -30,6 +30,7 @@ from apps.empresas.models import (
     LancamentoContaCorrenteOmie,
     MetaVendedorComercial,
     MovimentoFinanceiroOmie,
+    NfseOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoCompraItemOmie,
@@ -1074,10 +1075,67 @@ class DashboardPermissaoTests(TestCase):
             codigo_os=400,
             numero_os="OS-400",
             codigo_vendedor=vendedor.codigo,
+            codigo_cliente=cliente.codigo_cliente_omie,
+            cliente=cliente,
             data_inclusao=date(ano_atual, 1, 7),
             data_faturamento=date(ano_atual, 1, 9),
             faturada=True,
             valor_total=1200,
+            numero_recibo="123",
+            dados_originais={
+                "ListaRpsNfse": [
+                    {
+                        "nNfse": "8859",
+                    }
+                ],
+            },
+        )
+        NfseOmie.objects.create(
+            empresa=self.empresa,
+            codigo_nf=9001,
+            numero_nfse="8859",
+            status_nfse="F",
+            codigo_os=ordem.codigo_os,
+            numero_os=ordem.numero_os,
+            ordem_servico=ordem,
+            data_emissao=ordem.data_faturamento,
+            valor_nfse=1200,
+        )
+        ordem_rejeitada = OrdemServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_os=401,
+            numero_os="OS-401",
+            codigo_vendedor=vendedor.codigo,
+            codigo_cliente=cliente.codigo_cliente_omie,
+            cliente=cliente,
+            data_inclusao=date(ano_atual, 1, 10),
+            data_faturamento=date(ano_atual, 1, 11),
+            faturada=True,
+            valor_total=999,
+        )
+        NfseOmie.objects.create(
+            empresa=self.empresa,
+            codigo_nf=9002,
+            numero_nfse="8860",
+            status_nfse="N",
+            codigo_os=ordem_rejeitada.codigo_os,
+            numero_os=ordem_rejeitada.numero_os,
+            ordem_servico=ordem_rejeitada,
+            data_emissao=ordem_rejeitada.data_faturamento,
+            valor_nfse=999,
+        )
+        OrdemServicoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_os=402,
+            numero_os="OS-402",
+            codigo_vendedor=vendedor.codigo,
+            codigo_cliente=cliente.codigo_cliente_omie,
+            cliente=cliente,
+            data_inclusao=date(ano_atual, 1, 12),
+            data_faturamento=date(ano_atual, 1, 13),
+            faturada=True,
+            valor_total=800,
+            numero_recibo="456",
         )
         OrdemServicoItemOmie.objects.create(
             empresa=self.empresa,
@@ -1122,7 +1180,10 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Suporte tecnico")
         self.assertContains(response, "data-billing-main-chart")
         self.assertContains(response, "data-billing-goal-chart")
+        self.assertContains(response, "Excel Produtos")
+        self.assertContains(response, "Excel Serviços")
         self.assertContains(response, "Exportar produtos para Excel")
+        self.assertContains(response, "Exportar serviços para Excel")
         self.assertContains(response, "[10000.0]")
         self.assertEqual(
             response.context["faturamento"]["produtos_mercadorias"],
@@ -1138,7 +1199,7 @@ class DashboardPermissaoTests(TestCase):
         )
         self.assertEqual(
             response.context["faturamento"]["indicadores"][0]["valor_completo"],
-            "R$ 4.200,00",
+            "R$ 5.000,00",
         )
         self.assertEqual(
             response.context["faturamento"]["indicadores"][1]["valor_completo"],
@@ -1186,6 +1247,42 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(worksheet["E2"].value, 300)
         self.assertEqual(worksheet["F2"].value, 3000)
 
+        response = self.client.get(
+            reverse(
+                "dashboards:exportar_faturamento_servicos",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+                "vendedor": f"{self.empresa.pk}:{vendedor.codigo}",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        workbook = load_workbook(BytesIO(response.content))
+        worksheet = workbook.active
+        self.assertEqual(
+            [cell.value for cell in worksheet[1]],
+            [
+                "Data de Emissao",
+                "Cliente",
+                "Numero da NFS-e ou Recibo",
+                "Total da Nota Fiscal",
+            ],
+        )
+        self.assertEqual(worksheet["B2"].value, "Cliente Excel")
+        self.assertEqual(worksheet["C2"].value, "8859")
+        self.assertEqual(worksheet["D2"].value, 1200)
+        self.assertEqual(worksheet["B3"].value, "Cliente Excel")
+        self.assertEqual(worksheet["C3"].value, "456")
+        self.assertEqual(worksheet["D3"].value, 800)
+        self.assertIsNone(worksheet["A4"].value)
+
     def test_faturamento_linha_faturado_usa_total_mensal(self):
         ano_atual = date.today().year
         PedidoOmie.objects.create(
@@ -1197,7 +1294,7 @@ class DashboardPermissaoTests(TestCase):
             faturado=True,
             valor_total_pedido=1000,
         )
-        OrdemServicoOmie.objects.create(
+        ordem_janeiro = OrdemServicoOmie.objects.create(
             empresa=self.empresa,
             codigo_os=410,
             numero_os="OS-410",
@@ -1205,6 +1302,17 @@ class DashboardPermissaoTests(TestCase):
             data_faturamento=date(ano_atual, 1, 9),
             faturada=True,
             valor_total=300,
+        )
+        NfseOmie.objects.create(
+            empresa=self.empresa,
+            codigo_nf=9010,
+            numero_nfse="9010",
+            status_nfse="F",
+            codigo_os=ordem_janeiro.codigo_os,
+            numero_os=ordem_janeiro.numero_os,
+            ordem_servico=ordem_janeiro,
+            data_emissao=ordem_janeiro.data_faturamento,
+            valor_nfse=300,
         )
         PedidoOmie.objects.create(
             empresa=self.empresa,
@@ -1215,7 +1323,7 @@ class DashboardPermissaoTests(TestCase):
             faturado=True,
             valor_total_pedido=2000,
         )
-        OrdemServicoOmie.objects.create(
+        ordem_fevereiro = OrdemServicoOmie.objects.create(
             empresa=self.empresa,
             codigo_os=420,
             numero_os="OS-420",
@@ -1223,6 +1331,17 @@ class DashboardPermissaoTests(TestCase):
             data_faturamento=date(ano_atual, 2, 9),
             faturada=True,
             valor_total=400,
+        )
+        NfseOmie.objects.create(
+            empresa=self.empresa,
+            codigo_nf=9020,
+            numero_nfse="9020",
+            status_nfse="F",
+            codigo_os=ordem_fevereiro.codigo_os,
+            numero_os=ordem_fevereiro.numero_os,
+            ordem_servico=ordem_fevereiro,
+            data_emissao=ordem_fevereiro.data_faturamento,
+            valor_nfse=400,
         )
 
         contexto = faturamento_comercial(
@@ -1280,6 +1399,17 @@ class DashboardPermissaoTests(TestCase):
             data_faturamento=date(ano_atual, 1, 9),
             faturada=True,
             valor_total=1000,
+        )
+        NfseOmie.objects.create(
+            empresa=self.empresa,
+            codigo_nf=9030,
+            numero_nfse="9030",
+            status_nfse="F",
+            codigo_os=ordem.codigo_os,
+            numero_os=ordem.numero_os,
+            ordem_servico=ordem,
+            data_emissao=ordem.data_faturamento,
+            valor_nfse=1000,
         )
         OrdemServicoItemOmie.objects.create(
             empresa=self.empresa,
@@ -1381,7 +1511,7 @@ class DashboardPermissaoTests(TestCase):
             faturado=False,
             valor_total_pedido=5000,
         )
-        OrdemServicoOmie.objects.create(
+        ordem_ana = OrdemServicoOmie.objects.create(
             empresa=self.empresa,
             codigo_os=2301,
             numero_os="OS-2301",
@@ -1390,6 +1520,17 @@ class DashboardPermissaoTests(TestCase):
             data_faturamento=date(ano_atual, 1, 20),
             faturada=True,
             valor_total=4000,
+        )
+        NfseOmie.objects.create(
+            empresa=self.empresa,
+            codigo_nf=9231,
+            numero_nfse="9231",
+            status_nfse="F",
+            codigo_os=ordem_ana.codigo_os,
+            numero_os=ordem_ana.numero_os,
+            ordem_servico=ordem_ana,
+            data_emissao=ordem_ana.data_faturamento,
+            valor_nfse=4000,
         )
         OrdemServicoOmie.objects.create(
             empresa=self.empresa,
@@ -1487,7 +1628,7 @@ class DashboardPermissaoTests(TestCase):
             faturado=True,
             valor_total_pedido=3000,
         )
-        OrdemServicoOmie.objects.create(
+        ordem_ativo = OrdemServicoOmie.objects.create(
             empresa=self.empresa,
             codigo_os=3301,
             numero_os="OS-3301",
@@ -1496,6 +1637,17 @@ class DashboardPermissaoTests(TestCase):
             data_faturamento=date(ano_atual, 3, 10),
             faturada=True,
             valor_total=2000,
+        )
+        NfseOmie.objects.create(
+            empresa=self.empresa,
+            codigo_nf=9331,
+            numero_nfse="9331",
+            status_nfse="F",
+            codigo_os=ordem_ativo.codigo_os,
+            numero_os=ordem_ativo.numero_os,
+            ordem_servico=ordem_ativo,
+            data_emissao=ordem_ativo.data_faturamento,
+            valor_nfse=2000,
         )
         PedidoOmie.objects.create(
             empresa=self.empresa,

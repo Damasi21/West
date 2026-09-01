@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Count, Min, Sum
+from django.db.models import Count, Exists, Min, OuterRef, Q, Sum
 from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
 from apps.dashboards.dre_services import (
@@ -18,6 +18,7 @@ from apps.dashboards.faturamento_services import _formatar_numero, _tipos_valido
 from apps.dashboards.visao_geral_services import _formatar_moeda_curta
 from apps.empresas.models import (
     MetaVendedorComercial,
+    NfseOmie,
     OrdemServicoOmie,
     PedidoOmie,
     VendedorOmie,
@@ -132,7 +133,16 @@ def _ordens_faturadas(inicio, fim, empresas_ids, vendedores):
         faturada=True,
         data_faturamento__gte=inicio,
         data_faturamento__lte=fim,
-    )
+    ).annotate(
+        nfse_faturada=Exists(
+            NfseOmie.objects.filter(
+                empresa_id=OuterRef("empresa_id"),
+                codigo_os=OuterRef("codigo_os"),
+                ativo_omie=True,
+                status_nfse="F",
+            )
+        )
+    ).filter(Q(nfse_faturada=True) | ~Q(numero_recibo__in=["", "0"]))
     if vendedores:
         queryset = queryset.filter(codigo_vendedor__in=vendedores)
     return queryset
@@ -372,12 +382,14 @@ def desempenho_vendedores(
             {
                 "titulo": "Faturamento total da equipe",
                 "valor": _formatar_moeda_curta(total_realizado),
+                "valor_completo": _formatar_moeda(total_realizado),
                 "icone": "bi-cash-stack",
                 "tom": "positive",
             },
             {
                 "titulo": "% da meta atingida",
                 "valor": _formatar_percentual(percentual_meta),
+                "valor_completo": _formatar_percentual(percentual_meta),
                 "icone": "bi-bullseye",
                 "tom": "positive" if percentual_meta >= 80 else "neutral",
             },
@@ -385,14 +397,14 @@ def desempenho_vendedores(
                 "titulo": "Melhor performance",
                 "valor": melhor["nome"] if melhor else "-",
                 "subvalor": melhor["percentual_fmt"] if melhor else "0%",
+                "valor_completo": melhor["nome"] if melhor else "-",
                 "icone": "bi-trophy",
                 "tom": "positive",
             },
             {
                 "titulo": "Ticket medio da equipe",
-                "valor": _formatar_moeda_curta(
-                    total_realizado / Decimal(total_pedidos or 1)
-                ),
+                "valor": _formatar_moeda_curta(total_realizado / Decimal(total_pedidos or 1)),
+                "valor_completo": _formatar_moeda(total_realizado / Decimal(total_pedidos or 1)),
                 "icone": "bi-ticket-perforated",
                 "tom": "positive",
             },

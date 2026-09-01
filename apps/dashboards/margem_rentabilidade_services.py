@@ -245,24 +245,28 @@ def margem_rentabilidade_comercial(
             {
                 "titulo": "Margem bruta media",
                 "valor": _formatar_percentual(margem_bruta),
+                "valor_completo": _formatar_percentual(margem_bruta),
                 "subvalor": f"{_formatar_pp(margem_bruta - margem_anterior)} vs. periodo anterior",
                 "tom": "positive" if margem_bruta >= margem_anterior else "negative",
             },
             {
                 "titulo": "Receita total",
                 "valor": _formatar_moeda_curta(receita_total),
+                "valor_completo": _formatar_moeda(receita_total),
                 "subvalor": "periodo selecionado",
                 "tom": "neutral",
             },
             {
                 "titulo": "Produtos c/ mg negativa",
                 "valor": str(produtos_negativos),
+                "valor_completo": str(produtos_negativos),
                 "subvalor": "requerem acao imediata" if produtos_negativos else "sem margem negativa",
                 "tom": "negative" if produtos_negativos else "positive",
             },
             {
                 "titulo": "Desconto medio",
                 "valor": _formatar_percentual(desconto_medio),
+                "valor_completo": _formatar_percentual(desconto_medio),
                 "subvalor": "sobre a receita bruta",
                 "tom": "neutral",
             },

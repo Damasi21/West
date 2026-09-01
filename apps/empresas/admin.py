@@ -19,6 +19,7 @@ from .models import (
     LocalEstoqueOmie,
     MetaVendedorComercial,
     MovimentoFinanceiroOmie,
+    NfseOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoCompraItemOmie,
@@ -349,6 +350,42 @@ class OrdemServicoOmieAdmin(admin.ModelAdmin):
         "criado_em",
     )
     inlines = [OrdemServicoItemOmieInline]
+
+
+@admin.register(NfseOmie)
+class NfseOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "numero_nfse",
+        "codigo_nf",
+        "status_nfse",
+        "numero_os",
+        "codigo_os",
+        "cliente",
+        "data_emissao",
+        "valor_nfse",
+        "empresa",
+    )
+    list_filter = ("empresa", "status_nfse", "data_emissao")
+    search_fields = (
+        "numero_nfse",
+        "codigo_nf",
+        "numero_os",
+        "codigo_os",
+        "cliente__razao_social",
+        "cliente__nome_fantasia",
+    )
+    readonly_fields = (
+        "cabecalho",
+        "ordem_servico_dados",
+        "rps",
+        "adicionais",
+        "servicos",
+        "valores",
+        "emissao",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
 
 
 @admin.register(OrdemServicoItemOmie)

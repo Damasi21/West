@@ -26,6 +26,7 @@ from .models import (
     LancamentoContaCorrenteOmie,
     LocalEstoqueOmie,
     MovimentoFinanceiroOmie,
+    NfseOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoCompraItemOmie,
@@ -71,6 +72,7 @@ POSICAO_ESTOQUE_URL = "https://app.omie.com.br/api/v1/estoque/consulta/"
 LOCAIS_ESTOQUE_URL = "https://app.omie.com.br/api/v1/estoque/local/"
 SERVICOS_URL = "https://app.omie.com.br/api/v1/servicos/servico/"
 ORDENS_SERVICO_URL = "https://app.omie.com.br/api/v1/servicos/os/"
+NFSE_URL = "https://app.omie.com.br/api/v1/servicos/nfse/"
 CONTRATOS_URL = "https://app.omie.com.br/api/v1/servicos/contrato/"
 SSL_CONTEXT = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="omie-sync")
@@ -1496,6 +1498,49 @@ def consultar_ordens_servico(
     return dados
 
 
+def consultar_nfses(
+    integracao,
+    pagina,
+    registros_por_pagina=50,
+):
+    payload = {
+        "call": "ListarNFSEs",
+        "param": [
+            {
+                "nPagina": pagina,
+                "nRegPorPagina": registros_por_pagina,
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        NFSE_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"NÃƒÂ£o foi possÃƒÂ­vel conectar ÃƒÂ  OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invÃƒÂ¡lida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
 def consultar_contratos(
     integracao,
     pagina,
@@ -2128,6 +2173,77 @@ def _salvar_ordens_servico(empresa, itens):
             ordem_servico=ordem_servico,
             ativo_omie=True,
         ).exclude(codigo_item__in=itens_ativos).update(ativo_omie=False)
+        processados += 1
+    return processados
+
+
+def _salvar_nfses(empresa, itens):
+    agora = timezone.now()
+    codigos_clientes = {
+        codigo
+        for item in itens
+        for codigo in [
+            _inteiro_ou_none((item.get("Cabecalho") or {}).get("nCodigoCliente"))
+        ]
+        if codigo is not None
+    }
+    codigos_os = {
+        codigo
+        for item in itens
+        for codigo in [
+            _inteiro_ou_none((item.get("OrdemServico") or {}).get("nCodigoOS"))
+        ]
+        if codigo is not None
+    }
+    clientes = {
+        cliente.codigo_cliente_omie: cliente
+        for cliente in CadastroOmie.objects.filter(
+            empresa=empresa,
+            codigo_cliente_omie__in=codigos_clientes,
+        )
+    }
+    ordens = {
+        ordem.codigo_os: ordem
+        for ordem in OrdemServicoOmie.objects.filter(
+            empresa=empresa,
+            codigo_os__in=codigos_os,
+        )
+    }
+    processados = 0
+    for item in itens:
+        cabecalho = item.get("Cabecalho") or {}
+        ordem_dados = item.get("OrdemServico") or {}
+        codigo_nf = _inteiro_ou_none(cabecalho.get("nCodNF"))
+        if codigo_nf is None:
+            continue
+        codigo_os = _inteiro_ou_none(ordem_dados.get("nCodigoOS"))
+        codigo_cliente = _inteiro_ou_none(cabecalho.get("nCodigoCliente"))
+        emissao = item.get("Emissao") or {}
+        NfseOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_nf=codigo_nf,
+            defaults={
+                "numero_nfse": str(cabecalho.get("nNumeroNFSe") or ""),
+                "serie_nfse": str(cabecalho.get("cSerieNFSe") or ""),
+                "status_nfse": str(cabecalho.get("cStatusNFSe") or "").upper(),
+                "codigo_os": codigo_os,
+                "numero_os": str(ordem_dados.get("nNumeroOS") or ""),
+                "ordem_servico": ordens.get(codigo_os),
+                "codigo_cliente": codigo_cliente,
+                "cliente": clientes.get(codigo_cliente),
+                "data_emissao": _data_omie(emissao.get("cDataEmissao")),
+                "valor_nfse": _decimal(cabecalho.get("nValorNFSe")),
+                "cabecalho": cabecalho,
+                "ordem_servico_dados": ordem_dados,
+                "rps": item.get("RPS") or {},
+                "adicionais": item.get("Adicionais") or {},
+                "servicos": item.get("Servicos") or [],
+                "valores": item.get("Valores") or {},
+                "emissao": emissao,
+                "dados_originais": item,
+                **_presenca_omie(agora),
+            },
+        )
         processados += 1
     return processados
 
@@ -3953,6 +4069,15 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave": "osCadastro",
                 "salvar": _salvar_ordens_servico,
                 "modelo": OrdemServicoOmie,
+            },
+            {
+                "nome": "NFS-es",
+                "consultar": consultar_nfses,
+                "chave": "nfseEncontradas",
+                "chave_total_paginas": "nTotPaginas",
+                "chave_total_registros": "nTotRegistros",
+                "salvar": _salvar_nfses,
+                "modelo": NfseOmie,
             },
             {
                 "nome": "Contas a pagar",

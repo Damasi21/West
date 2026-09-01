@@ -323,6 +323,7 @@ def parametros(request, empresa_slug):
             "total_produtos_omie": empresa.produtos_omie.count(),
             "total_servicos_omie": empresa.servicos_omie.count(),
             "total_ordens_servico_omie": empresa.ordens_servico_omie.count(),
+            "total_nfses_omie": empresa.nfses_omie.count(),
             "total_itens_ordem_servico_omie": (
                 empresa.itens_ordem_servico_omie.count()
             ),
@@ -395,6 +396,7 @@ def sincronizacao_omie(request, empresa_slug):
             "total_produtos_omie": empresa.produtos_omie.count(),
             "total_servicos_omie": empresa.servicos_omie.count(),
             "total_ordens_servico_omie": empresa.ordens_servico_omie.count(),
+            "total_nfses_omie": empresa.nfses_omie.count(),
             "total_itens_ordem_servico_omie": (
                 empresa.itens_ordem_servico_omie.count()
             ),
@@ -1075,6 +1077,7 @@ def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
             "produtos": empresa.produtos_omie.count(),
             "servicos": empresa.servicos_omie.count(),
             "ordens_servico": empresa.ordens_servico_omie.count(),
+            "nfses": empresa.nfses_omie.count(),
             "itens_ordem_servico": empresa.itens_ordem_servico_omie.count(),
             "contratos": empresa.contratos_omie.count(),
             "itens_contrato": empresa.itens_contrato_omie.count(),
