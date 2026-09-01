@@ -32,6 +32,7 @@ from .models import (
     LocalEstoqueOmie,
     MetaVendedorComercial,
     MovimentoFinanceiroOmie,
+    NfseOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoCompraItemOmie,
@@ -62,6 +63,7 @@ from .omie import (
     consultar_lancamentos_conta_corrente,
     consultar_locais_estoque,
     consultar_movimentos_financeiros,
+    consultar_nfses,
     consultar_ordens_servico,
     consultar_pedidos,
     consultar_pedidos_compra,
@@ -2257,6 +2259,7 @@ class SincronizacaoClientesOmieTests(TestCase):
             "consultar_contas_correntes": {"total_de_paginas": 1, "total_de_registros": 0, "ListarContasCorrentes": []},
             "consultar_contratos": {"total_de_paginas": 1, "total_de_registros": 0, "contratoCadastro": []},
             "consultar_ordens_servico": {"total_de_paginas": 1, "total_de_registros": 0, "osCadastro": []},
+            "consultar_nfses": {"nTotPaginas": 1, "nTotRegistros": 0, "nfseEncontradas": []},
             "consultar_contas_pagar": {"total_de_paginas": 1, "total_de_registros": 0, "conta_pagar_cadastro": []},
             "consultar_contas_receber": {"total_de_paginas": 1, "total_de_registros": 0, "conta_receber_cadastro": []},
             "consultar_movimentos_financeiros": {"nTotPaginas": 1, "nTotRegistros": 0, "movimentos": []},
@@ -2303,6 +2306,7 @@ class SincronizacaoClientesOmieTests(TestCase):
     @patch("apps.empresas.omie.consultar_extrato_conta_corrente")
     @patch("apps.empresas.omie.consultar_resumo_financas")
     @patch("apps.empresas.omie.consultar_contratos")
+    @patch("apps.empresas.omie.consultar_nfses")
     @patch("apps.empresas.omie.consultar_ordens_servico")
     @patch("apps.empresas.omie.consultar_servicos")
     @patch("apps.empresas.omie.consultar_recebimentos_nfe")
@@ -2347,6 +2351,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         consultar_recebimentos_nfe_mock,
         consultar_servicos_mock,
         consultar_ordens_servico_mock,
+        consultar_nfses_mock,
         consultar_contratos_mock,
         consultar_resumo_financas_mock,
         consultar_extrato_conta_corrente_mock,
@@ -2713,6 +2718,36 @@ class SincronizacaoClientesOmieTests(TestCase):
                             "nValorOutrasRetencoes": 0,
                         },
                     ],
+                }
+            ],
+        }
+        consultar_nfses_mock.return_value = {
+            "nPagina": 1,
+            "nTotPaginas": 1,
+            "nRegistros": 1,
+            "nTotRegistros": 1,
+            "nfseEncontradas": [
+                {
+                    "Cabecalho": {
+                        "nCodNF": 4362686000,
+                        "nNumeroNFSe": "22",
+                        "cSerieNFSe": "A",
+                        "nValorNFSe": 200,
+                        "cStatusNFSe": "F",
+                        "nCodigoCliente": 101,
+                    },
+                    "OrdemServico": {
+                        "nCodigoOS": 4362685093,
+                        "nNumeroOS": "2",
+                        "nValorOS": 200,
+                    },
+                    "RPS": {},
+                    "Adicionais": {},
+                    "Servicos": [],
+                    "Valores": {},
+                    "Emissao": {
+                        "cDataEmissao": "23/05/2026",
+                    },
                 }
             ],
         }
@@ -3252,8 +3287,8 @@ class SincronizacaoClientesOmieTests(TestCase):
 
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA)
-        self.assertEqual(sincronizacao.pagina_atual, 23)
-        self.assertEqual(sincronizacao.registros_processados, 23)
+        self.assertEqual(sincronizacao.pagina_atual, 24)
+        self.assertEqual(sincronizacao.registros_processados, 24)
         self.assertEqual(CadastroOmie.objects.count(), 2)
         self.assertEqual(
             CadastroOmie.objects.get(codigo_cliente_omie=101).tipo,
@@ -3400,6 +3435,12 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertIsNone(reembolso.servico)
         self.assertTrue(reembolso.reembolso)
         self.assertEqual(str(reembolso.valor_unitario), "50.0000")
+        nfse = NfseOmie.objects.get(codigo_nf=4362686000)
+        self.assertEqual(nfse.ordem_servico, ordem_servico)
+        self.assertEqual(nfse.numero_nfse, "22")
+        self.assertEqual(nfse.status_nfse, "F")
+        self.assertEqual(nfse.cliente.codigo_cliente_omie, 101)
+        self.assertEqual(str(nfse.valor_nfse), "200.0000")
         pedido = PedidoOmie.objects.get(codigo_pedido=3037132866)
         self.assertEqual(pedido.numero_pedido, "1")
         self.assertEqual(pedido.cliente.codigo_cliente_omie, 101)

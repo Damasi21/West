@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Count, Sum
+from django.db.models import Count, Exists, OuterRef, Q, Sum
 
 from apps.dashboards.dre_services import (
     _formatar_moeda,
@@ -15,7 +15,7 @@ from apps.dashboards.dre_services import (
 )
 from apps.dashboards.faturamento_services import _formatar_numero
 from apps.dashboards.visao_geral_services import _formatar_moeda_curta
-from apps.empresas.models import CadastroOmie, OrdemServicoOmie, PedidoOmie
+from apps.empresas.models import CadastroOmie, NfseOmie, OrdemServicoOmie, PedidoOmie
 
 
 SEGMENTOS = (
@@ -78,7 +78,16 @@ def _query_ordens_faturadas(inicio, fim, empresas_ids):
         faturada=True,
         data_faturamento__gte=inicio,
         data_faturamento__lte=fim,
-    )
+    ).annotate(
+        nfse_faturada=Exists(
+            NfseOmie.objects.filter(
+                empresa_id=OuterRef("empresa_id"),
+                codigo_os=OuterRef("codigo_os"),
+                ativo_omie=True,
+                status_nfse="F",
+            )
+        )
+    ).filter(Q(nfse_faturada=True) | ~Q(numero_recibo__in=["", "0"]))
 
 
 def _somar_vendas(destino, queryset, campo_valor, campo_data=None):
@@ -315,6 +324,7 @@ def analise_clientes_comercial(
                 "titulo": "Clientes ativos",
                 "valor": _formatar_numero(Decimal(clientes_ativos)),
                 "subvalor": "ativos no OMIE",
+                "valor_completo": _formatar_numero(Decimal(clientes_ativos)),
                 "icone": "bi-people-fill",
                 "tom": "primary",
             },
@@ -322,6 +332,7 @@ def analise_clientes_comercial(
                 "titulo": "Novos no periodo",
                 "valor": _formatar_numero(Decimal(novos_periodo)),
                 "subvalor": "cadastros criados",
+                "valor_completo": _formatar_numero(Decimal(novos_periodo)),
                 "icone": "bi-person-plus-fill",
                 "tom": "success",
             },
@@ -329,6 +340,7 @@ def analise_clientes_comercial(
                 "titulo": "Churn no periodo",
                 "valor": _formatar_numero(Decimal(churn)),
                 "subvalor": "6+ meses sem compra",
+                "valor_completo": _formatar_numero(Decimal(churn)),
                 "icone": "bi-person-dash-fill",
                 "tom": "warning",
             },
@@ -336,6 +348,7 @@ def analise_clientes_comercial(
                 "titulo": "Ticket medio",
                 "valor": _formatar_moeda_curta(_media(faturamento_total, qtd_documentos)),
                 "subvalor": "por pedido faturado",
+                "valor_completo": _formatar_moeda(_media(faturamento_total, qtd_documentos)),
                 "icone": "bi-receipt-cutoff",
                 "tom": "neutral",
             },

@@ -4,7 +4,7 @@
             <article class="client-analysis-kpi client-analysis-kpi-{{ indicador.tom }}">
                 <div>
                     <span>{{ indicador.titulo }}</span>
-                    <strong>{{ indicador.valor }}</strong>
+                    <strong class="metric-value-with-tooltip" title="{{ indicador.valor_completo|default:indicador.valor }}">{{ indicador.valor }}</strong>
                     <small>{{ indicador.subvalor }}</small>
                 </div>
                 <i class="bi {{ indicador.icone }}"></i>

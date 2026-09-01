@@ -31,6 +31,7 @@ from apps.dashboards.faturamento_services import (
     TIPOS_FATURAMENTO_PADRAO,
     faturamento_comercial,
     linhas_excel_faturamento_produtos,
+    linhas_excel_faturamento_servicos,
 )
 from apps.dashboards.fluxo_caixa_services import (
     fluxo_de_caixa,
@@ -690,6 +691,55 @@ def _resposta_excel_faturamento_produtos(linhas, periodo):
     return response
 
 
+def _resposta_excel_faturamento_servicos(linhas, periodo):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Servicos"
+    headers = [
+        "Data de Emissao",
+        "Cliente",
+        "Numero da NFS-e ou Recibo",
+        "Total da Nota Fiscal",
+    ]
+    worksheet.append(headers)
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in worksheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for linha in linhas:
+        worksheet.append(
+            [
+                linha["data_emissao_fmt"],
+                linha["cliente"],
+                linha["numero_documento"],
+                float(linha["total_nota"]),
+            ]
+        )
+
+    for cell in worksheet["D"][1:]:
+        cell.number_format = '"R$" #,##0.00'
+    larguras = [18, 36, 26, 22]
+    for indice, largura in enumerate(larguras, start=1):
+        worksheet.column_dimensions[get_column_letter(indice)].width = largura
+
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    response = HttpResponse(
+        stream.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="faturamento-servicos-{periodo}.xlsx"'
+    )
+    return response
+
+
 def _chave_empresas_inicio(empresa):
     return f"filtros_inicio:{empresa.pk}:empresas"
 
@@ -1136,6 +1186,24 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             tipos_faturamento_consulta,
             vendedores_consulta,
         )
+        contexto["faturamento_produtos_linhas"] = linhas_excel_faturamento_produtos(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_consulta,
+            vendedores_consulta,
+        )
+        contexto["faturamento_servicos_linhas"] = linhas_excel_faturamento_servicos(
+            empresa,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            empresas_consulta_ids,
+            projetos_consulta,
+            vendedores_consulta,
+        )
     if area_slug == "comercial" and dashboard_slug == "desempenho-de-vendedores":
         contexto["desempenho_vendedores"] = desempenho_vendedores(
             empresa,
@@ -1448,3 +1516,27 @@ def exportar_faturamento_produtos(request, empresa_slug):
         filtros["vendedores"],
     )
     return _resposta_excel_faturamento_produtos(linhas, filtros["periodo"])
+
+
+@login_required
+def exportar_faturamento_servicos(request, empresa_slug):
+    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    if not usuario_pode_acessar_dashboard(
+        request.user,
+        empresa,
+        "comercial",
+        "faturamento",
+    ):
+        raise Http404("Dashboard nao encontrado.")
+
+    filtros = _filtros_exportacao_faturamento(request, empresa)
+    linhas = linhas_excel_faturamento_servicos(
+        empresa,
+        filtros["periodo"],
+        filtros["data_inicio"],
+        filtros["data_fim"],
+        filtros["empresas_ids"],
+        filtros["projetos"],
+        filtros["vendedores"],
+    )
+    return _resposta_excel_faturamento_servicos(linhas, filtros["periodo"])

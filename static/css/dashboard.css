@@ -651,6 +651,39 @@
     background: #f8fafc;
     color: #182230;
 }
+.chart-header-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .5rem;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+.chart-detail-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+    min-height: 34px;
+    padding: .4rem .72rem;
+    color: #1d4ed8;
+    background: #f8fbff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    font-size: .76rem;
+    font-weight: 800;
+    white-space: nowrap;
+    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.chart-detail-button:hover {
+    border-color: #60a5fa;
+    box-shadow: 0 8px 18px rgba(29, 78, 216, .1);
+    transform: translateY(-1px);
+}
+.chart-detail-button:focus-visible {
+    outline: 3px solid rgba(59, 130, 246, .22);
+    outline-offset: 2px;
+}
 .chart-excel-button {
     display: inline-flex;
     align-items: center;
@@ -668,7 +701,7 @@
     white-space: nowrap;
     transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
 }
-.dre-chart-header .chart-excel-button {
+.dre-chart-header > .chart-excel-button {
     margin-left: auto;
 }
 .chart-excel-button:hover {
@@ -680,6 +713,77 @@
 .chart-excel-button:focus-visible {
     outline: 3px solid rgba(34, 197, 94, .22);
     outline-offset: 2px;
+}
+.billing-details-modal .modal-content {
+    border: 1px solid #dbe3ef;
+    border-radius: 8px;
+}
+.billing-details-modal .modal-header {
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+}
+.billing-details-modal .modal-header small {
+    color: #64748b;
+    font-size: .66rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+}
+.billing-details-modal .modal-title {
+    margin: .15rem 0 0;
+    color: #182230;
+    font-size: 1.08rem;
+    font-weight: 800;
+}
+.billing-details-modal .modal-body {
+    overflow-x: auto;
+}
+.billing-modal-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: .7rem;
+    margin-left: auto;
+}
+.billing-details-table {
+    min-width: 920px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+.billing-details-table-services {
+    min-width: 720px;
+}
+.billing-details-row {
+    display: grid;
+    grid-template-columns: 130px minmax(220px, 1.4fr) 150px 170px 120px 170px;
+    align-items: center;
+    gap: 1rem;
+    padding: .75rem 1rem;
+    border-bottom: 1px solid #edf2f7;
+    color: #101828;
+    font-size: .82rem;
+}
+.billing-details-table-services .billing-details-row {
+    grid-template-columns: 130px minmax(240px, 1fr) 170px 170px;
+}
+.billing-details-row:last-child {
+    border-bottom: 0;
+}
+.billing-details-head {
+    color: #475467;
+    background: #f8fafc;
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+.billing-details-row strong {
+    font-weight: 800;
+}
+.billing-details-empty {
+    padding: 1rem;
+    color: #667085;
+    font-size: .86rem;
 }
 .chart-card-fullscreen:fullscreen {
     display: flex;

@@ -111,6 +111,11 @@ urlpatterns = [
         views.exportar_faturamento_produtos,
         name="exportar_faturamento_produtos",
     ),
+    path(
+        "comercial/faturamento/servicos/exportar/",
+        views.exportar_faturamento_servicos,
+        name="exportar_faturamento_servicos",
+    ),
     path("<slug:area_slug>/", views.area, name="area"),
     path(
         "<slug:area_slug>/<slug:dashboard_slug>/",
