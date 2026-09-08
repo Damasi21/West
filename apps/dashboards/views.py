@@ -735,6 +735,203 @@ def _resposta_excel_faturamento_servicos(linhas, periodo):
     return response
 
 
+def _filtros_exportacao_faturamento(request, empresa):
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+    empresas_selecionadas = _empresas_inicio_selecionadas(
+        request,
+        empresa,
+        empresas,
+    )
+    empresas_consulta_ids = empresas_selecionadas or [
+        str(item.pk) for item in empresas
+    ]
+    from apps.empresas.models import ProjetoOmie, VendedorOmie
+
+    projetos_opcoes = [
+        {
+            "valor": f"{projeto.empresa_id}:{projeto.codigo}",
+            "nome": projeto.nome,
+            "empresa": projeto.empresa.nome_fantasia,
+        }
+        for projeto in ProjetoOmie.objects.filter(
+            empresa_id__in=empresas_consulta_ids,
+            ativo_omie=True,
+            inativo=False,
+        ).select_related("empresa")
+    ]
+    vendedores_opcoes = [
+        {
+            "valor": f"{vendedor.empresa_id}:{vendedor.codigo}",
+            "nome": vendedor.nome or str(vendedor.codigo),
+            "empresa": vendedor.empresa.nome_fantasia,
+        }
+        for vendedor in VendedorOmie.objects.filter(
+            empresa_id__in=empresas_consulta_ids,
+            ativo_omie=True,
+            inativo=False,
+        ).select_related("empresa")
+    ]
+    estado = request.session.get(
+        f"filtros_dashboard:{empresa.pk}:comercial:faturamento",
+        {},
+    )
+    if "_filtrar" in request.GET:
+        projetos_selecionados = _valores_validos(
+            request.GET.getlist("projeto"),
+            (item["valor"] for item in projetos_opcoes),
+        )
+        vendedores_selecionados = _valores_validos(
+            request.GET.getlist("vendedor"),
+            (item["valor"] for item in vendedores_opcoes),
+        )
+        periodo = _valor_periodo_valido(request.GET.get("periodo", ""))
+        data_inicio, data_fim = _datas_periodo_especifico(
+            periodo,
+            request.GET.get("data_inicio"),
+            request.GET.get("data_fim"),
+        )
+    else:
+        projetos_selecionados = _valores_validos(
+            estado.get("projetos", []),
+            (item["valor"] for item in projetos_opcoes),
+        )
+        vendedores_selecionados = _valores_validos(
+            estado.get("vendedores", []),
+            (item["valor"] for item in vendedores_opcoes),
+        )
+        estado_modulo = request.session.get(
+            f"filtros_modulo:{empresa.pk}:comercial",
+            {},
+        )
+        fonte_periodo = estado if estado.get("periodo") else estado_modulo
+        periodo = _valor_periodo_valido(fonte_periodo.get("periodo") or "")
+        data_inicio, data_fim = _datas_periodo_especifico(
+            periodo,
+            fonte_periodo.get("data_inicio"),
+            fonte_periodo.get("data_fim"),
+        )
+    if periodo == "personalizado" and not data_inicio:
+        periodo = _valor_periodo_valido("")
+        data_inicio, data_fim = "", ""
+    return {
+        "empresas_ids": empresas_consulta_ids,
+        "periodo": periodo,
+        "data_inicio": data_inicio,
+        "data_fim": data_fim,
+        "projetos": _valores_para_consulta(
+            projetos_selecionados,
+            projetos_opcoes,
+        ),
+        "vendedores": _valores_para_consulta(
+            vendedores_selecionados,
+            vendedores_opcoes,
+        ),
+    }
+
+
+def _resposta_excel_faturamento_produtos(linhas, periodo):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Faturamento"
+    headers = [
+        "Data de Emissao",
+        "Cliente",
+        "Numero da NF",
+        "Total de Mercadoria",
+        "Frete",
+        "Total da Nota Fiscal",
+    ]
+    worksheet.append(headers)
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in worksheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for linha in linhas:
+        worksheet.append(
+            [
+                linha["data_emissao_fmt"],
+                linha["cliente"],
+                linha["numero_nf"],
+                float(linha["total_mercadoria"]),
+                float(linha["frete"]),
+                float(linha["total_nota"]),
+            ]
+        )
+
+    for coluna in ("D", "E", "F"):
+        for cell in worksheet[coluna][1:]:
+            cell.number_format = '"R$" #,##0.00'
+    larguras = [18, 36, 18, 22, 16, 22]
+    for indice, largura in enumerate(larguras, start=1):
+        worksheet.column_dimensions[get_column_letter(indice)].width = largura
+
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    response = HttpResponse(
+        stream.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="faturamento-produtos-{periodo}.xlsx"'
+    )
+    return response
+
+
+def _resposta_excel_faturamento_servicos(linhas, periodo):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Servicos"
+    headers = [
+        "Data de Emissao",
+        "Cliente",
+        "Numero da NFS-e ou Recibo",
+        "Total da Nota Fiscal",
+    ]
+    worksheet.append(headers)
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in worksheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for linha in linhas:
+        worksheet.append(
+            [
+                linha["data_emissao_fmt"],
+                linha["cliente"],
+                linha["numero_documento"],
+                float(linha["total_nota"]),
+            ]
+        )
+
+    for cell in worksheet["D"][1:]:
+        cell.number_format = '"R$" #,##0.00'
+    larguras = [18, 36, 26, 22]
+    for indice, largura in enumerate(larguras, start=1):
+        worksheet.column_dimensions[get_column_letter(indice)].width = largura
+
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    response = HttpResponse(
+        stream.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="faturamento-servicos-{periodo}.xlsx"'
+    )
+    return response
+
+
 def _chave_empresas_inicio(empresa):
     return f"filtros_inicio:{empresa.pk}:empresas"
 
@@ -1502,6 +1699,7 @@ def salvar_aprovacao_pagamentos(request, empresa_slug):
 
     resultado = salvar_aprovacoes_pagamentos(empresa, request.user, itens)
     return JsonResponse(resultado, status=200 if resultado["sucesso"] else 207)
+
 
 @login_required
 def exportar_historico_aprovacao_pagamentos(request, empresa_slug):
