@@ -46,24 +46,14 @@ chmod +x .docker/scripts/*.sh
 
 ## Banco de dados
 
-Por padrão, o projeto usa SQLite (`db.sqlite3`). Para usar PostgreSQL,
-configure o `.env`:
+O projeto usa PostgreSQL. Configure o `.env` com os dados de conexão:
 
 ```env
-DATABASE_ENGINE=postgres
 POSTGRES_DB=west_bi
 POSTGRES_USER=west_user
 POSTGRES_PASSWORD=sua-senha
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
-```
-
-Para migrar os dados locais do SQLite para PostgreSQL:
-
-```powershell
-python manage.py dumpdata --natural-foreign --natural-primary -e contenttypes -e auth.Permission --indent 2 -o backup_sqlite_YYYYMMDD.json
-python manage.py migrate
-python manage.py loaddata backup_sqlite_YYYYMMDD.json
 ```
 
 ## Organização

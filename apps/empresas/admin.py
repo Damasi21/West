@@ -18,6 +18,7 @@ from .models import (
     LancamentoContaCorrenteOmie,
     LocalEstoqueOmie,
     MetaVendedorComercial,
+    MovimentoEstoqueOmie,
     MovimentoFinanceiroOmie,
     NfseOmie,
     OrdemServicoItemOmie,
@@ -28,6 +29,7 @@ from .models import (
     PedidoOmie,
     PesqTituloFinanceiroOmie,
     PosicaoEstoqueOmie,
+    ProdutoFornecedorOmie,
     ProdutoOmie,
     ProjetoOmie,
     RecebimentoNfeItemOmie,
@@ -211,6 +213,29 @@ class ProdutoOmieAdmin(admin.ModelAdmin):
     )
 
 
+@admin.register(ProdutoFornecedorOmie)
+class ProdutoFornecedorOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "nome_fantasia",
+        "razao_social",
+        "codigo_fornecedor",
+        "codigo_produto_fornecedor",
+        "produto",
+        "empresa",
+    )
+    list_filter = ("empresa", "ativo_omie")
+    search_fields = (
+        "nome_fantasia",
+        "razao_social",
+        "cnpj_cpf",
+        "codigo_fornecedor",
+        "codigo_produto",
+        "codigo_produto_fornecedor",
+        "descricao_produto",
+    )
+    readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
+
+
 @admin.register(LocalEstoqueOmie)
 class LocalEstoqueOmieAdmin(admin.ModelAdmin):
     list_display = (
@@ -264,6 +289,44 @@ class SaldoPendenteEstoqueOmieAdmin(admin.ModelAdmin):
         "produto__descricao",
     )
     readonly_fields = ("dados_originais", "sincronizado_em", "criado_em")
+
+
+@admin.register(MovimentoEstoqueOmie)
+class MovimentoEstoqueOmieAdmin(admin.ModelAdmin):
+    list_display = (
+        "data_movimento",
+        "codigo",
+        "descricao",
+        "descricao_origem",
+        "numero_documento",
+        "quantidade_entrada",
+        "quantidade_saida",
+        "quantidade_atual",
+        "local_estoque",
+        "empresa",
+    )
+    list_filter = (
+        "empresa",
+        "local_estoque",
+        "codigo_origem",
+        "cancelamento",
+        "devolucao",
+        "data_movimento",
+    )
+    search_fields = (
+        "codigo",
+        "descricao",
+        "codigo_produto",
+        "codigo_movimento",
+        "numero_documento",
+        "numero_pedido",
+    )
+    readonly_fields = (
+        "movimentos_periodo",
+        "dados_originais",
+        "sincronizado_em",
+        "criado_em",
+    )
 
 
 @admin.register(ServicoOmie)

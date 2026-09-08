@@ -131,6 +131,72 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const inventoryAbc = document.querySelector("[data-inventory-abc-dashboard]");
+    if (inventoryAbc && typeof Chart !== "undefined") {
+        const labels = JSON.parse(document.getElementById("inventory-abc-chart-labels").textContent);
+        const bars = JSON.parse(document.getElementById("inventory-abc-chart-bars").textContent);
+        const accumulated = JSON.parse(document.getElementById("inventory-abc-chart-accumulated").textContent);
+        const colors = JSON.parse(document.getElementById("inventory-abc-chart-colors").textContent);
+        const canvas = inventoryAbc.querySelector("[data-inventory-abc-chart]");
+
+        if (canvas) {
+            new Chart(canvas, {
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            type: "bar",
+                            label: "% valor",
+                            data: bars,
+                            backgroundColor: colors,
+                            borderRadius: 3,
+                            yAxisID: "y",
+                        },
+                        {
+                            type: "line",
+                            label: "% acumulado",
+                            data: accumulated,
+                            borderColor: "#1f3448",
+                            backgroundColor: "#1f3448",
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            pointHoverRadius: 4,
+                            tension: .28,
+                            yAxisID: "y",
+                        },
+                    ],
+                },
+                options: {
+                    ...chartBaseOptions,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ${context.raw}%`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: "#667085", font: { size: 10 } },
+                        },
+                        y: {
+                            min: 0,
+                            max: 100,
+                            grid: { color: "rgba(148, 163, 184, .2)" },
+                            ticks: {
+                                color: "#667085",
+                                font: { size: 10 },
+                                callback: (value) => `${value}%`,
+                            },
+                        },
+                    },
+                },
+            });
+        }
+    }
+
     const overview = document.querySelector("[data-finance-overview]");
     if (overview && typeof Chart !== "undefined") {
         const labels = JSON.parse(document.getElementById("overview-chart-labels").textContent);

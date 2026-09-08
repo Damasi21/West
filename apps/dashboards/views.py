@@ -24,6 +24,12 @@ from apps.dashboards.budget_services import budget_compras
 from apps.dashboards.curva_abc_fornecedores_services import (
     curva_abc_fornecedores_compras,
 )
+from apps.dashboards.curva_abc_produtos_services import (
+    TIPO_CURVA_ESTOQUE,
+    curva_abc_produtos_estoque,
+    limites_curva_abc_validos,
+    tipo_curva_abc_valido,
+)
 from apps.dashboards.desempenho_vendedores_services import desempenho_vendedores
 from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import (
@@ -42,6 +48,7 @@ from apps.dashboards.kardex_services import kardex_estoque
 from apps.dashboards.margem_rentabilidade_services import (
     margem_rentabilidade_comercial,
 )
+from apps.dashboards.ruptura_estoque_services import ruptura_estoque
 from apps.dashboards.score_fornecedores_services import score_fornecedores_compras
 from apps.dashboards.visao_geral_services import visao_geral_financeira
 from apps.empresas.models import SincronizacaoOmie
@@ -177,28 +184,16 @@ AREAS = {
                 "icone": "bi-clipboard-data",
             },
             {
-                "slug": "posicao-de-estoque",
-                "titulo": "Posição de estoque",
-                "descricao": "Consulte saldos, valores e disponibilidade dos itens.",
-                "icone": "bi-boxes",
+                "slug": "curva-abc",
+                "titulo": "Curva ABC",
+                "descricao": "Classifique produtos por participacao no valor em estoque.",
+                "icone": "bi-sort-down-alt",
             },
             {
-                "slug": "giro-de-estoque",
-                "titulo": "Giro de estoque",
-                "descricao": "Identifique a velocidade de renovação dos produtos.",
-                "icone": "bi-arrow-repeat",
-            },
-            {
-                "slug": "cobertura-de-estoque",
-                "titulo": "Cobertura de estoque",
-                "descricao": "Estime por quanto tempo os saldos atenderão à demanda.",
-                "icone": "bi-calendar-range",
-            },
-            {
-                "slug": "movimentacoes",
-                "titulo": "Movimentações",
-                "descricao": "Acompanhe entradas, saídas e ajustes realizados.",
-                "icone": "bi-arrow-down-up",
+                "slug": "ruptura-de-estoque",
+                "titulo": "Ruptura de Estoque",
+                "descricao": "Antecipe faltas, cobertura critica e reposicoes sugeridas.",
+                "icone": "bi-exclamation-triangle",
             },
         ],
     },
@@ -958,6 +953,8 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         categorias_selecionadas = [item["valor"] for item in categorias_opcoes]
         tipos_faturamento_selecionados = TIPOS_FATURAMENTO_PADRAO[:]
         budget_dimensao = "produto"
+        curva_abc_tipo = TIPO_CURVA_ESTOQUE
+        curva_abc_limites = limites_curva_abc_validos()
         periodo_selecionado = f"ano-{date.today().year}"
         regime_financeiro = _regime_financeiro_valido("")
         data_inicio, data_fim = "", ""
@@ -972,6 +969,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "categorias": categorias_selecionadas,
             "tipos_faturamento": tipos_faturamento_selecionados,
             "budget_dimensao": budget_dimensao,
+            "curva_abc_tipo": curva_abc_tipo,
+            "curva_abc_classe_a": str(curva_abc_limites["A"]),
+            "curva_abc_classe_b": str(curva_abc_limites["B"]),
         }
         request.session[chave_dashboard] = estado
     elif "_filtrar" in request.GET:
@@ -996,6 +996,11 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             TIPOS_FATURAMENTO.keys(),
         ) or TIPOS_FATURAMENTO_PADRAO[:]
         budget_dimensao = request.GET.get("budget_dimensao", "")
+        curva_abc_tipo = tipo_curva_abc_valido(request.GET.get("curva_abc_tipo", ""))
+        curva_abc_limites = limites_curva_abc_validos(
+            request.GET.get("abc_classe_a"),
+            request.GET.get("abc_classe_b"),
+        )
         periodo_selecionado = _valor_periodo_valido(
             request.GET.get("periodo", "")
         )
@@ -1020,6 +1025,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "categorias": categorias_selecionadas,
             "tipos_faturamento": tipos_faturamento_selecionados,
             "budget_dimensao": budget_dimensao,
+            "curva_abc_tipo": curva_abc_tipo,
+            "curva_abc_classe_a": str(curva_abc_limites["A"]),
+            "curva_abc_classe_b": str(curva_abc_limites["B"]),
         }
         request.session[chave_dashboard] = estado
     else:
@@ -1044,6 +1052,13 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             TIPOS_FATURAMENTO.keys(),
         ) or TIPOS_FATURAMENTO_PADRAO[:]
         budget_dimensao = estado.get("budget_dimensao", "")
+        curva_abc_tipo = tipo_curva_abc_valido(
+            estado.get("curva_abc_tipo", TIPO_CURVA_ESTOQUE)
+        )
+        curva_abc_limites = limites_curva_abc_validos(
+            estado.get("curva_abc_classe_a"),
+            estado.get("curva_abc_classe_b"),
+        )
         fonte_periodo = estado if estado.get("periodo") else estado_modulo
         periodo_selecionado = _valor_periodo_valido(
             fonte_periodo.get("periodo") or periodo_compartilhado or ""
@@ -1072,6 +1087,12 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         _valores_para_consulta(
             categorias_selecionadas,
             categorias_opcoes,
+        )
+    )
+    departamentos_consulta = _codigos_filtro_composto(
+        _valores_para_consulta(
+            departamentos_selecionados,
+            departamentos_opcoes,
         )
     )
 
@@ -1135,6 +1156,8 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "tipos_faturamento": tipos_faturamento_opcoes,
             "tipos_faturamento_selecionados": tipos_faturamento_selecionados,
             "budget_dimensao": budget_dimensao,
+            "curva_abc_tipo": curva_abc_tipo,
+            "curva_abc_limites": curva_abc_limites,
             "empresas_filtro": empresas,
             "empresas_selecionadas": empresas_selecionadas,
         }
@@ -1298,6 +1321,23 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         )
     if area_slug == "estoque" and dashboard_slug == "kardex":
         contexto["kardex"] = kardex_estoque(
+            empresa,
+            empresas_consulta_ids,
+        )
+    if area_slug == "estoque" and dashboard_slug == "curva-abc":
+        contexto["curva_abc_produtos"] = curva_abc_produtos_estoque(
+            empresa,
+            empresas_consulta_ids,
+            periodo_selecionado,
+            data_inicio,
+            data_fim,
+            projetos_consulta,
+            departamentos_consulta,
+            curva_abc_tipo,
+            curva_abc_limites,
+        )
+    if area_slug == "estoque" and dashboard_slug == "ruptura-de-estoque":
+        contexto["ruptura_estoque"] = ruptura_estoque(
             empresa,
             empresas_consulta_ids,
         )

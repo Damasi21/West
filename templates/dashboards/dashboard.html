@@ -11,7 +11,7 @@
         <h1>{{ dashboard_atual.titulo }}</h1>
         <p>{{ dashboard_atual.descricao }}</p>
     </div>
-    <form class="filters dashboard-filters" method="get" data-dashboard-filters>
+    <form class="filters dashboard-filters" method="get" id="dashboard-filters-form" data-dashboard-filters>
         <input type="hidden" name="_filtrar" value="1">
         <a href="{% url 'dashboards:area' empresa.slug area_slug %}" class="btn btn-white">
             <i class="bi bi-arrow-left me-2"></i>Voltar
@@ -112,6 +112,17 @@
             </label>
         {% endif %}
 
+        {% if area_slug == "estoque" and dashboard_slug == "curva-abc" %}
+            <label class="regime-filter" title="Escolha o criterio da Curva ABC">
+                <i class="bi bi-bar-chart-steps"></i>
+                <select name="curva_abc_tipo" aria-label="Tipo de Curva ABC">
+                    {% for opcao in curva_abc_produtos.tipos_curva %}
+                        <option value="{{ opcao.valor }}" {% if curva_abc_tipo == opcao.valor %}selected{% endif %}>{{ opcao.nome }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        {% endif %}
+
         <button
             class="btn btn-white share-filter-button{% if periodo_compartilhado %} is-active{% endif %}"
             type="submit"
@@ -170,6 +181,10 @@
     {% include "dashboards/partials/curva_abc_fornecedores.html" with dados=curva_abc_fornecedores %}
 {% elif analise_preco_saving %}
     {% include "dashboards/partials/analise_preco_saving.html" with dados=analise_preco_saving %}
+{% elif curva_abc_produtos %}
+    {% include "dashboards/partials/curva_abc_produtos.html" with dados=curva_abc_produtos %}
+{% elif ruptura_estoque %}
+    {% include "dashboards/partials/ruptura_estoque.html" with dados=ruptura_estoque %}
 {% elif kardex %}
     {% include "dashboards/partials/kardex.html" with dados=kardex %}
 {% else %}

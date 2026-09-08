@@ -44,6 +44,7 @@
         const percent = panel.querySelector("[data-sync-percent]");
         const message = panel.querySelector("[data-sync-message]");
         const detail = panel.querySelector("[data-sync-detail]");
+        const completeBadge = panel.querySelector("[data-sync-complete]");
         const errorBox = panel.querySelector("[data-sync-error]");
         const startedAt = panel.querySelector("[data-sync-started-at]");
         const finishedAt = panel.querySelector("[data-sync-finished-at]");
@@ -101,9 +102,13 @@
         function render(data) {
             const value = Math.max(0, Math.min(100, data.percentual || 0));
             progress.classList.remove("d-none");
+            progress.classList.toggle("is-complete", data.status === "concluida");
+            progress.classList.toggle("is-error", data.status === "erro");
             bar.style.width = `${value}%`;
             bar.classList.toggle("bg-danger", data.status === "erro");
+            bar.classList.toggle("bg-success", data.status === "concluida");
             percent.textContent = `${value}%`;
+            completeBadge?.classList.toggle("d-none", data.status !== "concluida");
             message.textContent = data.mensagem || data.status_label || "Sincronizando...";
             detail.textContent = data.total_registros
                 ? `${data.registros_processados} de ${data.total_registros} registros`

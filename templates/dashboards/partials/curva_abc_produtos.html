@@ -1,0 +1,108 @@
+<section class="inventory-abc-dashboard" data-inventory-abc-dashboard>
+    <div class="inventory-abc-kpis">
+        {% for indicador in dados.kpis %}
+            <article class="inventory-abc-kpi inventory-abc-kpi-{{ indicador.tom }}">
+                <span>{{ indicador.titulo }}</span>
+                <strong>{{ indicador.valor }}</strong>
+                <small>{{ indicador.subvalor }}</small>
+            </article>
+        {% endfor %}
+    </div>
+
+    <div class="inventory-abc-grid">
+        <article class="inventory-abc-card inventory-abc-chart-card">
+            <header class="inventory-abc-header">
+                <h2>Curva de Pareto - {{ dados.tipo_curva_rotulo }}</h2>
+                <div class="inventory-abc-legend">
+                    <span><i class="is-a"></i>A</span>
+                    <span><i class="is-b"></i>B</span>
+                    <span><i class="is-c"></i>C</span>
+                </div>
+            </header>
+            <div class="inventory-abc-chart-canvas">
+                <canvas data-inventory-abc-chart></canvas>
+            </div>
+        </article>
+
+        <article class="inventory-abc-card inventory-abc-rule-card">
+            <header class="inventory-abc-header">
+                <h2>Regua de Classificacao</h2>
+            </header>
+            <div class="inventory-abc-rule-list">
+                {% for item in dados.regua %}
+                    <div class="inventory-abc-rule inventory-abc-rule-{{ item.classe|lower }}">
+                        <span>
+                            <i></i>
+                            <strong>Classe {{ item.classe }}</strong>
+                            <small>{{ item.descricao }}</small>
+                        </span>
+                        {% if item.editavel %}
+                            <label>
+                                <input
+                                    type="number"
+                                    name="{{ item.campo }}"
+                                    value="{{ item.valor }}"
+                                    min="1"
+                                    max="99"
+                                    step="0.1"
+                                    form="dashboard-filters-form"
+                                    aria-label="Limite da classe {{ item.classe }}"
+                                >
+                                <b>%</b>
+                            </label>
+                        {% else %}
+                            <b>{{ item.limite }}</b>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+            <p>Limites aplicados sobre o criterio selecionado no topo.</p>
+        </article>
+    </div>
+
+    <article class="inventory-abc-card inventory-abc-table-card">
+        <header class="inventory-abc-header">
+            <h2>Produtos Classificados</h2>
+            <small>{{ dados.ordenacao_rotulo }}</small>
+        </header>
+        <div class="inventory-abc-table">
+            <div class="inventory-abc-row inventory-abc-head">
+                <span>Produto</span>
+                <span>Classe</span>
+                <span>{{ dados.coluna_valor }}</span>
+                <span>Participacao</span>
+                <span>% acumulado</span>
+                <span>Giro</span>
+            </div>
+            {% for produto in dados.produtos %}
+                <div class="inventory-abc-row">
+                    <span class="inventory-abc-product">
+                        <strong>{{ produto.nome }}</strong>
+                        <small>{{ produto.codigo }} - {{ produto.tipo }}</small>
+                    </span>
+                    <span>
+                        <mark class="inventory-abc-badge inventory-abc-badge-{{ produto.classe_tom }}">
+                            {{ produto.classe }}
+                        </mark>
+                    </span>
+                    <span>{{ produto.valor_fmt }}</span>
+                    <span>
+                        <i class="inventory-abc-share">
+                            <b style="width: {{ produto.participacao_barra }}%"></b>
+                        </i>
+                        {{ produto.participacao_fmt }}
+                    </span>
+                    <span>{{ produto.acumulado_fmt }}</span>
+                    <span>{{ produto.giro }}</span>
+                </div>
+            {% empty %}
+                <div class="inventory-abc-empty">Nenhum produto encontrado para classificacao.</div>
+            {% endfor %}
+        </div>
+    </article>
+
+    {{ dados.chart_labels|json_script:"inventory-abc-chart-labels" }}
+    {{ dados.chart_barras|json_script:"inventory-abc-chart-bars" }}
+    {{ dados.chart_acumulado|json_script:"inventory-abc-chart-accumulated" }}
+    {{ dados.chart_cores|json_script:"inventory-abc-chart-colors" }}
+</section>

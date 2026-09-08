@@ -425,6 +425,60 @@ class ProdutoOmie(models.Model):
         return self.descricao or self.codigo or str(self.codigo_produto)
 
 
+class ProdutoFornecedorOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="produtos_fornecedores_omie",
+    )
+    produto = models.ForeignKey(
+        ProdutoOmie,
+        on_delete=models.SET_NULL,
+        related_name="fornecedores_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_produto = models.BigIntegerField()
+    codigo_produto_integracao = models.CharField(max_length=100, blank=True)
+    codigo_produto_fornecedor = models.CharField(max_length=60, blank=True)
+    descricao_produto = models.CharField(max_length=255, blank=True)
+    codigo_fornecedor = models.BigIntegerField()
+    codigo_fornecedor_integracao = models.CharField(max_length=100, blank=True)
+    cnpj_cpf = models.CharField(max_length=20, blank=True)
+    razao_social = models.CharField(max_length=120, blank=True)
+    nome_fantasia = models.CharField(max_length=120, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["nome_fantasia", "razao_social", "codigo_produto_fornecedor"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_fornecedor", "codigo_produto"],
+                name="prod_forn_omie_emp_forn_prod_unico",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "codigo_produto"],
+                name="prod_forn_emp_prod_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_fornecedor"],
+                name="prod_forn_emp_forn_idx",
+            ),
+        ]
+        verbose_name = "produto por fornecedor OMIE"
+        verbose_name_plural = "produtos por fornecedor OMIE"
+
+    def __str__(self):
+        fornecedor = self.nome_fantasia or self.razao_social or str(self.codigo_fornecedor)
+        return f"{fornecedor} - {self.codigo_produto_fornecedor or self.codigo_produto}"
+
+
 class LocalEstoqueOmie(models.Model):
     empresa = models.ForeignKey(
         Empresa,
@@ -601,6 +655,90 @@ class SaldoPendenteEstoqueOmie(models.Model):
 
     def __str__(self):
         return str(self.codigo_produto)
+
+
+class MovimentoEstoqueOmie(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="movimentos_estoque_omie",
+    )
+    produto = models.ForeignKey(
+        ProdutoOmie,
+        on_delete=models.SET_NULL,
+        related_name="movimentos_estoque_omie",
+        null=True,
+        blank=True,
+    )
+    local_estoque = models.ForeignKey(
+        LocalEstoqueOmie,
+        on_delete=models.SET_NULL,
+        related_name="movimentos_estoque_omie",
+        null=True,
+        blank=True,
+    )
+    codigo_produto = models.BigIntegerField()
+    codigo_local_estoque = models.BigIntegerField(default=0)
+    codigo = models.CharField(max_length=60, blank=True)
+    codigo_integracao = models.CharField(max_length=100, blank=True)
+    descricao = models.CharField(max_length=255, blank=True)
+    codigo_origem = models.CharField(max_length=10, blank=True)
+    descricao_origem = models.CharField(max_length=120, blank=True)
+    operacao = models.CharField(max_length=20, blank=True)
+    data_movimento = models.DateField(null=True, blank=True)
+    cancelamento = models.BooleanField(default=False)
+    devolucao = models.BooleanField(default=False)
+    codigo_movimento = models.BigIntegerField()
+    codigo_documento = models.BigIntegerField(null=True, blank=True)
+    codigo_pedido = models.BigIntegerField(null=True, blank=True)
+    codigo_recebimento = models.BigIntegerField(null=True, blank=True)
+    codigo_ajuste = models.BigIntegerField(null=True, blank=True)
+    numero_documento = models.CharField(max_length=60, blank=True)
+    numero_pedido = models.CharField(max_length=120, blank=True)
+    quantidade_anterior = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    quantidade_entrada = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    quantidade_saida = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    quantidade_atual = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    cmc_unitario = models.DecimalField(max_digits=18, decimal_places=6, default=0)
+    cmc_total = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    movimentos_periodo = models.JSONField(default=list, blank=True)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data_movimento", "-codigo_movimento"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "codigo_movimento"],
+                name="mov_est_omie_empresa_mov_unico",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["empresa", "codigo_produto", "data_movimento"],
+                name="mov_est_emp_prod_data_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_local_estoque"],
+                name="mov_est_emp_local_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_pedido"],
+                name="mov_est_emp_pedido_idx",
+            ),
+            models.Index(
+                fields=["empresa", "codigo_recebimento"],
+                name="mov_est_emp_receb_idx",
+            ),
+        ]
+        verbose_name = "movimento de estoque OMIE"
+        verbose_name_plural = "movimentos de estoque OMIE"
+
+    def __str__(self):
+        return self.numero_documento or str(self.codigo_movimento)
 
 
 class ServicoOmie(models.Model):

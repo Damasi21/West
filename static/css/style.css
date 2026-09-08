@@ -596,6 +596,30 @@ a { text-decoration: none; }
 }
 .omie-sync-progress .progress { height: 10px; background: #e5eaf3; }
 .omie-sync-progress small { display: block; margin-top: .55rem; color: var(--muted); }
+.omie-sync-progress.is-complete {
+    background: #f1fbf6;
+    border: 1px solid #cceedd;
+}
+.sync-progress-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .55rem;
+    flex: 0 0 auto;
+}
+.sync-complete-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    min-height: 24px;
+    padding: .2rem .55rem;
+    color: #166b45;
+    background: #dcf7e8;
+    border: 1px solid #b8e8cc;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 800;
+}
 @media (max-width: 768px) {
     .omie-sync-heading {
         align-items: stretch;

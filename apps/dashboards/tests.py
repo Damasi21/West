@@ -11,6 +11,7 @@ from django.utils import timezone
 from openpyxl import load_workbook
 
 from apps.dashboards.dre_services import dre_gerencial
+from apps.dashboards.curva_abc_produtos_services import curva_abc_produtos_estoque
 from apps.dashboards.faturamento_services import faturamento_comercial
 from apps.dashboards.fluxo_caixa_services import fluxo_de_caixa
 from apps.dashboards.margem_rentabilidade_services import margem_rentabilidade_comercial
@@ -30,6 +31,7 @@ from apps.empresas.models import (
     LancamentoContaCorrenteOmie,
     MetaVendedorComercial,
     MovimentoFinanceiroOmie,
+    MovimentoEstoqueOmie,
     NfseOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
@@ -39,6 +41,7 @@ from apps.empresas.models import (
     PedidoOmie,
     PesqTituloFinanceiroOmie,
     PosicaoEstoqueOmie,
+    ProdutoFornecedorOmie,
     ProdutoOmie,
     ProjetoOmie,
     RecebimentoNfeItemOmie,
@@ -845,6 +848,431 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(dados["fornecedores"][1]["classe"], "B")
         self.assertEqual(dados["fornecedores"][2]["classe"], "C")
         self.assertTrue(dados["curva_pontos"])
+
+    def test_curva_abc_produtos_exibe_classificacao_por_valor_estoque(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        produto_a = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=9101,
+            codigo="MP-9101",
+            descricao="Produto Classe A",
+            descricao_familia="Materia-prima",
+        )
+        produto_b = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=9102,
+            codigo="RV-9102",
+            descricao="Produto Classe B",
+            descricao_familia="Revenda",
+        )
+        produto_c = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=9103,
+            codigo="CP-9103",
+            descricao="Produto Classe C",
+            descricao_familia="Componentes",
+        )
+        for produto, saldo, cmc in (
+            (produto_a, 100, 80),
+            (produto_b, 10, 120),
+            (produto_c, 5, 40),
+        ):
+            PosicaoEstoqueOmie.objects.create(
+                empresa=self.empresa,
+                produto=produto,
+                codigo_produto=produto.codigo_produto,
+                codigo_local_estoque=1,
+                codigo=produto.codigo,
+                descricao=produto.descricao,
+                data_posicao=date(2026, 8, 1),
+                saldo=saldo,
+                cmc=cmc,
+            )
+
+        self.client.force_login(self.usuario)
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "estoque",
+                    "dashboard_slug": "curva-abc",
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Curva de Pareto")
+        self.assertContains(response, "Regua de Classificacao")
+        self.assertContains(response, "Produtos Classificados")
+        contexto = response.context["curva_abc_produtos"]
+        self.assertEqual(contexto["produtos"][0]["nome"], "Produto Classe A")
+        self.assertEqual(contexto["produtos"][0]["classe"], "A")
+        self.assertEqual(contexto["kpis"][3]["valor"], "R$ 9.400,00")
+        self.assertEqual(contexto["chart_labels"][0], "MP-9101")
+
+    def test_curva_abc_produtos_filtra_por_vendas_e_regua_customizada(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        ano_atual = date.today().year
+        produto_a = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=9111,
+            codigo="PV-9111",
+            descricao="Produto Mais Vendido",
+            descricao_familia="Revenda",
+        )
+        produto_b = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=9112,
+            codigo="PV-9112",
+            descricao="Produto Intermediario",
+            descricao_familia="Revenda",
+        )
+        produto_c = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=9113,
+            codigo="PV-9113",
+            descricao="Produto Menos Vendido",
+            descricao_familia="Revenda",
+        )
+        pedido = PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=91110,
+            numero_pedido="PV-91110",
+            faturado=True,
+            data_faturamento=date(ano_atual, 1, 15),
+        )
+        for codigo_item, produto, valor in (
+            (911101, produto_a, Decimal("700")),
+            (911102, produto_b, Decimal("200")),
+            (911103, produto_c, Decimal("100")),
+        ):
+            PedidoItemOmie.objects.create(
+                empresa=self.empresa,
+                pedido=pedido,
+                codigo_item=codigo_item,
+                produto=produto,
+                codigo_produto=produto.codigo_produto,
+                codigo_produto_texto=produto.codigo,
+                descricao=produto.descricao,
+                quantidade=1,
+                valor_total=valor,
+            )
+
+        self.client.force_login(self.usuario)
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "estoque",
+                    "dashboard_slug": "curva-abc",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"ano-{ano_atual}",
+                "curva_abc_tipo": "vendas",
+                "abc_classe_a": "60",
+                "abc_classe_b": "85",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Curva de Vendas")
+        self.assertContains(response, "Vendas")
+        contexto = response.context["curva_abc_produtos"]
+        self.assertEqual(contexto["tipo_curva"], "vendas")
+        self.assertEqual(contexto["produtos"][0]["nome"], "Produto Mais Vendido")
+        self.assertEqual(contexto["produtos"][0]["classe"], "A")
+        self.assertEqual(contexto["produtos"][1]["classe"], "B")
+        self.assertEqual(contexto["produtos"][2]["classe"], "C")
+        self.assertEqual(contexto["kpis"][3]["valor"], "R$ 1.000,00")
+
+    def test_curva_abc_produtos_limita_dez_produtos_por_classe(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        valores = [Decimal("10")] * 36
+        for indice, valor in enumerate(valores, start=1):
+            produto = ProdutoOmie.objects.create(
+                empresa=self.empresa,
+                codigo_produto=9120 + indice,
+                codigo=f"ABC-{indice:02d}",
+                descricao=f"Produto ABC {indice:02d}",
+                descricao_familia="Produto",
+            )
+            PosicaoEstoqueOmie.objects.create(
+                empresa=self.empresa,
+                produto=produto,
+                codigo_produto=produto.codigo_produto,
+                codigo_local_estoque=1,
+                codigo=produto.codigo,
+                descricao=produto.descricao,
+                data_posicao=date(2026, 8, 1),
+                saldo=1,
+                cmc=valor,
+            )
+
+        dados = curva_abc_produtos_estoque(
+            self.empresa,
+            [self.empresa.pk],
+            limites={"A": Decimal("34"), "B": Decimal("67")},
+        )
+        por_classe = {
+            classe: sum(1 for produto in dados["produtos"] if produto["classe"] == classe)
+            for classe in ("A", "B", "C")
+        }
+
+        self.assertLessEqual(por_classe["A"], 10)
+        self.assertLessEqual(por_classe["B"], 10)
+        self.assertLessEqual(por_classe["C"], 10)
+        self.assertEqual(len(dados["produtos"]), 30)
+
+    def test_ruptura_estoque_exibe_produtos_em_risco(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        produto = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=9201,
+            codigo="CP-9201",
+            descricao="Produto em Ruptura",
+            descricao_familia="Componentes",
+            unidade="un",
+        )
+        PosicaoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            codigo_local_estoque=1,
+            codigo=produto.codigo,
+            descricao=produto.descricao,
+            data_posicao=date(2026, 8, 1),
+            saldo=0,
+            cmc=10,
+        )
+        pedido = PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=92010,
+            numero_pedido="PV-92010",
+            faturado=True,
+            data_faturamento=timezone.localdate() - timedelta(days=10),
+        )
+        PedidoItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=920100,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            descricao=produto.descricao,
+            quantidade=90,
+            valor_unitario=10,
+            valor_total=900,
+        )
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=920,
+            razao_social="Fornecedor Ruptura",
+            tipo="fornecedor",
+        )
+        ProdutoFornecedorOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            codigo_produto_fornecedor=produto.codigo,
+            descricao_produto=produto.descricao,
+            codigo_fornecedor=9990499663,
+            cnpj_cpf="06.020.284/0001-64",
+            razao_social="LEVISA DESCARTAVEIS LTDA - ME",
+            nome_fantasia="LEVISA",
+        )
+        pedido_compra = PedidoCompraOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=92011,
+            numero_pedido="PC-92011",
+            codigo_fornecedor=fornecedor.codigo_cliente_omie,
+            fornecedor=fornecedor,
+            data_inclusao=date(2026, 8, 1),
+            data_previsao=date(2026, 8, 13),
+        )
+        PedidoCompraItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido_compra,
+            codigo_item=920111,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            descricao=produto.descricao,
+            quantidade=100,
+        )
+
+        self.client.force_login(self.usuario)
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "estoque",
+                    "dashboard_slug": "ruptura-de-estoque",
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Runway - Dias ate a Ruptura")
+        self.assertContains(response, "Fila de Reposicao Sugerida")
+        self.assertContains(response, "Produto em Ruptura")
+        contexto = response.context["ruptura_estoque"]
+        self.assertEqual(contexto["kpis"][0]["valor"], "1 produtos")
+        self.assertEqual(contexto["runway"][0]["status"], "Ruptura")
+        self.assertEqual(contexto["runway"][0]["consumo_dia_fmt"], "1/dia")
+        self.assertEqual(contexto["fila_reposicao"][0]["fornecedor"], "LEVISA")
+
+    def test_kardex_exibe_movimentacoes_reais_de_saida_e_entrada(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        produto = ProdutoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_produto=9301,
+            codigo="PRD9301",
+            descricao="Produto Kardex Real",
+            descricao_familia="Objetos",
+            unidade="KG",
+        )
+        PosicaoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            codigo_local_estoque=1,
+            codigo=produto.codigo,
+            descricao=produto.descricao,
+            data_posicao=timezone.localdate(),
+            saldo=28980,
+            cmc=Decimal("0.72"),
+        )
+        pedido = PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=93010,
+            numero_pedido="4471",
+            faturado=True,
+            data_faturamento=timezone.localdate() - timedelta(days=1),
+        )
+        PedidoItemOmie.objects.create(
+            empresa=self.empresa,
+            pedido=pedido,
+            codigo_item=930100,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            codigo_produto_texto=produto.codigo,
+            descricao=produto.descricao,
+            unidade="KG",
+            quantidade=120,
+            valor_unitario=Decimal("0.72"),
+            valor_total=Decimal("86.40"),
+        )
+        ContaReceberOmie.objects.create(
+            empresa=self.empresa,
+            codigo_lancamento_omie=930101,
+            codigo_pedido_omie=pedido.codigo_pedido,
+            numero_documento_fiscal="88213",
+            numero_pedido=pedido.numero_pedido,
+            data_emissao=pedido.data_faturamento,
+            data_vencimento=pedido.data_faturamento,
+            valor_documento=Decimal("86.40"),
+        )
+        fornecedor = CadastroOmie.objects.create(
+            empresa=self.empresa,
+            codigo_cliente_omie=930,
+            razao_social="Fornecedor Entrada",
+            tipo="fornecedor",
+        )
+        recebimento = RecebimentoNfeOmie.objects.create(
+            empresa=self.empresa,
+            codigo_recebimento=93020,
+            numero_nfe="14092",
+            data_emissao_nfe=timezone.localdate() - timedelta(days=3),
+            data_registro=timezone.localdate() - timedelta(days=3),
+            codigo_fornecedor=fornecedor.codigo_cliente_omie,
+            valor_nfe=Decimal("288.00"),
+        )
+        RecebimentoNfeItemOmie.objects.create(
+            empresa=self.empresa,
+            recebimento=recebimento,
+            codigo_recebimento=recebimento.codigo_recebimento,
+            sequencia=1,
+            data_recebimento=timezone.localdate() - timedelta(days=3),
+            codigo_produto_texto=produto.codigo,
+            descricao=produto.descricao,
+            quantidade_nfe=400,
+            quantidade_recebida=400,
+            preco_unitario=Decimal("0.72"),
+            valor_total_item=Decimal("288.00"),
+        )
+        MovimentoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            codigo_local_estoque=1,
+            codigo=produto.codigo,
+            descricao=produto.descricao,
+            codigo_origem="VEN",
+            descricao_origem="Venda de Produto",
+            operacao="11",
+            data_movimento=timezone.localdate() - timedelta(days=1),
+            codigo_movimento=930120,
+            codigo_documento=930121,
+            codigo_pedido=pedido.codigo_pedido,
+            numero_documento="88213",
+            numero_pedido="Operacao no 000000000000071",
+            quantidade_anterior=29100,
+            quantidade_saida=-120,
+            quantidade_atual=28980,
+            cmc_unitario=Decimal("0.72"),
+            cmc_total=Decimal("20720.70"),
+        )
+        MovimentoEstoqueOmie.objects.create(
+            empresa=self.empresa,
+            produto=produto,
+            codigo_produto=produto.codigo_produto,
+            codigo_local_estoque=1,
+            codigo=produto.codigo,
+            descricao=produto.descricao,
+            codigo_origem="COM",
+            descricao_origem="Compra de Produto",
+            operacao="21",
+            data_movimento=timezone.localdate() - timedelta(days=3),
+            codigo_movimento=930119,
+            codigo_documento=930122,
+            codigo_recebimento=recebimento.codigo_recebimento,
+            numero_documento="14092",
+            numero_pedido="Recebimento NF-e 000014092",
+            quantidade_anterior=28700,
+            quantidade_entrada=400,
+            quantidade_atual=29100,
+            cmc_unitario=Decimal("0.72"),
+            cmc_total=Decimal("20952.00"),
+        )
+
+        self.client.force_login(self.usuario)
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "estoque",
+                    "dashboard_slug": "kardex",
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Produto Kardex Real")
+        self.assertContains(response, "NF-e 88213")
+        self.assertContains(response, "NF-e 14092")
+        contexto = response.context["kardex"]
+        movimentos = contexto["produtos"][0]["movimentacoes"]
+        self.assertEqual(movimentos[0]["tipo"], "Saida")
+        self.assertEqual(movimentos[0]["quantidade"], "-120 KG")
+        self.assertEqual(movimentos[0]["saldo_apos"], "28.980 KG")
+        self.assertEqual(movimentos[0]["descricao"], "Venda de Produto - Operacao no 000000000000071")
+        self.assertEqual(movimentos[1]["tipo"], "Entrada")
+        self.assertEqual(movimentos[1]["quantidade"], "+400 KG")
+        self.assertEqual(movimentos[1]["saldo_apos"], "29.100 KG")
 
     def test_dashboard_analise_preco_saving_usa_recebimentos_e_cmc(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)

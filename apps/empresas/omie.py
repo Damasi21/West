@@ -25,6 +25,7 @@ from .models import (
     DepartamentoOmie,
     LancamentoContaCorrenteOmie,
     LocalEstoqueOmie,
+    MovimentoEstoqueOmie,
     MovimentoFinanceiroOmie,
     NfseOmie,
     OrdemServicoItemOmie,
@@ -35,6 +36,7 @@ from .models import (
     PedidoOmie,
     PesqTituloFinanceiroOmie,
     PosicaoEstoqueOmie,
+    ProdutoFornecedorOmie,
     ProdutoOmie,
     ProjetoOmie,
     RecebimentoNfeItemOmie,
@@ -70,6 +72,7 @@ PEDIDOS_COMPRA_URL = "https://app.omie.com.br/api/v1/produtos/pedidocompra/"
 RECEBIMENTOS_NFE_URL = "https://app.omie.com.br/api/v1/produtos/recebimentonfe/"
 POSICAO_ESTOQUE_URL = "https://app.omie.com.br/api/v1/estoque/consulta/"
 LOCAIS_ESTOQUE_URL = "https://app.omie.com.br/api/v1/estoque/local/"
+PRODUTOS_FORNECEDORES_URL = "https://app.omie.com.br/api/v1/estoque/produtofornecedor/"
 SERVICOS_URL = "https://app.omie.com.br/api/v1/servicos/servico/"
 ORDENS_SERVICO_URL = "https://app.omie.com.br/api/v1/servicos/os/"
 NFSE_URL = "https://app.omie.com.br/api/v1/servicos/nfse/"
@@ -201,6 +204,16 @@ def _espera_consumo_redundante_omie(detalhe):
     return espera_padrao + margem
 
 
+def _espera_limite_requisicoes_omie(exc):
+    retry_after = exc.headers.get("Retry-After") if exc.headers else None
+    try:
+        if retry_after:
+            return int(retry_after)
+    except (TypeError, ValueError):
+        pass
+    return getattr(settings, "OMIE_API_RATE_LIMIT_DELAY", 65)
+
+
 def _fechar_conexoes_antigas_fora_de_transacao():
     if not connection.in_atomic_block:
         close_old_connections()
@@ -215,6 +228,14 @@ def _abrir_requisicao_omie(request, timeout):
             return urlopen(request, timeout=timeout, context=SSL_CONTEXT)
         except HTTPError as exc:
             detalhe = _detalhe_http_omie(exc)
+            if exc.code == 429:
+                ultimo_erro = OmieAPIError(
+                    f"OMIE respondeu HTTP {exc.code}: {detalhe}"
+                )
+                if tentativa == tentativas:
+                    raise ultimo_erro from exc
+                time.sleep(_espera_limite_requisicoes_omie(exc))
+                continue
             if exc.code == 500:
                 if _eh_pagina_sem_registros_omie(detalhe):
                     return _resposta_sem_registros_omie(request)
@@ -473,6 +494,45 @@ def consultar_produtos(integracao, pagina, registros_por_pagina=50):
         raise OmieAPIError(f"NÃ£o foi possÃ­vel conectar Ã  OMIE: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_produtos_fornecedores(integracao, pagina, registros_por_pagina=10):
+    payload = {
+        "call": "ListarProdutoFornecedor",
+        "param": [
+            {
+                "pagina": pagina,
+                "registros_por_pagina": registros_por_pagina,
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        PRODUTOS_FORNECEDORES_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invalida.") from exc
 
     if "faultstring" in dados:
         raise OmieAPIError(dados["faultstring"])
@@ -1411,6 +1471,56 @@ def consultar_posicao_estoque(
     return dados
 
 
+def consultar_movimento_estoque(
+    integracao,
+    codigo_produto,
+    codigo_local_estoque=0,
+    dia=None,
+    codigo_integracao="",
+):
+    dia = dia or timezone.localdate()
+    data_movimento = dia.strftime("%d/%m/%Y")
+    payload = {
+        "call": "MovimentoEstoque",
+        "param": [
+            {
+                "codigo_local_estoque": codigo_local_estoque,
+                "id_prod": codigo_produto,
+                "cod_int": codigo_integracao,
+                "dataInicial": data_movimento,
+                "dataFinal": data_movimento,
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        POSICAO_ESTOQUE_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        try:
+            detalhe = json.loads(corpo).get("faultstring", corpo)
+        except json.JSONDecodeError:
+            detalhe = corpo
+        raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invalida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
 def consultar_servicos(
     integracao,
     pagina,
@@ -1763,6 +1873,57 @@ def _salvar_produtos(empresa, itens):
     return processados
 
 
+def _salvar_produtos_fornecedores(empresa, itens):
+    agora = timezone.now()
+    codigos_produtos = {
+        codigo
+        for fornecedor in itens
+        for produto in (fornecedor.get("produtos") or [])
+        for codigo in [_inteiro_ou_none(produto.get("nCodProd"))]
+        if codigo is not None
+    }
+    produtos = {
+        produto.codigo_produto: produto
+        for produto in ProdutoOmie.objects.filter(
+            empresa=empresa,
+            codigo_produto__in=codigos_produtos,
+        )
+    }
+    processados = 0
+    for fornecedor in itens:
+        codigo_fornecedor = _inteiro_ou_none(fornecedor.get("nCodForn"))
+        if codigo_fornecedor is None:
+            continue
+        for produto in fornecedor.get("produtos") or []:
+            codigo_produto = _inteiro_ou_none(produto.get("nCodProd"))
+            if codigo_produto is None:
+                continue
+            ProdutoFornecedorOmie.objects.update_or_create(
+                empresa=empresa,
+                codigo_fornecedor=codigo_fornecedor,
+                codigo_produto=codigo_produto,
+                defaults={
+                    "produto": produtos.get(codigo_produto),
+                    "codigo_produto_integracao": str(produto.get("cCodIntProd") or ""),
+                    "codigo_produto_fornecedor": str(produto.get("cCodigo") or ""),
+                    "descricao_produto": str(produto.get("cDescricao") or ""),
+                    "codigo_fornecedor_integracao": str(
+                        fornecedor.get("cCodIntForn") or ""
+                    ),
+                    "cnpj_cpf": str(fornecedor.get("cCpfCnpj") or ""),
+                    "razao_social": str(fornecedor.get("cRazaoSocial") or ""),
+                    "nome_fantasia": str(fornecedor.get("cNomeFantasia") or ""),
+                    "dados_originais": {
+                        "fornecedor": fornecedor,
+                        "produto": produto,
+                    },
+                    **_presenca_omie(agora),
+                },
+            )
+            processados += 1
+    return processados
+
+
 def _salvar_locais_estoque(empresa, itens):
     agora = timezone.now()
     processados = 0
@@ -1915,6 +2076,133 @@ def _salvar_saldos_pendentes_estoque(empresa, itens):
         )
         processados += 1
     return processados
+
+
+def _movimento_periodo_valor(periodos, prefixo, chave):
+    prefixo = prefixo.casefold()
+    for periodo in periodos or []:
+        tipo = str(periodo.get("tipo") or "").casefold()
+        if tipo.startswith(prefixo):
+            return _decimal(periodo.get(chave))
+    return Decimal("0")
+
+
+def _salvar_movimentos_estoque(empresa, respostas):
+    agora = timezone.now()
+    itens = []
+    for resposta in respostas:
+        codigo_produto = _inteiro_ou_none(
+            resposta.get("id_prod") or resposta.get("nCodProd")
+        )
+        if codigo_produto is None:
+            continue
+        codigo_local = _inteiro_ou_none(resposta.get("codigo_local_estoque")) or 0
+        for movimento in resposta.get("movProduto") or []:
+            itens.append((resposta, movimento, codigo_produto, codigo_local))
+
+    codigos_produtos = {codigo_produto for _, _, codigo_produto, _ in itens}
+    produtos = {
+        produto.codigo_produto: produto
+        for produto in ProdutoOmie.objects.filter(
+            empresa=empresa,
+            codigo_produto__in=codigos_produtos,
+        )
+    }
+    codigos_locais = {codigo_local for _, _, _, codigo_local in itens}
+    locais = {
+        local.codigo_local_estoque: local
+        for local in LocalEstoqueOmie.objects.filter(
+            empresa=empresa,
+            codigo_local_estoque__in=codigos_locais,
+        )
+    }
+
+    movimentos_ativos = set()
+    processados = 0
+    for resposta, movimento, codigo_produto, codigo_local in itens:
+        codigo_movimento = _inteiro_ou_none(movimento.get("idMov"))
+        if codigo_movimento is None:
+            continue
+        periodos = movimento.get("movPeriodo") or []
+        MovimentoEstoqueOmie.objects.update_or_create(
+            empresa=empresa,
+            codigo_movimento=codigo_movimento,
+            defaults={
+                "produto": produtos.get(codigo_produto),
+                "local_estoque": locais.get(codigo_local),
+                "codigo_produto": codigo_produto,
+                "codigo_local_estoque": codigo_local,
+                "codigo": str(resposta.get("cCodigo") or ""),
+                "codigo_integracao": str(
+                    resposta.get("cod_int") or resposta.get("cCodIntProd") or ""
+                ),
+                "descricao": str(
+                    resposta.get("descricao") or resposta.get("cDescricao") or ""
+                ),
+                "codigo_origem": str(movimento.get("codOrigem") or ""),
+                "descricao_origem": str(movimento.get("desOrigem") or ""),
+                "operacao": str(movimento.get("operacao") or ""),
+                "data_movimento": _data_omie(movimento.get("dtMov")),
+                "cancelamento": _sim_nao(movimento.get("cancelamento")),
+                "devolucao": _sim_nao(movimento.get("devolucao")),
+                "codigo_documento": _inteiro_ou_none(movimento.get("idDoc")),
+                "codigo_pedido": _inteiro_ou_none(movimento.get("idPedido")),
+                "codigo_recebimento": _inteiro_ou_none(movimento.get("idRecebimento")),
+                "codigo_ajuste": _inteiro_ou_none(movimento.get("idAjuste")),
+                "numero_documento": str(movimento.get("numDoc") or ""),
+                "numero_pedido": str(movimento.get("numPedido") or ""),
+                "quantidade_anterior": _movimento_periodo_valor(
+                    periodos, "1.", "qtde"
+                ),
+                "quantidade_entrada": _movimento_periodo_valor(
+                    periodos, "2.", "qtde"
+                ),
+                "quantidade_saida": _movimento_periodo_valor(periodos, "3.", "qtde"),
+                "quantidade_atual": _movimento_periodo_valor(periodos, "4.", "qtde"),
+                "cmc_unitario": _movimento_periodo_valor(
+                    periodos, "4.", "cmcUnitario"
+                ),
+                "cmc_total": _movimento_periodo_valor(periodos, "4.", "cmcTotal"),
+                "movimentos_periodo": periodos,
+                "dados_originais": movimento,
+                **_presenca_omie(agora),
+            },
+        )
+        movimentos_ativos.add(codigo_movimento)
+        processados += 1
+
+    if movimentos_ativos:
+        MovimentoEstoqueOmie.objects.filter(
+            empresa=empresa,
+            codigo_produto__in=codigos_produtos,
+            ativo_omie=True,
+        ).exclude(codigo_movimento__in=movimentos_ativos).update(ativo_omie=False)
+    return processados
+
+
+def _sincronizar_movimentos_estoque(empresa, integracao):
+    respostas = []
+    posicoes = (
+        PosicaoEstoqueOmie.objects.filter(
+            empresa=empresa,
+            ativo_omie=True,
+        )
+        .order_by("codigo_produto", "codigo_local_estoque")
+        .values("codigo_produto", "codigo_local_estoque", "codigo_integracao")
+    )
+    for posicao in posicoes:
+        codigo_produto = posicao["codigo_produto"]
+        if not codigo_produto:
+            continue
+        respostas.append(
+            consultar_movimento_estoque(
+                integracao,
+                codigo_produto,
+                posicao["codigo_local_estoque"] or 0,
+                codigo_integracao=posicao["codigo_integracao"] or "",
+            )
+        )
+    return _salvar_movimentos_estoque(empresa, respostas)
 
 
 def _salvar_servicos(empresa, itens):
@@ -3983,6 +4271,14 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "modelo": ProdutoOmie,
             },
             {
+                "nome": "Produtos por fornecedor",
+                "consultar": consultar_produtos_fornecedores,
+                "chave": "cadastros",
+                "salvar": _salvar_produtos_fornecedores,
+                "modelo": ProdutoFornecedorOmie,
+                "registros_por_pagina": 10,
+            },
+            {
                 "nome": "Locais de estoque",
                 "consultar": consultar_locais_estoque,
                 "chave": "locaisEncontrados",
@@ -4136,7 +4432,13 @@ def executar_sincronizacao_omie(sincronizacao_id):
             sincronizacao.mensagem = f"{contexto_atual}..."
             sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
             try:
-                recurso["primeira_resposta"] = recurso["consultar"](integracao, 1)
+                registros_por_pagina = recurso.get("registros_por_pagina")
+                recurso["primeira_resposta"] = (
+                    recurso["consultar"](integracao, 1, registros_por_pagina)
+                    if "registros_por_pagina" in recurso
+                    and registros_por_pagina is not None
+                    else recurso["consultar"](integracao, 1)
+                )
             except OmieAPIError as exc:
                 if recurso.get("ignorar_conta_corrente_ausente") and _eh_conta_corrente_nao_cadastrada_omie(exc):
                     avisos.append(f"{recurso['nome']}: pagina 1 ignorada: {exc}")
@@ -4186,7 +4488,16 @@ def executar_sincronizacao_omie(sincronizacao_id):
                     resposta = (
                         recurso["primeira_resposta"]
                         if pagina == 1
-                        else recurso["consultar"](integracao, pagina)
+                        else (
+                            recurso["consultar"](
+                                integracao,
+                                pagina,
+                                recurso.get("registros_por_pagina"),
+                            )
+                            if "registros_por_pagina" in recurso
+                            and recurso.get("registros_por_pagina") is not None
+                            else recurso["consultar"](integracao, pagina)
+                        )
                     )
                 except OmieAPIError as exc:
                     if recurso.get("ignorar_conta_corrente_ausente") and _eh_conta_corrente_nao_cadastrada_omie(exc):
@@ -4233,6 +4544,35 @@ def executar_sincronizacao_omie(sincronizacao_id):
                     f"{recurso['nome']}: {desativados} registro(s) obsoleto(s)."
                 )
                 sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
+
+        inicio_recurso = timezone.now()
+        contexto_atual = "Consultando movimentos de estoque"
+        sincronizacao.mensagem = f"{contexto_atual}..."
+        sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
+        processados = _sincronizar_movimentos_estoque(
+            sincronizacao.empresa,
+            integracao,
+        )
+        sincronizacao.registros_processados += processados
+        sincronizacao.mensagem = (
+            f"Movimentos de estoque: {processados} registro(s) processado(s)."
+        )
+        sincronizacao.save(
+            update_fields=[
+                "registros_processados",
+                "mensagem",
+                "atualizada_em",
+            ]
+        )
+        desativados = _desativar_registros_ausentes_na_omie(
+            MovimentoEstoqueOmie,
+            sincronizacao.empresa,
+            inicio_recurso,
+        )
+        sincronizacao.mensagem = (
+            f"Movimentos de estoque: {desativados} registro(s) obsoleto(s)."
+        )
+        sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
 
         processados = _atualizar_resumo_financeiro_empresa(
             sincronizacao.empresa,

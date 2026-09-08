@@ -1,0 +1,91 @@
+<section class="inventory-rupture-dashboard">
+    <div class="inventory-rupture-kpis">
+        {% for indicador in dados.kpis %}
+            <article class="inventory-rupture-kpi inventory-rupture-kpi-{{ indicador.tom }}">
+                <span>{{ indicador.titulo }}</span>
+                <strong>{{ indicador.valor }}</strong>
+                <small>{{ indicador.subvalor }}</small>
+            </article>
+        {% endfor %}
+    </div>
+
+    <article class="inventory-rupture-card">
+        <header class="inventory-rupture-header">
+            <h2>Runway - Dias ate a Ruptura</h2>
+            <div class="inventory-rupture-legend">
+                <span><i class="is-rupture"></i>Ruptura</span>
+                <span><i class="is-critical"></i>Critico</span>
+                <span><i class="is-warning"></i>Atencao</span>
+                <span><i class="is-healthy"></i>Saudavel</span>
+            </div>
+        </header>
+        <div class="inventory-rupture-runway">
+            {% for produto in dados.runway %}
+                <div class="inventory-rupture-runway-row">
+                    <span class="inventory-rupture-product">
+                        <strong>{{ produto.nome }}</strong>
+                        <small>{{ produto.codigo }}</small>
+                    </span>
+                    <span class="inventory-rupture-track">
+                        <i class="inventory-rupture-lead" style="left: {{ produto.lead_pct }}%;" data-label="LT {{ produto.lead_time_fmt }}"></i>
+                        <b class="inventory-rupture-bar inventory-rupture-bar-{{ produto.status_tom }}" style="width: {{ produto.barra_pct }}%;">
+                            {{ produto.cobertura_dias }}d
+                        </b>
+                    </span>
+                    <span class="inventory-rupture-consumption">{{ produto.consumo_dia_fmt }}</span>
+                    <span>
+                        <mark class="inventory-rupture-status inventory-rupture-status-{{ produto.status_tom }}">
+                            {{ produto.status }}
+                        </mark>
+                    </span>
+                </div>
+            {% empty %}
+                <div class="inventory-rupture-empty">Nenhum produto encontrado para analise de ruptura.</div>
+            {% endfor %}
+        </div>
+    </article>
+
+    <article class="inventory-rupture-card inventory-rupture-queue-card">
+        <header class="inventory-rupture-header">
+            <h2>Fila de Reposicao Sugerida</h2>
+            <small>Ordenado por urgencia</small>
+        </header>
+        <div class="inventory-rupture-table">
+            <div class="inventory-rupture-table-row inventory-rupture-table-head">
+                <span>Produto</span>
+                <span>Saldo</span>
+                <span>Consumo/dia</span>
+                <span>Cobertura</span>
+                <span>Lead time forn.</span>
+                <span>Qtd. sugerida</span>
+                <span>Fornecedor preferencial</span>
+                <span>Status</span>
+                <span></span>
+            </div>
+            {% for produto in dados.fila_reposicao %}
+                <div class="inventory-rupture-table-row">
+                    <span class="inventory-rupture-product">
+                        <strong>{{ produto.nome }}</strong>
+                        <small>{{ produto.codigo }}</small>
+                    </span>
+                    <span>{{ produto.saldo_fmt }}</span>
+                    <span>{{ produto.consumo_dia_fmt }}</span>
+                    <span>{{ produto.cobertura_fmt }}</span>
+                    <span>{{ produto.lead_time_fmt }}</span>
+                    <span>{{ produto.quantidade_sugerida_fmt }}</span>
+                    <span>{{ produto.fornecedor }}</span>
+                    <span>
+                        <mark class="inventory-rupture-status inventory-rupture-status-{{ produto.status_tom }}">
+                            {{ produto.status }}
+                        </mark>
+                    </span>
+                    <span>
+                        <button class="inventory-rupture-order-button" type="button">Gerar pedido</button>
+                    </span>
+                </div>
+            {% empty %}
+                <div class="inventory-rupture-empty">Nenhuma reposicao sugerida no momento.</div>
+            {% endfor %}
+        </div>
+    </article>
+</section>

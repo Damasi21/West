@@ -138,14 +138,20 @@
             <div><span>Lancamentos CC</span><strong data-total-lancamentos-conta-corrente>{{ total_lancamentos_conta_corrente_omie }}</strong></div>
         </div>
 
-        <div class="omie-sync-progress {% if not ultima_sincronizacao %}d-none{% endif %}" data-sync-progress>
+        <div class="omie-sync-progress {% if not ultima_sincronizacao %}d-none{% endif %} {% if ultima_sincronizacao.status == 'concluida' %}is-complete{% endif %}" data-sync-progress>
             <div class="d-flex justify-content-between gap-3 mb-2">
                 <span data-sync-message>
                     {% if ultima_sincronizacao %}{{ ultima_sincronizacao.mensagem }}{% endif %}
                 </span>
-                <strong data-sync-percent>
-                    {% if ultima_sincronizacao %}{{ ultima_sincronizacao.percentual }}%{% else %}0%{% endif %}
-                </strong>
+                <div class="sync-progress-status">
+                    <strong data-sync-percent>
+                        {% if ultima_sincronizacao %}{{ ultima_sincronizacao.percentual }}%{% else %}0%{% endif %}
+                    </strong>
+                    <span class="sync-complete-badge {% if ultima_sincronizacao.status != 'concluida' %}d-none{% endif %}" data-sync-complete>
+                        <i class="bi bi-check2-circle"></i>
+                        Concluida
+                    </span>
+                </div>
             </div>
             <div
                 class="progress"
