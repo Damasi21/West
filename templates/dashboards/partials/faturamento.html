@@ -45,7 +45,7 @@
         </div>
     </article>
 
-    <div class="modal fade billing-details-modal" id="billingProductsModal" tabindex="-1" aria-labelledby="billingProductsModalLabel" aria-hidden="true">
+    <div class="modal fade billing-details-modal" id="billingProductsModal" tabindex="-1" aria-labelledby="billingProductsModalLabel" aria-hidden="true" data-bs-backdrop="false">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
@@ -67,7 +67,11 @@
                     </div>
                 </div>
                 <div class="modal-body">
-                    <div class="billing-details-table">
+                    <div class="billing-client-filter">
+                        <i class="bi bi-search"></i>
+                        <input type="search" class="form-control" placeholder="Filtrar cliente" aria-label="Filtrar cliente" data-billing-client-filter>
+                    </div>
+                    <div class="billing-details-table" data-billing-details-table>
                         <div class="billing-details-row billing-details-head">
                             <span>Data de Emissão</span>
                             <span>Cliente</span>
@@ -77,7 +81,7 @@
                             <span>Total da Nota Fiscal</span>
                         </div>
                         {% for linha in faturamento_produtos_linhas %}
-                            <div class="billing-details-row">
+                            <div class="billing-details-row" data-billing-detail-row data-billing-client="{{ linha.cliente }}" data-billing-total-mercadoria="{{ linha.total_mercadoria|stringformat:'f' }}" data-billing-frete="{{ linha.frete|stringformat:'f' }}" data-billing-total-nota="{{ linha.total_nota|stringformat:'f' }}">
                                 <span>{{ linha.data_emissao_fmt }}</span>
                                 <strong>{{ linha.cliente }}</strong>
                                 <span>{{ linha.numero_nf }}</span>
@@ -88,13 +92,20 @@
                         {% empty %}
                             <div class="billing-details-empty">Sem produtos faturados no período.</div>
                         {% endfor %}
+                        <div class="billing-details-empty d-none" data-billing-filter-empty>Nenhum cliente encontrado.</div>
+                        <div class="billing-details-row billing-details-total" data-billing-total-row>
+                            <strong class="billing-total-label">Total visivel</strong>
+                            <strong data-billing-sum="totalMercadoria">{{ faturamento_produtos_totais.total_mercadoria_fmt }}</strong>
+                            <strong data-billing-sum="frete">{{ faturamento_produtos_totais.frete_fmt }}</strong>
+                            <strong data-billing-sum="totalNota">{{ faturamento_produtos_totais.total_nota_fmt }}</strong>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="modal fade billing-details-modal" id="billingServicesModal" tabindex="-1" aria-labelledby="billingServicesModalLabel" aria-hidden="true">
+    <div class="modal fade billing-details-modal" id="billingServicesModal" tabindex="-1" aria-labelledby="billingServicesModalLabel" aria-hidden="true" data-bs-backdrop="false">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
@@ -116,7 +127,11 @@
                     </div>
                 </div>
                 <div class="modal-body">
-                    <div class="billing-details-table billing-details-table-services">
+                    <div class="billing-client-filter">
+                        <i class="bi bi-search"></i>
+                        <input type="search" class="form-control" placeholder="Filtrar cliente" aria-label="Filtrar cliente" data-billing-client-filter>
+                    </div>
+                    <div class="billing-details-table billing-details-table-services" data-billing-details-table>
                         <div class="billing-details-row billing-details-head">
                             <span>Data de Emissão</span>
                             <span>Cliente</span>
@@ -124,7 +139,7 @@
                             <span>Total da Nota Fiscal</span>
                         </div>
                         {% for linha in faturamento_servicos_linhas %}
-                            <div class="billing-details-row">
+                            <div class="billing-details-row" data-billing-detail-row data-billing-client="{{ linha.cliente }}" data-billing-total-nota="{{ linha.total_nota|stringformat:'f' }}">
                                 <span>{{ linha.data_emissao_fmt }}</span>
                                 <strong>{{ linha.cliente }}</strong>
                                 <span>{{ linha.numero_documento }}</span>
@@ -133,6 +148,11 @@
                         {% empty %}
                             <div class="billing-details-empty">Sem serviços faturados no período.</div>
                         {% endfor %}
+                        <div class="billing-details-empty d-none" data-billing-filter-empty>Nenhum cliente encontrado.</div>
+                        <div class="billing-details-row billing-details-total" data-billing-total-row>
+                            <strong class="billing-total-label">Total visivel</strong>
+                            <strong data-billing-sum="totalNota">{{ faturamento_servicos_totais.total_nota_fmt }}</strong>
+                        </div>
                     </div>
                 </div>
             </div>

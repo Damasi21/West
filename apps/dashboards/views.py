@@ -1,6 +1,7 @@
 import json
 from io import BytesIO
 from datetime import date
+from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, JsonResponse
@@ -35,6 +36,7 @@ from apps.dashboards.dre_services import dre_gerencial
 from apps.dashboards.faturamento_services import (
     TIPOS_FATURAMENTO,
     TIPOS_FATURAMENTO_PADRAO,
+    _formatar_moeda,
     faturamento_comercial,
     linhas_excel_faturamento_produtos,
     linhas_excel_faturamento_servicos,
@@ -735,6 +737,31 @@ def _resposta_excel_faturamento_servicos(linhas, periodo):
     return response
 
 
+def _totalizar_faturamento_produtos_linhas(linhas):
+    total_mercadoria = sum(
+        (linha["total_mercadoria"] for linha in linhas),
+        Decimal("0"),
+    )
+    total_frete = sum((linha["frete"] for linha in linhas), Decimal("0"))
+    total_nota = sum((linha["total_nota"] for linha in linhas), Decimal("0"))
+    return {
+        "total_mercadoria": total_mercadoria,
+        "total_mercadoria_fmt": _formatar_moeda(total_mercadoria),
+        "frete": total_frete,
+        "frete_fmt": _formatar_moeda(total_frete),
+        "total_nota": total_nota,
+        "total_nota_fmt": _formatar_moeda(total_nota),
+    }
+
+
+def _totalizar_faturamento_servicos_linhas(linhas):
+    total_nota = sum((linha["total_nota"] for linha in linhas), Decimal("0"))
+    return {
+        "total_nota": total_nota,
+        "total_nota_fmt": _formatar_moeda(total_nota),
+    }
+
+
 def _filtros_exportacao_faturamento(request, empresa):
     empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
     empresas_selecionadas = _empresas_inicio_selecionadas(
@@ -1406,7 +1433,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             tipos_faturamento_consulta,
             vendedores_consulta,
         )
-        contexto["faturamento_produtos_linhas"] = linhas_excel_faturamento_produtos(
+        faturamento_produtos_linhas = linhas_excel_faturamento_produtos(
             empresa,
             periodo_selecionado,
             data_inicio,
@@ -1415,7 +1442,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             projetos_consulta,
             vendedores_consulta,
         )
-        contexto["faturamento_servicos_linhas"] = linhas_excel_faturamento_servicos(
+        faturamento_servicos_linhas = linhas_excel_faturamento_servicos(
             empresa,
             periodo_selecionado,
             data_inicio,
@@ -1423,6 +1450,14 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             empresas_consulta_ids,
             projetos_consulta,
             vendedores_consulta,
+        )
+        contexto["faturamento_produtos_linhas"] = faturamento_produtos_linhas
+        contexto["faturamento_servicos_linhas"] = faturamento_servicos_linhas
+        contexto["faturamento_produtos_totais"] = (
+            _totalizar_faturamento_produtos_linhas(faturamento_produtos_linhas)
+        )
+        contexto["faturamento_servicos_totais"] = (
+            _totalizar_faturamento_servicos_linhas(faturamento_servicos_linhas)
         )
     if area_slug == "comercial" and dashboard_slug == "desempenho-de-vendedores":
         contexto["desempenho_vendedores"] = desempenho_vendedores(

@@ -131,6 +131,91 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const supplierScore = document.querySelector("[data-supplier-score-dashboard]");
+    if (supplierScore) {
+        const openButton = supplierScore.querySelector("[data-supplier-search-open]");
+        const clearButton = supplierScore.querySelector("[data-supplier-search-clear]");
+        const modal = supplierScore.querySelector("[data-supplier-search-modal]");
+        const closeButton = supplierScore.querySelector("[data-supplier-search-close]");
+        const input = supplierScore.querySelector("[data-supplier-search-input]");
+        const options = [...supplierScore.querySelectorAll("[data-supplier-option]")];
+        const searchEmpty = supplierScore.querySelector("[data-supplier-search-empty]");
+        const selectedPanel = supplierScore.querySelector("[data-supplier-selected-panel]");
+        const selectedTitle = supplierScore.querySelector("[data-supplier-selected-title]");
+        const selectedCards = [...supplierScore.querySelectorAll("[data-supplier-selected-card]")];
+        const mainViews = [...supplierScore.querySelectorAll("[data-supplier-main-view]")];
+
+        const normalizeSupplierText = (value) => (
+            String(value || "")
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .trim()
+        );
+
+        const filterSupplierOptions = (term) => {
+            let visibleOptions = 0;
+            options.forEach((option) => {
+                const visible = !term || normalizeSupplierText(option.dataset.supplierName).includes(term);
+                option.classList.toggle("d-none", !visible);
+                if (visible) visibleOptions += 1;
+            });
+            searchEmpty?.classList.toggle("d-none", visibleOptions > 0 || options.length === 0);
+        };
+
+        const setModalVisible = (visible) => {
+            if (!modal) return;
+            modal.hidden = !visible;
+            if (visible) {
+                input.value = "";
+                filterSupplierOptions("");
+                window.setTimeout(() => input.focus(), 50);
+            }
+        };
+
+        const selectSupplier = (code, name) => {
+            let found = false;
+            selectedCards.forEach((card) => {
+                const active = card.dataset.supplierCode === code;
+                card.classList.toggle("d-none", !active);
+                found = found || active;
+            });
+            if (!found) return;
+            selectedTitle.textContent = name || "Fornecedor selecionado";
+            selectedPanel.classList.remove("d-none");
+            mainViews.forEach((view) => view.classList.add("d-none"));
+            clearButton.classList.remove("d-none");
+            setModalVisible(false);
+        };
+
+        const clearSupplier = () => {
+            selectedCards.forEach((card) => card.classList.add("d-none"));
+            selectedPanel.classList.add("d-none");
+            mainViews.forEach((view) => view.classList.remove("d-none"));
+            clearButton.classList.add("d-none");
+        };
+
+        openButton?.addEventListener("click", () => setModalVisible(true));
+        closeButton?.addEventListener("click", () => setModalVisible(false));
+        clearButton?.addEventListener("click", clearSupplier);
+        input?.addEventListener("input", () => {
+            filterSupplierOptions(normalizeSupplierText(input.value));
+        });
+        options.forEach((option) => {
+            option.addEventListener("click", () => {
+                selectSupplier(option.dataset.supplierCode, option.dataset.supplierName);
+            });
+        });
+        modal?.addEventListener("click", (event) => {
+            if (event.target === modal) setModalVisible(false);
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && modal && !modal.hidden) {
+                setModalVisible(false);
+            }
+        });
+    }
+
     const inventoryAbc = document.querySelector("[data-inventory-abc-dashboard]");
     if (inventoryAbc && typeof Chart !== "undefined") {
         const labels = JSON.parse(document.getElementById("inventory-abc-chart-labels").textContent);
@@ -834,6 +919,52 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const billing = document.querySelector("[data-billing-dashboard]");
+    if (billing) {
+        const normalizeBillingText = (value) => (
+            String(value || "")
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .trim()
+        );
+        const parseBillingValue = (value) => Number(String(value || "0").replace(",", ".")) || 0;
+        const updateBillingDetailsTable = (table, term) => {
+            const rows = [...table.querySelectorAll("[data-billing-detail-row]")];
+            const empty = table.querySelector("[data-billing-filter-empty]");
+            const totals = {
+                totalMercadoria: 0,
+                frete: 0,
+                totalNota: 0,
+            };
+            let visibleRows = 0;
+
+            rows.forEach((row) => {
+                const client = normalizeBillingText(row.dataset.billingClient);
+                const visible = !term || client.includes(term);
+                row.classList.toggle("d-none", !visible);
+                if (!visible) return;
+                visibleRows += 1;
+                totals.totalMercadoria += parseBillingValue(row.dataset.billingTotalMercadoria);
+                totals.frete += parseBillingValue(row.dataset.billingFrete);
+                totals.totalNota += parseBillingValue(row.dataset.billingTotalNota);
+            });
+
+            empty?.classList.toggle("d-none", visibleRows > 0 || rows.length === 0);
+            table.querySelectorAll("[data-billing-sum]").forEach((target) => {
+                target.textContent = moneyFormatter.format(totals[target.dataset.billingSum] || 0);
+            });
+        };
+
+        billing.querySelectorAll("[data-billing-client-filter]").forEach((input) => {
+            const table = input.closest(".modal-body")?.querySelector("[data-billing-details-table]");
+            if (!table) return;
+            input.addEventListener("input", () => {
+                updateBillingDetailsTable(table, normalizeBillingText(input.value));
+            });
+            updateBillingDetailsTable(table, "");
+        });
+    }
+
     if (billing && typeof Chart !== "undefined") {
         const labels = JSON.parse(document.getElementById("billing-chart-labels").textContent);
         const products = JSON.parse(document.getElementById("billing-chart-products").textContent);

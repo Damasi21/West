@@ -1,4 +1,15 @@
-<section class="supplier-score-dashboard">
+<section class="supplier-score-dashboard" data-supplier-score-dashboard>
+    <div class="supplier-score-toolbar">
+        <button class="btn btn-primary" type="button" data-supplier-search-open>
+            <i class="bi bi-search"></i>
+            <span>Buscar fornecedores</span>
+        </button>
+        <button class="btn btn-white d-none" type="button" data-supplier-search-clear>
+            <i class="bi bi-x-circle"></i>
+            <span>Limpar</span>
+        </button>
+    </div>
+
     <div class="supplier-score-kpis">
         <article class="supplier-score-kpi">
             <span>Score medio da base</span>
@@ -22,7 +33,48 @@
         </article>
     </div>
 
-    <section class="supplier-score-segments">
+    <section class="supplier-score-selected d-none" data-supplier-selected-panel>
+        <div class="supplier-score-section-header">
+            <div>
+                <small>Avaliacao selecionada</small>
+                <h2 data-supplier-selected-title>Fornecedor selecionado</h2>
+            </div>
+        </div>
+        <div class="supplier-score-cards supplier-score-selected-cards">
+            {% for fornecedor in dados.fornecedores %}
+                <article class="supplier-score-card supplier-score-card-{{ fornecedor.tom }} d-none" data-supplier-selected-card data-supplier-code="{{ fornecedor.codigo_fornecedor }}">
+                    <header>
+                        <span>{{ fornecedor.sigla }}</span>
+                        <strong>{{ fornecedor.nome }}</strong>
+                    </header>
+                    <small>Score composto</small>
+                    <div class="supplier-score-number">{{ fornecedor.score_fmt }}</div>
+                    <mark>{{ fornecedor.classe }}</mark>
+                    <div class="supplier-score-lines">
+                        <div>
+                            <span>OTD</span>
+                            <i><b style="width: {{ fornecedor.otd }}%"></b></i>
+                            <strong>{{ fornecedor.otd_fmt }}</strong>
+                        </div>
+                        <div>
+                            <span>NF</span>
+                            <i><b style="width: {{ fornecedor.conformidade_nf }}%"></b></i>
+                            <strong>{{ fornecedor.conformidade_nf_fmt }}</strong>
+                        </div>
+                        <div>
+                            <span>Preco</span>
+                            <i><b style="width: {{ fornecedor.estabilidade_preco }}%"></b></i>
+                            <strong>{{ fornecedor.estabilidade_preco_fmt }}</strong>
+                        </div>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="supplier-score-empty">Sem fornecedores avaliados.</div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="supplier-score-segments" data-supplier-main-view>
         <input id="supplier-segment-a" name="supplier-score-segment" type="radio" checked>
         <input id="supplier-segment-b" name="supplier-score-segment" type="radio">
         <input id="supplier-segment-c" name="supplier-score-segment" type="radio">
@@ -81,7 +133,7 @@
         {% endfor %}
     </section>
 
-    <article class="supplier-score-ranking">
+    <article class="supplier-score-ranking" data-supplier-main-view>
         <div class="supplier-score-section-header">
             <div>
                 <small>Ranking geral</small>
@@ -100,4 +152,35 @@
             {% endfor %}
         </div>
     </article>
+
+    <div class="supplier-search-modal" data-supplier-search-modal hidden>
+        <div class="supplier-search-dialog" role="dialog" aria-modal="true" aria-labelledby="supplier-search-title">
+            <header>
+                <div>
+                    <small>Score de fornecedor</small>
+                    <h2 id="supplier-search-title">Buscar fornecedor</h2>
+                </div>
+                <button type="button" class="supplier-search-close" data-supplier-search-close aria-label="Fechar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </header>
+            <label class="supplier-search-field">
+                <i class="bi bi-search"></i>
+                <input type="search" class="form-control" placeholder="Digite o nome do fornecedor" data-supplier-search-input>
+            </label>
+            <div class="supplier-search-list" data-supplier-search-list>
+                {% for fornecedor in dados.fornecedores %}
+                    <button type="button" data-supplier-option data-supplier-code="{{ fornecedor.codigo_fornecedor }}" data-supplier-name="{{ fornecedor.nome }}">
+                        <span>{{ fornecedor.sigla }}</span>
+                        <strong>{{ fornecedor.nome }}</strong>
+                        <mark>{{ fornecedor.classe }}</mark>
+                        <em>{{ fornecedor.score_fmt }}</em>
+                    </button>
+                {% empty %}
+                    <div class="supplier-search-empty">Sem fornecedores avaliados.</div>
+                {% endfor %}
+            </div>
+            <div class="supplier-search-empty d-none" data-supplier-search-empty>Nenhum fornecedor encontrado.</div>
+        </div>
+    </div>
 </section>

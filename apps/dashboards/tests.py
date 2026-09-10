@@ -753,6 +753,12 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "3 principais fornecedores do grupo", count=4)
         self.assertContains(response, "Ranking geral")
         self.assertContains(response, "10 melhores scores")
+        self.assertContains(response, "Buscar fornecedor")
+        self.assertContains(response, "Limpar")
+        self.assertContains(response, "Digite o nome do fornecedor")
+        self.assertContains(response, "Avaliacao selecionada")
+        self.assertContains(response, "data-supplier-option", count=2)
+        self.assertContains(response, "data-supplier-selected-card", count=2)
         self.assertContains(response, "Fornecedor Alpha")
         self.assertContains(response, "Fornecedor Beta")
         self.assertIn("score_fornecedor", response.context)
@@ -1612,6 +1618,9 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Excel Serviços")
         self.assertContains(response, "Exportar produtos para Excel")
         self.assertContains(response, "Exportar serviços para Excel")
+        self.assertContains(response, "Filtrar cliente")
+        self.assertContains(response, "Total visivel", count=2)
+        self.assertContains(response, "data-billing-client-filter", count=2)
         self.assertContains(response, "[10000.0]")
         self.assertEqual(
             response.context["faturamento"]["produtos_mercadorias"],
@@ -1632,6 +1641,22 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(
             response.context["faturamento"]["indicadores"][1]["valor_completo"],
             "R$ 10.000,00",
+        )
+        self.assertEqual(
+            response.context["faturamento_produtos_totais"]["total_mercadoria_fmt"],
+            "R$ 2.700,00",
+        )
+        self.assertEqual(
+            response.context["faturamento_produtos_totais"]["frete_fmt"],
+            "R$ 300,00",
+        )
+        self.assertEqual(
+            response.context["faturamento_produtos_totais"]["total_nota_fmt"],
+            "R$ 3.000,00",
+        )
+        self.assertEqual(
+            response.context["faturamento_servicos_totais"]["total_nota_fmt"],
+            "R$ 2.000,00",
         )
         self.assertEqual(response.context["vendedores_selecionados"], [f"{self.empresa.pk}:{vendedor.codigo}"])
         self.assertEqual(
