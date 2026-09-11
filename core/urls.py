@@ -5,9 +5,9 @@ from django.http import HttpResponse
 from django.urls import include, path
 
 
-admin.site.site_header = "MD21 BI - Administração"
-admin.site.site_title = "MD21 BI"
-admin.site.index_title = "Gestão da plataforma"
+admin.site.site_header = settings.APP_BRAND_ADMIN_HEADER
+admin.site.site_title = settings.APP_BRAND_ADMIN_TITLE
+admin.site.index_title = settings.APP_BRAND_ADMIN_INDEX_TITLE
 
 def healthz(_request):
     return HttpResponse("ok\n", content_type="text/plain")

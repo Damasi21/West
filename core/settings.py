@@ -83,6 +83,24 @@ APP_BRAND_REGISTER_SUBTITLE = os.getenv(
     "APP_BRAND_REGISTER_SUBTITLE",
     "Crie sua conta para acessar indicadores comerciais, financeiros, compras, estoque e CRM.",
 )
+APP_BRAND_META_DESCRIPTION = os.getenv(
+    "APP_BRAND_META_DESCRIPTION",
+    "MD21 BI - Inteligencia para decisoes melhores",
+)
+APP_BRAND_FOOTER_TEXT = os.getenv("APP_BRAND_FOOTER_TEXT", "2026 ELEVDATA")
+APP_BRAND_FOOTER_SUBTITLE = os.getenv(
+    "APP_BRAND_FOOTER_SUBTITLE",
+    "Inteligencia para decisoes melhores.",
+)
+APP_BRAND_ADMIN_HEADER = os.getenv(
+    "APP_BRAND_ADMIN_HEADER",
+    f"{APP_BRAND_NAME} - Administracao",
+)
+APP_BRAND_ADMIN_TITLE = os.getenv("APP_BRAND_ADMIN_TITLE", APP_BRAND_NAME)
+APP_BRAND_ADMIN_INDEX_TITLE = os.getenv(
+    "APP_BRAND_ADMIN_INDEX_TITLE",
+    "Gestao da plataforma",
+)
 
 INSTALLED_APPS = [
     "django.contrib.admin",

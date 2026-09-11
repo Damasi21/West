@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 190" role="img" aria-labelledby="title desc">
+  <title id="title">Westwise</title>
+  <desc id="desc">Westwise data intelligence platform logo</desc>
+  <defs>
+    <linearGradient id="markGradient" x1="38" y1="146" x2="166" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0fbf8d"/>
+      <stop offset="0.52" stop-color="#20a6df"/>
+      <stop offset="1" stop-color="#1f5eea"/>
+    </linearGradient>
+    <linearGradient id="wordGradient" x1="213" y1="91" x2="592" y2="91" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f3fbff"/>
+      <stop offset="0.48" stop-color="#22c5f2"/>
+      <stop offset="1" stop-color="#13d6a1"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="190" rx="0" fill="none"/>
+  <g transform="translate(42 30)">
+    <path d="M8 120 42 18l31 74 29-74 32 74 30-74 24 102h-31l-11-48-25 50h-37L60 72l-18 48H8Z" fill="url(#markGradient)"/>
+    <path d="M54 120h33l15-31 16 31h34L103 24 54 120Z" fill="#071b3a" opacity=".34"/>
+    <path d="M8 120 42 18l31 74 29-74 32 74 30-74 24 102" fill="none" stroke="#60efff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity=".82"/>
+  </g>
+  <g font-family="Inter, Montserrat, Arial, sans-serif" font-weight="800">
+    <text x="222" y="105" fill="url(#wordGradient)" font-size="58" letter-spacing="1">WESTWISE</text>
+    <text x="226" y="135" fill="#8bdff6" font-size="15" font-weight="700" letter-spacing="5">BUSINESS INTELLIGENCE</text>
+  </g>
+</svg>
