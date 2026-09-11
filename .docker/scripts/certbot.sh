@@ -29,7 +29,7 @@ is_ip_address() {
 
 cert_exists() {
   docker run --rm \
-    -v WEST_CERTBOT_CONF:/etc/letsencrypt \
+    -v "${CERTBOT_CONF_VOLUME_NAME:-WEST_CERTBOT_CONF}":/etc/letsencrypt \
     alpine \
     test -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
 }
@@ -56,7 +56,7 @@ issue_certificate() {
 
   docker run --rm \
     -p "${PROXY_HTTP_PORT:-80}:80" \
-    -v WEST_CERTBOT_CONF:/etc/letsencrypt \
+    -v "${CERTBOT_CONF_VOLUME_NAME:-WEST_CERTBOT_CONF}":/etc/letsencrypt \
     certbot/certbot certonly \
       --standalone \
       -d "$DOMAIN" \

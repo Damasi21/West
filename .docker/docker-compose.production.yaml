@@ -30,10 +30,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ../staticfiles:/app/staticfiles
-      - ../media:/app/media
-    ports:
-      - "${APP_HOST_PORT:-127.0.0.1:8000}:8000"
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+    expose:
+      - "8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,9 +98,54 @@ services:
       - app_network
     logging: *default-logging
 
+  proxy:
+    image: nginx:alpine
+    environment:
+      DOMAIN: ${DOMAIN}
+      PROXY_CLIENT_MAX_BODY_SIZE: ${PROXY_CLIENT_MAX_BODY_SIZE:-50M}
+    ports:
+      - "${PROXY_HTTP_PORT:-80}:80"
+      - "${PROXY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx.active.conf:/etc/nginx/templates/default.conf.template:ro
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+      - static_data:/app/staticfiles:ro
+      - media_data:/app/media:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - app_network
+    logging: *default-logging
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    networks:
+      - app_network
+    logging: *default-logging
+
 volumes:
   postgres_data:
     name: ${POSTGRES_VOLUME_NAME:-WEST_POSTGRES_DATA}
+  static_data:
+    name: ${STATIC_VOLUME_NAME:-WEST_STATIC}
+  media_data:
+    name: ${MEDIA_VOLUME_NAME:-WEST_MEDIA}
+  certbot_www:
+    name: ${CERTBOT_WWW_VOLUME_NAME:-WEST_CERTBOT_WWW}
+  certbot_conf:
+    name: ${CERTBOT_CONF_VOLUME_NAME:-WEST_CERTBOT_CONF}
 
 networks:
   app_network:
