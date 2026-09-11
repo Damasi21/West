@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 190" role="img" aria-labelledby="title desc">
+  <title id="title">InsightWise</title>
+  <desc id="desc">InsightWise business intelligence platform logo</desc>
+  <defs>
+    <linearGradient id="markGradient" x1="34" y1="146" x2="166" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0fbf8d"/>
+      <stop offset="0.46" stop-color="#20a6df"/>
+      <stop offset="1" stop-color="#245de8"/>
+    </linearGradient>
+    <linearGradient id="wordGradient" x1="214" y1="92" x2="630" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f3fbff"/>
+      <stop offset="0.5" stop-color="#23c4ef"/>
+      <stop offset="1" stop-color="#18d29b"/>
+    </linearGradient>
+  </defs>
+  <rect width="760" height="190" fill="none"/>
+  <g transform="translate(44 30)">
+    <circle cx="82" cy="82" r="66" fill="#061833" opacity=".72"/>
+    <path d="M82 26c-31 0-56 25-56 56 0 19 10 36 24 46v-24c-6-6-10-14-10-23 0-23 19-42 42-42s42 19 42 42c0 9-3 17-9 23v24c14-10 23-27 23-46 0-31-25-56-56-56Z" fill="url(#markGradient)"/>
+    <path d="M70 77h24v70H70V77Z" fill="url(#markGradient)"/>
+    <path d="M55 147h54" fill="none" stroke="#78f1ff" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="82" cy="54" r="10" fill="#e9fbff"/>
+  </g>
+  <g font-family="Inter, Montserrat, Arial, sans-serif" font-weight="800">
+    <text x="218" y="104" fill="url(#wordGradient)" font-size="58" letter-spacing=".5">InsightWise</text>
+    <text x="222" y="135" fill="#8bdff6" font-size="15" font-weight="700" letter-spacing="5">BUSINESS INTELLIGENCE</text>
+  </g>
+</svg>
