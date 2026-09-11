@@ -1,4 +1,4 @@
-name: WEST_PRODUCTION
+name: ${COMPOSE_PROJECT_NAME:-WEST_PRODUCTION}
 
 x-logging: &default-logging
   driver: json-file
@@ -11,7 +11,7 @@ services:
     build:
       context: ..
       dockerfile: .docker/Dockerfile.production
-    image: west:${APP_VERSION:-production}
+    image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
       DEBUG: "False"
@@ -45,11 +45,11 @@ services:
       start_period: 60s
     restart: unless-stopped
     networks:
-      - WEST_NETWORK
+      - app_network
     logging: *default-logging
 
   scheduler:
-    image: west:${APP_VERSION:-production}
+    image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
       RUN_DJANGO_SETUP: "False"
@@ -76,7 +76,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - WEST_NETWORK
+      - app_network
     logging: *default-logging
 
   postgres:
@@ -86,7 +86,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - WEST_POSTGRES_DATA:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -95,13 +95,13 @@ services:
       start_period: 15s
     restart: unless-stopped
     networks:
-      - WEST_NETWORK
+      - app_network
     logging: *default-logging
 
 volumes:
-  WEST_POSTGRES_DATA:
-    name: WEST_POSTGRES_DATA
+  postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:-WEST_POSTGRES_DATA}
 
 networks:
-  WEST_NETWORK:
-    name: WEST_NETWORK
+  app_network:
+    name: ${DOCKER_NETWORK_NAME:-WEST_NETWORK}

@@ -44,6 +44,18 @@ chmod +x .docker/scripts/*.sh
 ./.docker/scripts/install.sh
 ```
 
+Quando houver mais de uma instalação no mesmo servidor, configure nomes
+exclusivos no `.docker/.env.production` de cada projeto para evitar conflito
+entre containers, imagem, rede e volume:
+
+```env
+COMPOSE_PROJECT_NAME=WESTWISE_PRODUCTION
+APP_IMAGE_NAME=westwise
+DOCKER_NETWORK_NAME=WESTWISE_NETWORK
+POSTGRES_VOLUME_NAME=WESTWISE_POSTGRES_DATA
+APP_HOST_PORT=127.0.0.1:8001
+```
+
 ## Banco de dados
 
 O projeto usa PostgreSQL. Configure o `.env` com os dados de conexão:
