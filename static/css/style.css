@@ -33,8 +33,8 @@ a { text-decoration: none; }
 }
 .navbar-brand { font-size: 1.25rem; letter-spacing: -.02em; }
 .brand-logo {
-    width: 54px;
-    height: 54px;
+    width: 64px;
+    height: 64px;
     object-fit: cover;
     padding: 0;
     background: #000105;
