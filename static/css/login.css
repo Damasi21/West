@@ -214,7 +214,7 @@
 @media (min-width: 901px) {
     .login-page:not(.register-page) .visual-content,
     .login-page:not(.register-page) .login-card {
-        transform: translateY(-24px);
+        transform: translateY(-92px);
     }
 }
 .login-page:not(.register-page) .login-brand {
