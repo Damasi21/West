@@ -204,19 +204,17 @@
 
 /* Identidade InsightWise no painel visual da tela de login. */
 .login-page:not(.register-page) {
-    background:
-        radial-gradient(circle at 18% 20%, rgba(26, 161, 208, .18), transparent 28%),
-        radial-gradient(circle at 78% 80%, rgba(9, 88, 140, .22), transparent 30%),
-        linear-gradient(135deg, #031018 0%, #081c2b 46%, #132431 100%);
+    background: #000105;
 }
 .login-page:not(.register-page) .login-visual {
     isolation: isolate;
-    background: transparent;
+    align-items: center;
+    background: #000105;
 }
 @media (min-width: 901px) {
     .login-page:not(.register-page) .visual-content,
     .login-page:not(.register-page) .login-card {
-        transform: translateY(-72px);
+        transform: translateY(-24px);
     }
 }
 .login-page:not(.register-page) .login-brand {
@@ -266,10 +264,10 @@
     display: none;
 }
 .login-page:not(.register-page) .visual-logo {
-    width: min(560px, 76vw);
+    width: min(500px, 72vw);
     height: auto;
     margin-left: 0;
-    margin-bottom: 1.8rem;
+    margin-bottom: 2rem;
     padding: 0;
     object-fit: contain;
     object-position: left center;
@@ -284,59 +282,28 @@
 }
 .login-page:not(.register-page) .visual-content h1 {
     color: #fff;
-    background: linear-gradient(110deg, #ffffff 0%, #1AA1D0 54%, #09588C 100%);
+    max-width: 560px;
+    background: linear-gradient(110deg, #ffffff 0%, #d9eef7 48%, #1AA1D0 100%);
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    letter-spacing: 0;
     text-shadow: none;
 }
 .login-page:not(.register-page) .visual-content p {
+    max-width: 500px;
     color: rgba(230, 244, 250, .82);
+    line-height: 1.6;
 }
 .login-page:not(.register-page) .visual-chart {
-    position: relative;
-    width: min(470px, 100%);
-    padding: 0 0 1rem;
-    border: 0;
-    border-bottom: 1px solid rgba(26, 161, 208, .34);
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-}
-.login-page:not(.register-page) .visual-chart span {
-    box-shadow: none;
-}
-.login-page:not(.register-page) .visual-chart span:nth-child(1) {
-    color: #1AA1D0;
-    background: linear-gradient(#68d6f8, #1AA1D0);
-}
-.login-page:not(.register-page) .visual-chart span:nth-child(2) {
-    color: #09588C;
-    background: linear-gradient(#2c7eb0, #09588C);
-}
-.login-page:not(.register-page) .visual-chart span:nth-child(3) {
-    color: #344658;
-    background: linear-gradient(#73879b, #344658);
-}
-.login-page:not(.register-page) .visual-chart span:nth-child(4) {
-    color: #1AA1D0;
-    background: linear-gradient(#7ddffd, #1AA1D0);
-}
-.login-page:not(.register-page) .visual-chart span:nth-child(5) {
-    color: #09588C;
-    background: linear-gradient(#3185b7, #09588C);
-}
-.login-page:not(.register-page) .visual-chart span:nth-child(6) {
-    color: #1AA1D0;
-    background: linear-gradient(#95e8ff, #1AA1D0);
+    display: none;
 }
 .login-page:not(.register-page) .login-panel {
     position: relative;
     isolation: isolate;
     overflow: hidden;
-    color: #eaf7fb;
-    background: transparent;
+    color: #15213b;
+    background: #000105;
 }
 .login-page:not(.register-page) .login-panel::before {
     display: none;
@@ -347,38 +314,38 @@
 .login-page:not(.register-page) .login-card {
     position: relative;
     z-index: 1;
-    padding: 2.15rem;
-    background: rgba(12, 31, 44, .82);
-    border: 1px solid rgba(26, 161, 208, .22);
+    padding: 2.4rem;
+    background: #edf7ff;
+    border: 1px solid rgba(255, 255, 255, .82);
     border-radius: 24px;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, .25);
+    box-shadow: 0 24px 70px rgba(26, 161, 208, .14);
     backdrop-filter: blur(12px);
 }
 .login-page:not(.register-page) .login-card h2 {
-    color: #fff;
+    color: #17379a;
 }
 .login-page:not(.register-page) .login-card .eyebrow.text-primary {
-    color: #1AA1D0 !important;
+    color: #168ed0 !important;
 }
 .login-page:not(.register-page) .login-card .text-secondary {
-    color: rgba(230, 244, 250, .74) !important;
+    color: #536987 !important;
 }
 .login-page:not(.register-page) .login-card .form-label {
-    color: rgba(230, 244, 250, .9);
+    color: #223659;
 }
 .login-page:not(.register-page) .login-card .form-control {
-    color: #eaf7fb;
-    background: rgba(5, 18, 28, .72);
-    border-color: rgba(26, 161, 208, .22);
+    color: #14213a;
+    background: #eaf2ff;
+    border-color: #c6d8f7;
 }
 .login-page:not(.register-page) .login-card .form-control:focus {
-    color: #fff;
-    background: rgba(7, 24, 37, .92);
+    color: #14213a;
+    background: #eaf2ff;
     border-color: #1AA1D0;
-    box-shadow: 0 0 0 .22rem rgba(26, 161, 208, .18);
+    box-shadow: 0 0 0 .22rem rgba(26, 161, 208, .15);
 }
 .login-page:not(.register-page) .login-card .form-control::placeholder {
-    color: rgba(230, 244, 250, .42);
+    color: #8290a6;
 }
 .login-page:not(.register-page) .login-card .btn-primary {
     color: #fff;
@@ -388,8 +355,8 @@
     box-shadow: 0 12px 28px rgba(26, 161, 208, .22);
 }
 .login-page:not(.register-page) .login-card .btn-outline-primary {
-    color: #eaf7fb;
-    border-color: rgba(26, 161, 208, .34);
+    color: #17379a;
+    border-color: #c6d8f7;
 }
 .login-page:not(.register-page) .login-card .btn-outline-primary:hover {
     color: #fff;
@@ -397,14 +364,14 @@
     border-color: #1AA1D0;
 }
 .login-page:not(.register-page) .auth-divider {
-    color: rgba(230, 244, 250, .55);
+    color: #7d8faa;
 }
 .login-page:not(.register-page) .auth-divider::before,
 .login-page:not(.register-page) .auth-divider::after {
-    background: rgba(26, 161, 208, .18);
+    background: #d6e4f5;
 }
 .login-page:not(.register-page) .login-help {
-    color: rgba(230, 244, 250, .62);
+    color: #6d7f98;
 }
 
 @media (max-width: 900px) {
