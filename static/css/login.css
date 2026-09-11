@@ -296,13 +296,47 @@
     line-height: 1.6;
 }
 .login-page:not(.register-page) .visual-chart {
-    display: none;
+    display: flex;
+    width: min(520px, 100%);
+    height: 154px;
+    align-items: end;
+    gap: 18px;
+    margin-top: 3.4rem;
+    padding-bottom: 1.15rem;
+    border-bottom: 1px solid rgba(26, 161, 208, .34);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+.login-page:not(.register-page) .visual-chart span {
+    width: 44px;
+    border-radius: 7px 7px 0 0;
+    box-shadow: 0 16px 30px rgba(26, 161, 208, .16);
+}
+.login-page:not(.register-page) .visual-chart span:nth-child(1) {
+    background: linear-gradient(#6fc8f4, #09588C);
+}
+.login-page:not(.register-page) .visual-chart span:nth-child(2) {
+    background: linear-gradient(#6a83d8, #0E233C);
+}
+.login-page:not(.register-page) .visual-chart span:nth-child(3) {
+    background: linear-gradient(#8ff1d6, #1AA1D0);
+}
+.login-page:not(.register-page) .visual-chart span:nth-child(4) {
+    background: linear-gradient(#78d4fb, #09588C);
+}
+.login-page:not(.register-page) .visual-chart span:nth-child(5) {
+    background: linear-gradient(#6f86d8, #344658);
+}
+.login-page:not(.register-page) .visual-chart span:nth-child(6) {
+    background: linear-gradient(#9ff3dd, #1AA1D0);
 }
 .login-page:not(.register-page) .login-panel {
     position: relative;
     isolation: isolate;
     overflow: hidden;
-    color: #15213b;
+    color: #eaf7fb;
     background: #000105;
 }
 .login-page:not(.register-page) .login-panel::before {
@@ -315,37 +349,38 @@
     position: relative;
     z-index: 1;
     padding: 2.4rem;
-    background: #edf7ff;
-    border: 1px solid rgba(255, 255, 255, .82);
+    background:
+        linear-gradient(145deg, rgba(14, 35, 60, .96) 0%, rgba(52, 70, 88, .9) 100%);
+    border: 1px solid rgba(26, 161, 208, .26);
     border-radius: 24px;
-    box-shadow: 0 24px 70px rgba(26, 161, 208, .14);
+    box-shadow: 0 24px 70px rgba(0, 1, 5, .55), 0 0 0 1px rgba(255, 255, 255, .03) inset;
     backdrop-filter: blur(12px);
 }
 .login-page:not(.register-page) .login-card h2 {
-    color: #17379a;
+    color: #fff;
 }
 .login-page:not(.register-page) .login-card .eyebrow.text-primary {
-    color: #168ed0 !important;
+    color: #1AA1D0 !important;
 }
 .login-page:not(.register-page) .login-card .text-secondary {
-    color: #536987 !important;
+    color: rgba(234, 247, 251, .78) !important;
 }
 .login-page:not(.register-page) .login-card .form-label {
-    color: #223659;
+    color: rgba(234, 247, 251, .9);
 }
 .login-page:not(.register-page) .login-card .form-control {
-    color: #14213a;
-    background: #eaf2ff;
-    border-color: #c6d8f7;
+    color: #061320;
+    background: #eef7ff;
+    border-color: rgba(26, 161, 208, .26);
 }
 .login-page:not(.register-page) .login-card .form-control:focus {
-    color: #14213a;
-    background: #eaf2ff;
+    color: #061320;
+    background: #f6fbff;
     border-color: #1AA1D0;
-    box-shadow: 0 0 0 .22rem rgba(26, 161, 208, .15);
+    box-shadow: 0 0 0 .22rem rgba(26, 161, 208, .18);
 }
 .login-page:not(.register-page) .login-card .form-control::placeholder {
-    color: #8290a6;
+    color: #7b8b9e;
 }
 .login-page:not(.register-page) .login-card .btn-primary {
     color: #fff;
@@ -355,8 +390,8 @@
     box-shadow: 0 12px 28px rgba(26, 161, 208, .22);
 }
 .login-page:not(.register-page) .login-card .btn-outline-primary {
-    color: #17379a;
-    border-color: #c6d8f7;
+    color: #eaf7fb;
+    border-color: rgba(26, 161, 208, .44);
 }
 .login-page:not(.register-page) .login-card .btn-outline-primary:hover {
     color: #fff;
@@ -364,14 +399,14 @@
     border-color: #1AA1D0;
 }
 .login-page:not(.register-page) .auth-divider {
-    color: #7d8faa;
+    color: rgba(234, 247, 251, .54);
 }
 .login-page:not(.register-page) .auth-divider::before,
 .login-page:not(.register-page) .auth-divider::after {
-    background: #d6e4f5;
+    background: rgba(26, 161, 208, .2);
 }
 .login-page:not(.register-page) .login-help {
-    color: #6d7f98;
+    color: rgba(234, 247, 251, .62);
 }
 
 @media (max-width: 900px) {
