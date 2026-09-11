@@ -27,6 +27,22 @@ services:
       SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-True}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-True}
       CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-True}
+      APP_BRAND_NAME: ${APP_BRAND_NAME:-MD21 BI}
+      APP_BRAND_NAVBAR_TEXT: ${APP_BRAND_NAVBAR_TEXT:-MD21 BI}
+      APP_BRAND_LOGIN_LOGO: ${APP_BRAND_LOGIN_LOGO:-logo_elevdata_semfundo.png}
+      APP_BRAND_NAVBAR_LOGO: ${APP_BRAND_NAVBAR_LOGO:-logo_elevdata_new.jpg}
+      APP_BRAND_HERO_EYEBROW: ${APP_BRAND_HERO_EYEBROW:-BEM-VINDO}
+      APP_BRAND_HERO_TITLE: ${APP_BRAND_HERO_TITLE:-Dados claros e<br>decisoes melhores.}
+      APP_BRAND_HERO_SUBTITLE: ${APP_BRAND_HERO_SUBTITLE:-Uma visao completa da sua operacao, do comercial ao financeiro, em um so lugar.}
+      APP_BRAND_REGISTER_EYEBROW: ${APP_BRAND_REGISTER_EYEBROW:-MD21 BUSINESS INTELLIGENCE}
+      APP_BRAND_REGISTER_TITLE: ${APP_BRAND_REGISTER_TITLE:-Sua empresa<br>vista por inteiro.}
+      APP_BRAND_REGISTER_SUBTITLE: ${APP_BRAND_REGISTER_SUBTITLE:-Crie sua conta para acessar indicadores comerciais, financeiros, compras, estoque e CRM.}
+      APP_BRAND_META_DESCRIPTION: ${APP_BRAND_META_DESCRIPTION:-MD21 BI - Inteligencia para decisoes melhores}
+      APP_BRAND_FOOTER_TEXT: ${APP_BRAND_FOOTER_TEXT:-2026 ELEVDATA}
+      APP_BRAND_FOOTER_SUBTITLE: ${APP_BRAND_FOOTER_SUBTITLE:-Inteligencia para decisoes melhores.}
+      APP_BRAND_ADMIN_HEADER: ${APP_BRAND_ADMIN_HEADER:-MD21 BI - Administracao}
+      APP_BRAND_ADMIN_TITLE: ${APP_BRAND_ADMIN_TITLE:-MD21 BI}
+      APP_BRAND_ADMIN_INDEX_TITLE: ${APP_BRAND_ADMIN_INDEX_TITLE:-Gestao da plataforma}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -66,6 +82,22 @@ services:
       SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-True}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-True}
       CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-True}
+      APP_BRAND_NAME: ${APP_BRAND_NAME:-MD21 BI}
+      APP_BRAND_NAVBAR_TEXT: ${APP_BRAND_NAVBAR_TEXT:-MD21 BI}
+      APP_BRAND_LOGIN_LOGO: ${APP_BRAND_LOGIN_LOGO:-logo_elevdata_semfundo.png}
+      APP_BRAND_NAVBAR_LOGO: ${APP_BRAND_NAVBAR_LOGO:-logo_elevdata_new.jpg}
+      APP_BRAND_HERO_EYEBROW: ${APP_BRAND_HERO_EYEBROW:-BEM-VINDO}
+      APP_BRAND_HERO_TITLE: ${APP_BRAND_HERO_TITLE:-Dados claros e<br>decisoes melhores.}
+      APP_BRAND_HERO_SUBTITLE: ${APP_BRAND_HERO_SUBTITLE:-Uma visao completa da sua operacao, do comercial ao financeiro, em um so lugar.}
+      APP_BRAND_REGISTER_EYEBROW: ${APP_BRAND_REGISTER_EYEBROW:-MD21 BUSINESS INTELLIGENCE}
+      APP_BRAND_REGISTER_TITLE: ${APP_BRAND_REGISTER_TITLE:-Sua empresa<br>vista por inteiro.}
+      APP_BRAND_REGISTER_SUBTITLE: ${APP_BRAND_REGISTER_SUBTITLE:-Crie sua conta para acessar indicadores comerciais, financeiros, compras, estoque e CRM.}
+      APP_BRAND_META_DESCRIPTION: ${APP_BRAND_META_DESCRIPTION:-MD21 BI - Inteligencia para decisoes melhores}
+      APP_BRAND_FOOTER_TEXT: ${APP_BRAND_FOOTER_TEXT:-2026 ELEVDATA}
+      APP_BRAND_FOOTER_SUBTITLE: ${APP_BRAND_FOOTER_SUBTITLE:-Inteligencia para decisoes melhores.}
+      APP_BRAND_ADMIN_HEADER: ${APP_BRAND_ADMIN_HEADER:-MD21 BI - Administracao}
+      APP_BRAND_ADMIN_TITLE: ${APP_BRAND_ADMIN_TITLE:-MD21 BI}
+      APP_BRAND_ADMIN_INDEX_TITLE: ${APP_BRAND_ADMIN_INDEX_TITLE:-Gestao da plataforma}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: ["python", "manage.py", "monitorar_sincronizacoes_agendadas", "--intervalo-segundos", "60", "--tolerancia-minutos", "10"]
