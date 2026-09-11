@@ -524,7 +524,7 @@ def metas(request, empresa_slug):
 
 @login_required
 def usuarios(request, empresa_slug):
-    from apps.dashboards.views import AREAS
+    from apps.dashboards.views import areas_habilitadas
 
     empresa = _obter_empresa_administravel(empresa_slug)
     if not usuario_pode_gerenciar_vinculo(request.user, empresa):
@@ -555,11 +555,12 @@ def usuarios(request, empresa_slug):
         if not usuario_pode_gerenciar_vinculo(request.user, empresa, vinculo_edicao):
             raise PermissionDenied
 
+    areas = areas_habilitadas()
     form = EmpresaUsuarioForm(
         request.POST or None,
         empresa=empresa,
         operador=request.user,
-        areas=AREAS,
+        areas=areas,
         vinculo=vinculo_edicao,
     )
     if request.method == "POST" and form.is_valid():
@@ -578,7 +579,7 @@ def usuarios(request, empresa_slug):
             "form": form,
             "vinculos": vinculos,
             "vinculo_edicao": vinculo_edicao,
-            "areas": AREAS,
+            "areas": areas,
             "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
         },
     )

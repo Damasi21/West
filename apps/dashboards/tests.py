@@ -5,7 +5,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
@@ -101,6 +101,34 @@ class DashboardPermissaoTests(TestCase):
             "crm.png",
         ):
             self.assertContains(response, f"/media/{imagem}")
+
+    @override_settings(ENABLE_PAYMENT_APPROVAL_DASHBOARD=False)
+    def test_aprovacao_pagamentos_pode_ser_desabilitada(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:area",
+                kwargs={"empresa_slug": self.empresa.slug, "area_slug": "financeiro"},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Aprovacao de pagamentos")
+
+        response = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "financeiro",
+                    "dashboard_slug": "aprovacao-de-pagamentos",
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
 
     def test_parametros_aparecem_acima_do_status_para_administrador(self):
         administrador = get_user_model().objects.create_user(

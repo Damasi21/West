@@ -43,6 +43,7 @@ services:
       APP_BRAND_ADMIN_HEADER: ${APP_BRAND_ADMIN_HEADER:-MD21 BI - Administracao}
       APP_BRAND_ADMIN_TITLE: ${APP_BRAND_ADMIN_TITLE:-MD21 BI}
       APP_BRAND_ADMIN_INDEX_TITLE: ${APP_BRAND_ADMIN_INDEX_TITLE:-Gestao da plataforma}
+      ENABLE_PAYMENT_APPROVAL_DASHBOARD: ${ENABLE_PAYMENT_APPROVAL_DASHBOARD:-True}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -98,6 +99,7 @@ services:
       APP_BRAND_ADMIN_HEADER: ${APP_BRAND_ADMIN_HEADER:-MD21 BI - Administracao}
       APP_BRAND_ADMIN_TITLE: ${APP_BRAND_ADMIN_TITLE:-MD21 BI}
       APP_BRAND_ADMIN_INDEX_TITLE: ${APP_BRAND_ADMIN_INDEX_TITLE:-Gestao da plataforma}
+      ENABLE_PAYMENT_APPROVAL_DASHBOARD: ${ENABLE_PAYMENT_APPROVAL_DASHBOARD:-True}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: ["python", "manage.py", "monitorar_sincronizacoes_agendadas", "--intervalo-segundos", "60", "--tolerancia-minutos", "10"]

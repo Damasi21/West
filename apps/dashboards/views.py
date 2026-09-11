@@ -3,6 +3,7 @@ from io import BytesIO
 from datetime import date
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
@@ -233,6 +234,24 @@ AREAS = {
         ],
     },
 }
+
+
+def _dashboard_habilitado(area_slug, dashboard_slug):
+    if area_slug == "financeiro" and dashboard_slug == "aprovacao-de-pagamentos":
+        return settings.ENABLE_PAYMENT_APPROVAL_DASHBOARD
+    return True
+
+
+def areas_habilitadas():
+    areas = {}
+    for area_slug, area in AREAS.items():
+        dashboards = [
+            dashboard
+            for dashboard in area["dashboards"]
+            if _dashboard_habilitado(area_slug, dashboard["slug"])
+        ]
+        areas[area_slug] = {**area, "dashboards": dashboards}
+    return areas
 
 MESES = (
     (1, "Janeiro"),
@@ -987,9 +1006,10 @@ def _ultima_atualizacao_omie(empresa):
 
 def _contexto_base(request, empresa_slug):
     empresa = obter_empresa_permitida(request.user, empresa_slug)
+    areas = areas_habilitadas()
     return {
         "empresa": empresa,
-        "areas": areas_permitidas_usuario(request.user, empresa, AREAS),
+        "areas": areas_permitidas_usuario(request.user, empresa, areas),
         "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
         "pode_ver_parametros": usuario_gestor_empresa(request.user, empresa),
         "ultima_atualizacao_omie": _ultima_atualizacao_omie(empresa),
@@ -1032,7 +1052,7 @@ def home(request, empresa_slug):
 
 @login_required
 def area(request, empresa_slug, area_slug):
-    area_atual = AREAS.get(area_slug)
+    area_atual = areas_habilitadas().get(area_slug)
     contexto = _contexto_base(request, empresa_slug)
     empresa = contexto["empresa"]
     if area_atual is None or not usuario_pode_acessar_area(
@@ -1059,7 +1079,7 @@ def area(request, empresa_slug, area_slug):
 
 @login_required
 def dashboard(request, empresa_slug, area_slug, dashboard_slug):
-    area_atual = AREAS.get(area_slug)
+    area_atual = areas_habilitadas().get(area_slug)
     if area_atual is None:
         raise Http404("Área de dashboards não encontrada.")
 
@@ -1709,6 +1729,8 @@ def fluxo_caixa_horizontal(request, empresa_slug):
 @require_POST
 def salvar_aprovacao_pagamentos(request, empresa_slug):
     empresa = obter_empresa_permitida(request.user, empresa_slug)
+    if not settings.ENABLE_PAYMENT_APPROVAL_DASHBOARD:
+        raise Http404("Dashboard nao encontrado.")
     if not usuario_pode_acessar_dashboard(
         request.user,
         empresa,
@@ -1739,6 +1761,8 @@ def salvar_aprovacao_pagamentos(request, empresa_slug):
 @login_required
 def exportar_historico_aprovacao_pagamentos(request, empresa_slug):
     empresa = obter_empresa_permitida(request.user, empresa_slug)
+    if not settings.ENABLE_PAYMENT_APPROVAL_DASHBOARD:
+        raise Http404("Dashboard nao encontrado.")
     if not usuario_pode_acessar_dashboard(
         request.user,
         empresa,
