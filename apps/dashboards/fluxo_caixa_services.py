@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import Exists, OuterRef, Q, Sum
 from django.db.models.functions import ExtractMonth, ExtractYear
 
 from apps.dashboards.finance_filters import (
@@ -133,7 +133,9 @@ def _query_receber_previsto_omie(data_limite, empresas_ids, projetos, categorias
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
     queryset = filtrar_por_categorias_financeiras(queryset, categorias or [])
-    return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
+    return _filtrar_contas_previstas_com_base_bancaria(
+        registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
+    )
 
 
 def _query_pagar_previsto_omie(data_limite, empresas_ids, projetos, categorias=None):
@@ -150,7 +152,23 @@ def _query_pagar_previsto_omie(data_limite, empresas_ids, projetos, categorias=N
     if projetos:
         queryset = queryset.filter(codigo_projeto__in=projetos)
     queryset = filtrar_por_categorias_financeiras(queryset, categorias or [])
-    return registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
+    return _filtrar_contas_previstas_com_base_bancaria(
+        registros_com_conta_visivel_financeiro(queryset, "id_conta_corrente")
+    )
+
+
+def _filtrar_contas_previstas_com_base_bancaria(queryset):
+    empresa_com_conta_visivel = contas_correntes_visiveis_financeiro(
+        ContaCorrenteOmie.objects.filter(
+            empresa_id=OuterRef("empresa_id"),
+            ativo_omie=True,
+        )
+    )
+    return queryset.annotate(
+        _empresa_tem_conta_visivel=Exists(empresa_com_conta_visivel)
+    ).filter(
+        Q(id_conta_corrente__isnull=False) | Q(_empresa_tem_conta_visivel=True)
+    )
 
 
 def _query_movimentos_previstos_omie(data_limite, empresas_ids, projetos, natureza, categorias=None):
