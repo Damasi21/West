@@ -397,9 +397,6 @@ a { text-decoration: none; }
 }
 .sync-rule-head,
 .sync-rule-row {
-    display: grid;
-    grid-template-columns: 130px minmax(160px, 1fr) minmax(150px, 1fr);
-    gap: .6rem;
     align-items: center;
 }
 .sync-rule-head {
@@ -408,6 +405,10 @@ a { text-decoration: none; }
     font-weight: 800;
     letter-spacing: .04em;
     text-transform: uppercase;
+}
+.sync-rule-row .form-control,
+.sync-rule-row .form-select {
+    width: 100%;
 }
 .sync-native-weekday-select {
     display: none;
@@ -1812,7 +1813,6 @@ a { text-decoration: none; }
     .omie-sync-heading { align-items: stretch; flex-direction: column; }
     .omie-sync-totals { grid-template-columns: 1fr; }
     .sync-rule-head { display: none; }
-    .sync-rule-row { grid-template-columns: 1fr; }
     .dre-workspace { grid-template-columns: 1fr; }
     .dre-categories-panel { position: static; }
     .dre-panel-heading,

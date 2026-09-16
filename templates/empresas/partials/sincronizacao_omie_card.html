@@ -43,35 +43,35 @@
             <div class="col-12">
                 <label class="form-label">Sincronizacoes automaticas</label>
                 <div class="sync-rules">
-                    <div class="sync-rule-head">
-                        <span>Horario</span>
-                        <span>Modulo</span>
-                        <span>Periodo</span>
+                    <div class="sync-rule-head row g-2">
+                        <span class="col-md-2">Horario</span>
+                        <span class="col-md-5">Modulo</span>
+                        <span class="col-md-5">Periodo</span>
                     </div>
-                    <div class="sync-rule-row">
-                        {{ form_agendamento.horario_1 }}
-                        {{ form_agendamento.recurso_1 }}
-                        {{ form_agendamento.periodo_1 }}
+                    <div class="sync-rule-row row g-2">
+                        <div class="col-md-2">{{ form_agendamento.horario_1 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.recurso_1 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.periodo_1 }}</div>
                     </div>
-                    <div class="sync-rule-row">
-                        {{ form_agendamento.horario_2 }}
-                        {{ form_agendamento.recurso_2 }}
-                        {{ form_agendamento.periodo_2 }}
+                    <div class="sync-rule-row row g-2">
+                        <div class="col-md-2">{{ form_agendamento.horario_2 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.recurso_2 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.periodo_2 }}</div>
                     </div>
-                    <div class="sync-rule-row">
-                        {{ form_agendamento.horario_3 }}
-                        {{ form_agendamento.recurso_3 }}
-                        {{ form_agendamento.periodo_3 }}
+                    <div class="sync-rule-row row g-2">
+                        <div class="col-md-2">{{ form_agendamento.horario_3 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.recurso_3 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.periodo_3 }}</div>
                     </div>
-                    <div class="sync-rule-row">
-                        {{ form_agendamento.horario_4 }}
-                        {{ form_agendamento.recurso_4 }}
-                        {{ form_agendamento.periodo_4 }}
+                    <div class="sync-rule-row row g-2">
+                        <div class="col-md-2">{{ form_agendamento.horario_4 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.recurso_4 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.periodo_4 }}</div>
                     </div>
-                    <div class="sync-rule-row">
-                        {{ form_agendamento.horario_5 }}
-                        {{ form_agendamento.recurso_5 }}
-                        {{ form_agendamento.periodo_5 }}
+                    <div class="sync-rule-row row g-2">
+                        <div class="col-md-2">{{ form_agendamento.horario_5 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.recurso_5 }}</div>
+                        <div class="col-md-5">{{ form_agendamento.periodo_5 }}</div>
                     </div>
                 </div>
                 {% for error in form_agendamento.horario_1.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
