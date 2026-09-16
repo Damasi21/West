@@ -29,7 +29,7 @@
                     <a href="{{ empresa.get_absolute_url }}" class="company-card">
                         <div class="company-logo">
                             {% if empresa.logo %}
-                                <img src="{{ empresa.logo.url }}" alt="{{ empresa.nome_fantasia }}">
+                                <img src="{{ empresa.logo.url }}?v={{ empresa.atualizada_em|date:'U' }}" alt="{{ empresa.nome_fantasia }}">
                             {% else %}
                                 <span>{{ empresa.nome_fantasia|first|upper }}</span>
                             {% endif %}

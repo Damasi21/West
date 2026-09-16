@@ -1,7 +1,7 @@
 <aside class="app-sidebar">
     <div class="sidebar-company">
         {% if empresa.logo %}
-            <img src="{{ empresa.logo.url }}" alt="{{ empresa.nome_fantasia }}">
+            <img src="{{ empresa.logo.url }}?v={{ empresa.atualizada_em|date:'U' }}" alt="{{ empresa.nome_fantasia }}">
         {% else %}
             <span class="company-monogram">{{ empresa.nome_fantasia|first|upper }}</span>
         {% endif %}

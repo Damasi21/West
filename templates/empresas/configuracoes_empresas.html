@@ -52,7 +52,7 @@
                                 <div class="d-flex align-items-center gap-3">
                                     <span class="company-table-logo">
                                         {% if empresa.logo %}
-                                            <img src="{{ empresa.logo.url }}" alt="">
+                                            <img src="{{ empresa.logo.url }}?v={{ empresa.atualizada_em|date:'U' }}" alt="">
                                         {% else %}
                                             {{ empresa.nome_fantasia|first|upper }}
                                         {% endif %}
