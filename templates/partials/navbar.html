@@ -12,6 +12,11 @@
                     <span class="company-pill d-none d-md-inline-flex">
                         <i class="bi bi-building"></i> {{ empresa.nome_fantasia }}
                     </span>
+                    {% if empresa.trial_ativo %}
+                        <span class="company-pill d-none d-lg-inline-flex">
+                            <i class="bi bi-hourglass-split"></i> Trial: {{ empresa.dias_trial_restantes }} dia(s)
+                        </span>
+                    {% endif %}
                 {% endif %}
                 {% if user.is_staff or pode_administrar_empresa %}
                     <div class="dropdown">

@@ -6,6 +6,12 @@ from . import views
 app_name = "empresas"
 
 urlpatterns = [
+    path("trial/", views.trial_cadastro, name="trial"),
+    path(
+        "trial/<slug:empresa_slug>/expirado/",
+        views.trial_expirado,
+        name="trial_expirado",
+    ),
     path(
         "configuracoes/empresas/",
         views.configuracoes_empresas,

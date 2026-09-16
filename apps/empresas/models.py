@@ -19,6 +19,15 @@ def mes_atual():
 
 
 class Empresa(models.Model):
+    class TipoConta(models.TextChoices):
+        CLIENTE = "cliente", "Cliente"
+        TRIAL = "trial", "Trial"
+
+    class StatusConta(models.TextChoices):
+        ATIVA = "ativa", "Ativa"
+        EXPIRADA = "expirada", "Expirada"
+        CANCELADA = "cancelada", "Cancelada"
+
     nome = models.CharField("razão social", max_length=180)
     nome_fantasia = models.CharField(max_length=120)
     cnpj = models.CharField(max_length=18, unique=True)
@@ -39,6 +48,25 @@ class Empresa(models.Model):
         through="EmpresaUsuario",
         related_name="empresas",
     )
+    tipo_conta = models.CharField(
+        max_length=20,
+        choices=TipoConta.choices,
+        default=TipoConta.CLIENTE,
+        db_index=True,
+    )
+    status_conta = models.CharField(
+        max_length=20,
+        choices=StatusConta.choices,
+        default=StatusConta.ATIVA,
+        db_index=True,
+    )
+    trial_inicio = models.DateTimeField(null=True, blank=True)
+    trial_expira_em = models.DateTimeField(null=True, blank=True, db_index=True)
+    trial_convertido_em = models.DateTimeField(null=True, blank=True)
+    trial_cancelado_em = models.DateTimeField(null=True, blank=True)
+    trial_responsavel_nome = models.CharField(max_length=150, blank=True)
+    trial_responsavel_email = models.EmailField(blank=True)
+    trial_responsavel_telefone = models.CharField(max_length=30, blank=True)
     criada_em = models.DateTimeField(auto_now_add=True)
     atualizada_em = models.DateTimeField(auto_now=True)
 
@@ -63,6 +91,47 @@ class Empresa(models.Model):
 
     def get_absolute_url(self):
         return reverse("dashboards:home", kwargs={"empresa_slug": self.slug})
+
+    @property
+    def em_trial(self):
+        return self.tipo_conta == self.TipoConta.TRIAL
+
+    @property
+    def trial_expirado(self):
+        return (
+            self.em_trial
+            and self.status_conta == self.StatusConta.ATIVA
+            and self.trial_expira_em
+            and timezone.now() >= self.trial_expira_em
+        )
+
+    @property
+    def trial_ativo(self):
+        return (
+            self.em_trial
+            and self.status_conta == self.StatusConta.ATIVA
+            and self.trial_expira_em
+            and timezone.now() < self.trial_expira_em
+        )
+
+    @property
+    def dias_trial_restantes(self):
+        if not self.trial_ativo:
+            return 0
+        restante = self.trial_expira_em - timezone.now()
+        return max(1, restante.days + (1 if restante.seconds else 0))
+
+    def iniciar_trial(self, dias=7):
+        agora = timezone.now()
+        self.tipo_conta = self.TipoConta.TRIAL
+        self.status_conta = self.StatusConta.ATIVA
+        self.trial_inicio = agora
+        self.trial_expira_em = agora + timezone.timedelta(days=dias)
+
+    def converter_trial(self):
+        self.tipo_conta = self.TipoConta.CLIENTE
+        self.status_conta = self.StatusConta.ATIVA
+        self.trial_convertido_em = timezone.now()
 
 
 class EmpresaUsuario(models.Model):
@@ -2548,6 +2617,19 @@ class SincronizacaoOmie(models.Model):
         MANUAL = "manual", "Manual"
         AGENDADA = "agendada", "Agendada"
 
+    class Recurso(models.TextChoices):
+        COMPLETA = "completa", "Master / completa"
+        FINANCEIRO = "financeiro", "Financeiro"
+        COMERCIAL = "comercial", "Comercial"
+        COMPRAS = "compras", "Compras"
+        ESTOQUE = "estoque", "Estoque"
+
+    class Periodo(models.TextChoices):
+        TUDO = "tudo", "Todos os dados"
+        ANO_ATUAL = "ano_atual", "Ano atual"
+        MES_ATUAL = "mes_atual", "Mes atual"
+        ULTIMOS_30_DIAS = "ultimos_30_dias", "Ultimos 30 dias"
+
     empresa = models.ForeignKey(
         Empresa,
         on_delete=models.CASCADE,
@@ -2573,6 +2655,11 @@ class SincronizacaoOmie(models.Model):
         default=Origem.MANUAL,
     )
     recurso = models.CharField(max_length=50, default="clientes")
+    periodo = models.CharField(
+        max_length=30,
+        choices=Periodo.choices,
+        default=Periodo.TUDO,
+    )
     agendada_para = models.DateTimeField(null=True, blank=True)
     status = models.CharField(
         max_length=20,
@@ -2609,6 +2696,14 @@ class SincronizacaoOmie(models.Model):
             return min(99, round((self.pagina_atual / self.total_paginas) * 100))
         return 0
 
+    @property
+    def recurso_label(self):
+        return dict(self.Recurso.choices).get(self.recurso, self.recurso)
+
+    @property
+    def periodo_label(self):
+        return dict(self.Periodo.choices).get(self.periodo, self.periodo)
+
 
 class AgendamentoSincronizacaoOmie(models.Model):
     class Tipo(models.TextChoices):
@@ -2624,6 +2719,7 @@ class AgendamentoSincronizacaoOmie(models.Model):
         (5, "Sabado"),
         (6, "Domingo"),
     )
+    MAX_HORARIOS = 5
 
     empresa = models.OneToOneField(
         Empresa,
@@ -2655,17 +2751,62 @@ class AgendamentoSincronizacaoOmie(models.Model):
         verbose_name_plural = "agendamentos de sincronizacao OMIE"
 
     def clean(self):
-        horarios = self.horarios or []
-        if len(horarios) > 3:
-            raise ValidationError({"horarios": "Informe no maximo 3 horarios por dia."})
+        horarios = self.horarios_configurados
+        if len(horarios) > self.MAX_HORARIOS:
+            raise ValidationError({"horarios": "Informe no maximo 5 horarios por dia."})
         if self.ativo and not horarios:
             raise ValidationError({"horarios": "Informe ao menos um horario."})
         if self.tipo_agendamento == self.Tipo.DIAS_SEMANA and not self.dias_semana:
             raise ValidationError({"dias_semana": "Selecione ao menos um dia da semana."})
 
+    @classmethod
+    def normalizar_horario(cls, item):
+        if isinstance(item, str):
+            horario = item
+            recurso = SincronizacaoOmie.Recurso.COMPLETA
+            periodo = SincronizacaoOmie.Periodo.TUDO
+        elif isinstance(item, dict):
+            horario = str(item.get("horario") or "").strip()
+            recurso = item.get("recurso") or SincronizacaoOmie.Recurso.COMPLETA
+            periodo = item.get("periodo") or SincronizacaoOmie.Periodo.TUDO
+        else:
+            return None
+
+        recursos_validos = {valor for valor, _ in SincronizacaoOmie.Recurso.choices}
+        periodos_validos = {valor for valor, _ in SincronizacaoOmie.Periodo.choices}
+        if not horario:
+            return None
+        if recurso not in recursos_validos:
+            recurso = SincronizacaoOmie.Recurso.COMPLETA
+        if periodo not in periodos_validos:
+            periodo = SincronizacaoOmie.Periodo.TUDO
+        return {
+            "horario": horario,
+            "recurso": recurso,
+            "periodo": periodo,
+        }
+
+    @property
+    def horarios_configurados(self):
+        horarios = []
+        for item in self.horarios or []:
+            configuracao = self.normalizar_horario(item)
+            if configuracao:
+                horarios.append(configuracao)
+        return horarios
+
     @property
     def horarios_texto(self):
-        return ", ".join(self.horarios or []) or "Nenhum horario"
+        recurso_labels = dict(SincronizacaoOmie.Recurso.choices)
+        periodo_labels = dict(SincronizacaoOmie.Periodo.choices)
+        itens = [
+            (
+                f"{item['horario']} - {recurso_labels.get(item['recurso'], item['recurso'])}"
+                f" ({periodo_labels.get(item['periodo'], item['periodo'])})"
+            )
+            for item in self.horarios_configurados
+        ]
+        return ", ".join(itens) or "Nenhum horario"
 
     @property
     def dias_semana_texto(self):

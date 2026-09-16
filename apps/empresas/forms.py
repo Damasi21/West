@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from django.db.models import Max
 
 from .models import (
@@ -8,6 +9,7 @@ from .models import (
     Empresa,
     EmpresaUsuario,
     IntegracaoOmie,
+    SincronizacaoOmie,
 )
 from .services import usuario_pode_gerenciar_vinculo
 
@@ -110,7 +112,141 @@ class IntegracaoOmieForm(forms.Form):
         return integracao
 
 
+class TrialCadastroForm(forms.Form):
+    nome_empresa = forms.CharField(
+        label="Empresa",
+        max_length=120,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Nome fantasia da empresa",
+                "autocomplete": "organization",
+            }
+        ),
+    )
+    razao_social = forms.CharField(
+        label="Razao social",
+        max_length=180,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Opcional",
+                "autocomplete": "organization-title",
+            }
+        ),
+    )
+    cnpj = forms.CharField(
+        label="CNPJ",
+        max_length=18,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "00.000.000/0000-00",
+                "inputmode": "numeric",
+            }
+        ),
+    )
+    responsavel = forms.CharField(
+        label="Responsavel",
+        max_length=150,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Nome de quem vai acessar",
+                "autocomplete": "name",
+            }
+        ),
+    )
+    email = forms.EmailField(
+        label="E-mail",
+        widget=forms.EmailInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "voce@empresa.com.br",
+                "autocomplete": "email",
+            }
+        ),
+    )
+    telefone = forms.CharField(
+        label="Telefone",
+        max_length=30,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "(00) 00000-0000",
+                "autocomplete": "tel",
+            }
+        ),
+    )
+    app_key = forms.CharField(
+        label="App Key OMIE",
+        max_length=100,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "App Key da OMIE",
+                "autocomplete": "off",
+            }
+        ),
+    )
+    app_secret = forms.CharField(
+        label="App Secret OMIE",
+        max_length=255,
+        widget=forms.PasswordInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "App Secret da OMIE",
+                "autocomplete": "new-password",
+            }
+        ),
+    )
+    password = forms.CharField(
+        label="Senha de acesso",
+        widget=forms.PasswordInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Crie uma senha segura",
+                "autocomplete": "new-password",
+            }
+        ),
+    )
+
+    def clean_cnpj(self):
+        cnpj = self.cleaned_data["cnpj"].strip()
+        numeros = "".join(caractere for caractere in cnpj if caractere.isdigit())
+        if len(numeros) != 14:
+            raise forms.ValidationError("Informe um CNPJ com 14 numeros.")
+        if Empresa.objects.filter(cnpj__in={cnpj, numeros}).exists():
+            raise forms.ValidationError("Ja existe uma empresa cadastrada com este CNPJ.")
+        return cnpj
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        if get_user_model().objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("Ja existe uma conta com este e-mail.")
+        return email
+
+    def clean_password(self):
+        password = self.cleaned_data["password"]
+        validate_password(password)
+        return password
+
+    def username_from_email(self):
+        User = get_user_model()
+        base = self.cleaned_data["email"][:150]
+        username = base
+        contador = 2
+        while User.objects.filter(username__iexact=username).exists():
+            sufixo = f"-{contador}"
+            username = f"{base[:150 - len(sufixo)]}{sufixo}"
+            contador += 1
+        return username
+
+
 class AgendamentoSincronizacaoOmieForm(forms.ModelForm):
+    MAX_HORARIOS = AgendamentoSincronizacaoOmie.MAX_HORARIOS
     dias_semana = forms.MultipleChoiceField(
         label="Dias da semana",
         required=False,
@@ -125,21 +261,7 @@ class AgendamentoSincronizacaoOmieForm(forms.ModelForm):
             }
         ),
     )
-    horario_1 = forms.TimeField(
-        label="Horario 1",
-        required=False,
-        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
-    )
-    horario_2 = forms.TimeField(
-        label="Horario 2",
-        required=False,
-        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
-    )
-    horario_3 = forms.TimeField(
-        label="Horario 3",
-        required=False,
-        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
-    )
+
     class Meta:
         model = AgendamentoSincronizacaoOmie
         fields = ("ativo", "tipo_agendamento", "dias_semana")
@@ -153,12 +275,34 @@ class AgendamentoSincronizacaoOmieForm(forms.ModelForm):
         self.usuario = usuario
         instance = kwargs.get("instance")
         super().__init__(*args, **kwargs)
+        for indice in range(1, self.MAX_HORARIOS + 1):
+            self.fields[f"horario_{indice}"] = forms.TimeField(
+                label=f"Horario {indice}",
+                required=False,
+                widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
+            )
+            self.fields[f"recurso_{indice}"] = forms.ChoiceField(
+                label="Modulo",
+                required=False,
+                choices=SincronizacaoOmie.Recurso.choices,
+                initial=SincronizacaoOmie.Recurso.COMPLETA,
+                widget=forms.Select(attrs={"class": "form-select"}),
+            )
+            self.fields[f"periodo_{indice}"] = forms.ChoiceField(
+                label="Periodo",
+                required=False,
+                choices=SincronizacaoOmie.Periodo.choices,
+                initial=SincronizacaoOmie.Periodo.TUDO,
+                widget=forms.Select(attrs={"class": "form-select"}),
+            )
         if not self.is_bound and instance:
             self.initial["dias_semana"] = [
                 str(dia) for dia in instance.dias_semana or []
             ]
-            for indice, horario in enumerate(instance.horarios or [], start=1):
-                self.initial[f"horario_{indice}"] = horario
+            for indice, item in enumerate(instance.horarios_configurados, start=1):
+                self.initial[f"horario_{indice}"] = item["horario"]
+                self.initial[f"recurso_{indice}"] = item["recurso"]
+                self.initial[f"periodo_{indice}"] = item["periodo"]
 
     def clean_dias_semana(self):
         return [int(dia) for dia in self.cleaned_data.get("dias_semana", [])]
@@ -166,20 +310,35 @@ class AgendamentoSincronizacaoOmieForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         horarios = []
-        for indice in range(1, 4):
+        horarios_informados = set()
+        for indice in range(1, self.MAX_HORARIOS + 1):
             horario = cleaned.get(f"horario_{indice}")
             if horario:
                 valor = horario.strftime("%H:%M")
-                if valor not in horarios:
-                    horarios.append(valor)
+                if valor in horarios_informados:
+                    self.add_error(
+                        f"horario_{indice}",
+                        "Ja existe uma sincronizacao neste horario.",
+                    )
+                    continue
+                horarios_informados.add(valor)
+                horarios.append(
+                    {
+                        "horario": valor,
+                        "recurso": cleaned.get(f"recurso_{indice}")
+                        or SincronizacaoOmie.Recurso.COMPLETA,
+                        "periodo": cleaned.get(f"periodo_{indice}")
+                        or SincronizacaoOmie.Periodo.TUDO,
+                    }
+                )
         cleaned["horarios"] = horarios
 
         ativo = cleaned.get("ativo")
         tipo = cleaned.get("tipo_agendamento")
         if ativo and not horarios:
             raise forms.ValidationError("Informe ao menos um horario de sincronizacao.")
-        if len(horarios) > 3:
-            raise forms.ValidationError("Informe no maximo 3 horarios por dia.")
+        if len(horarios) > self.MAX_HORARIOS:
+            raise forms.ValidationError("Informe no maximo 5 horarios por dia.")
         if tipo == AgendamentoSincronizacaoOmie.Tipo.DIAS_SEMANA and not cleaned.get(
             "dias_semana"
         ):

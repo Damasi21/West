@@ -1,0 +1,90 @@
+{% load static %}
+<!doctype html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Trial | {{ app_brand_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="{% static 'css/style.css' %}" rel="stylesheet">
+    <link href="{% static 'css/login.css' %}" rel="stylesheet">
+</head>
+<body class="login-page register-page trial-page">
+    <div class="login-visual">
+        <div class="visual-content">
+            <h1>Teste o Elevdata<br>por 7 dias</h1>
+            <p>Conecte sua conta OMIE e acompanhe seus indicadores em uma base temporaria criada automaticamente.</p>
+            <div class="register-benefits">
+                <span><i class="bi bi-check-circle-fill"></i> Ambiente isolado para sua empresa</span>
+                <span><i class="bi bi-check-circle-fill"></i> Credenciais OMIE protegidas</span>
+                <span><i class="bi bi-check-circle-fill"></i> Conversao sem perder o historico do trial</span>
+            </div>
+        </div>
+    </div>
+
+    <main class="login-panel">
+        <div class="login-card register-card trial-card">
+            <a class="login-brand" href="{% url 'accounts:login' %}">
+                <img class="login-brand-logo" src="{% get_media_prefix %}{{ app_brand_navbar_logo }}" alt="{{ app_brand_name }}">
+                <span>{{ app_brand_navbar_text }}</span>
+            </a>
+            <div class="mt-4 mb-4">
+                <span class="eyebrow text-primary">TRIAL DE 7 DIAS</span>
+                <h2>Conectar OMIE</h2>
+                <p class="text-secondary">Preencha os dados para criar seu acesso inicial.</p>
+            </div>
+
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                {% for field in form %}
+                    <div class="mb-3">
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                        {% if field.name == "app_secret" or field.name == "password" %}
+                            <div class="password-toggle-field">
+                                {{ field }}
+                                <button class="password-toggle-button" type="button" data-password-toggle="{{ field.id_for_label }}" aria-label="Mostrar ou ocultar {{ field.label }}">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                        {% else %}
+                            {{ field }}
+                        {% endif %}
+                        {% if field.help_text %}
+                            <div class="form-help">{{ field.help_text|safe }}</div>
+                        {% endif %}
+                        {% for error in field.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+
+                {% for error in form.non_field_errors %}
+                    <div class="alert alert-danger py-2">{{ error }}</div>
+                {% endfor %}
+
+                <button class="btn btn-primary btn-lg w-100 mt-2" type="submit">
+                    Iniciar trial <i class="bi bi-arrow-right ms-2"></i>
+                </button>
+            </form>
+
+            <p class="auth-switch">
+                Ja possui acesso?
+                <a href="{% url 'accounts:login' %}">Entrar no sistema</a>
+            </p>
+        </div>
+    </main>
+    <script>
+        document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const input = document.getElementById(button.dataset.passwordToggle);
+                if (!input) return;
+                const showing = input.type === "text";
+                input.type = showing ? "password" : "text";
+                button.querySelector("i").className = showing ? "bi bi-eye" : "bi bi-eye-slash";
+            });
+        });
+    </script>
+</body>
+</html>

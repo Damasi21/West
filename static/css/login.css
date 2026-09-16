@@ -201,73 +201,77 @@
 .register-page .auth-switch a {
     color: #2184cf;
 }
+.trial-page .login-panel {
+    align-items: start;
+    padding-block: 2rem;
+}
+.trial-page .login-visual {
+    align-items: flex-start;
+    padding-top: 5.5rem;
+}
+.trial-page .visual-content {
+    transform: none;
+}
+.trial-page .register-benefits {
+    margin-top: 1.8rem;
+}
+.trial-card {
+    width: min(560px, 100%);
+}
+.password-toggle-field {
+    position: relative;
+}
+.password-toggle-field .form-control {
+    padding-right: 3.25rem;
+}
+.password-toggle-button {
+    position: absolute;
+    top: 50%;
+    right: .75rem;
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    color: #1a3b92;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    transform: translateY(-50%);
+}
+.password-toggle-button:hover,
+.password-toggle-button:focus {
+    color: #2184cf;
+    background: rgba(33, 132, 207, .08);
+}
 
-/* Identidade InsightWise no painel visual da tela de login. */
+/* Identidade clara da Elevdata na tela de login. */
 .login-page:not(.register-page) {
-    background: #000105;
+    background:
+        radial-gradient(circle at 17% 11%, rgba(39, 246, 172, .22), transparent 25%),
+        radial-gradient(circle at 86% 20%, rgba(111, 200, 244, .28), transparent 30%),
+        linear-gradient(115deg, #eefcf8 0%, #f7fbff 42%, #e9f3fb 100%);
 }
 .login-page:not(.register-page) .login-visual {
     isolation: isolate;
     align-items: center;
-    background: #000105;
+    color: #133a7b;
+    background: transparent;
 }
 @media (min-width: 901px) {
     .login-page:not(.register-page) .visual-content,
     .login-page:not(.register-page) .login-card {
-        transform: translateY(-92px);
+        transform: translateY(-54px);
     }
 }
-.login-page:not(.register-page) .login-brand {
-    position: relative;
-    width: 100%;
-    max-width: 310px;
-    padding: 0;
-    overflow: hidden;
-    color: #081733;
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-}
-.login-page:not(.register-page) .login-brand::after { display: none; }
-.login-page:not(.register-page) .login-brand-logo {
-    position: relative;
-    z-index: 1;
-    flex: 0 0 76px;
-    width: 76px;
-    height: 76px;
-    border: 0;
-    box-shadow: none;
-}
-.login-brand-copy {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-}
-.login-page:not(.register-page) .login-brand-copy strong {
-    color: #09588C;
-    font-size: 1.25rem;
-    letter-spacing: .02em;
-}
-.login-page:not(.register-page) .login-brand-copy small {
-    margin-top: .2rem;
-    color: #1AA1D0;
-    font-size: .58rem;
-    font-weight: 700;
-    letter-spacing: .14em;
-}
-.login-page:not(.register-page) .login-visual::before {
-    display: none;
-}
+.login-page:not(.register-page) .login-visual::before,
 .login-page:not(.register-page) .login-visual::after {
     display: none;
 }
 .login-page:not(.register-page) .visual-logo {
-    width: min(500px, 72vw);
+    width: min(540px, 72vw);
     height: auto;
     margin-left: 0;
-    margin-bottom: 2rem;
+    margin-bottom: 2.35rem;
     padding: 0;
     object-fit: contain;
     object-position: left center;
@@ -276,14 +280,16 @@
     border-radius: 0;
     box-shadow: none;
 }
+.login-page:not(.register-page) .visual-content {
+    max-width: 720px;
+}
 .login-page:not(.register-page) .visual-content .eyebrow {
-    color: #1AA1D0;
-    text-shadow: none;
+    color: #217ed4;
 }
 .login-page:not(.register-page) .visual-content h1 {
-    color: #fff;
-    max-width: 560px;
-    background: linear-gradient(110deg, #ffffff 0%, #d9eef7 48%, #1AA1D0 100%);
+    max-width: 600px;
+    color: #1b4aa2;
+    background: linear-gradient(105deg, #214fac 0%, #217ed4 58%, #0da996 100%);
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -291,8 +297,8 @@
     text-shadow: none;
 }
 .login-page:not(.register-page) .visual-content p {
-    max-width: 500px;
-    color: rgba(230, 244, 250, .82);
+    max-width: 560px;
+    color: #24446d;
     line-height: 1.6;
 }
 .login-page:not(.register-page) .visual-chart {
@@ -301,9 +307,9 @@
     height: 154px;
     align-items: end;
     gap: 18px;
-    margin-top: 3.4rem;
+    margin-top: 3.65rem;
     padding-bottom: 1.15rem;
-    border-bottom: 1px solid rgba(26, 161, 208, .34);
+    border-bottom: 1px solid rgba(33, 126, 212, .2);
     border-radius: 0;
     background: transparent;
     box-shadow: none;
@@ -312,101 +318,107 @@
 .login-page:not(.register-page) .visual-chart span {
     width: 44px;
     border-radius: 7px 7px 0 0;
-    box-shadow: 0 16px 30px rgba(26, 161, 208, .16);
+    box-shadow: 0 16px 30px rgba(26, 161, 208, .14);
 }
 .login-page:not(.register-page) .visual-chart span:nth-child(1) {
-    background: linear-gradient(#6fc8f4, #09588C);
+    background: linear-gradient(#71c6f2, #2c91d0);
 }
 .login-page:not(.register-page) .visual-chart span:nth-child(2) {
-    background: linear-gradient(#6a83d8, #0E233C);
+    background: linear-gradient(#6e92e6, #244aaa);
 }
 .login-page:not(.register-page) .visual-chart span:nth-child(3) {
-    background: linear-gradient(#8ff1d6, #1AA1D0);
+    background: linear-gradient(#9bf4d8, #28dfaa);
 }
 .login-page:not(.register-page) .visual-chart span:nth-child(4) {
-    background: linear-gradient(#78d4fb, #09588C);
+    background: linear-gradient(#7bd0ff, #278bd3);
 }
 .login-page:not(.register-page) .visual-chart span:nth-child(5) {
-    background: linear-gradient(#6f86d8, #344658);
+    background: linear-gradient(#6f8ce0, #28479f);
 }
 .login-page:not(.register-page) .visual-chart span:nth-child(6) {
-    background: linear-gradient(#9ff3dd, #1AA1D0);
+    background: linear-gradient(#a8f8df, #25e6ad);
 }
 .login-page:not(.register-page) .login-panel {
     position: relative;
     isolation: isolate;
     overflow: hidden;
-    color: #eaf7fb;
-    background: #000105;
+    color: #15335c;
+    background: transparent;
+    align-items: start;
+    padding-top: 7rem;
 }
-.login-page:not(.register-page) .login-panel::before {
-    display: none;
-}
+.login-page:not(.register-page) .login-panel::before,
 .login-page:not(.register-page) .login-panel::after {
     display: none;
 }
 .login-page:not(.register-page) .login-card {
     position: relative;
     z-index: 1;
-    padding: 2.4rem;
-    background:
-        linear-gradient(145deg, rgba(14, 35, 60, .96) 0%, rgba(52, 70, 88, .9) 100%);
-    border: 1px solid rgba(26, 161, 208, .26);
+    width: min(520px, 100%);
+    padding: 2.35rem;
+    background: rgba(239, 247, 255, .72);
+    border: 1px solid rgba(255, 255, 255, .86);
     border-radius: 24px;
-    box-shadow: 0 24px 70px rgba(0, 1, 5, .55), 0 0 0 1px rgba(255, 255, 255, .03) inset;
-    backdrop-filter: blur(12px);
+    box-shadow: 0 30px 80px rgba(43, 107, 168, .17);
+    backdrop-filter: blur(16px);
 }
 .login-page:not(.register-page) .login-card h2 {
-    color: #fff;
+    color: #1a3f9a;
+    letter-spacing: 0;
 }
 .login-page:not(.register-page) .login-card .eyebrow.text-primary {
-    color: #1AA1D0 !important;
+    color: #217ed4 !important;
 }
 .login-page:not(.register-page) .login-card .text-secondary {
-    color: rgba(234, 247, 251, .78) !important;
+    color: #4d6688 !important;
 }
 .login-page:not(.register-page) .login-card .form-label {
-    color: rgba(234, 247, 251, .9);
+    color: #20365a;
 }
 .login-page:not(.register-page) .login-card .form-control {
-    color: #061320;
-    background: #eef7ff;
-    border-color: rgba(26, 161, 208, .26);
+    color: #081733;
+    background: rgba(233, 240, 252, .78);
+    border-color: rgba(76, 119, 178, .2);
 }
 .login-page:not(.register-page) .login-card .form-control:focus {
-    color: #061320;
-    background: #f6fbff;
-    border-color: #1AA1D0;
-    box-shadow: 0 0 0 .22rem rgba(26, 161, 208, .18);
+    color: #081733;
+    background: rgba(246, 251, 255, .92);
+    border-color: #27f6ac;
+    box-shadow: 0 0 0 .22rem rgba(39, 246, 172, .17);
 }
 .login-page:not(.register-page) .login-card .form-control::placeholder {
     color: #7b8b9e;
 }
 .login-page:not(.register-page) .login-card .btn-primary {
     color: #fff;
-    background: linear-gradient(110deg, #09588C, #1AA1D0);
-    border-color: #1AA1D0;
+    background: linear-gradient(110deg, #244aaa 0%, #217ed4 72%, #20cfa1 100%);
+    border-color: #217ed4;
     font-weight: 700;
-    box-shadow: 0 12px 28px rgba(26, 161, 208, .22);
+    box-shadow: 0 16px 34px rgba(33, 126, 212, .24);
 }
 .login-page:not(.register-page) .login-card .btn-outline-primary {
-    color: #eaf7fb;
-    border-color: rgba(26, 161, 208, .44);
+    color: #1a3f9a;
+    background: rgba(255, 255, 255, .26);
+    border-color: rgba(76, 119, 178, .28);
 }
 .login-page:not(.register-page) .login-card .btn-outline-primary:hover {
     color: #fff;
-    background: #09588C;
-    border-color: #1AA1D0;
+    background: #217ed4;
+    border-color: #217ed4;
 }
 .login-page:not(.register-page) .auth-divider {
-    color: rgba(234, 247, 251, .54);
+    color: #7d91ad;
 }
 .login-page:not(.register-page) .auth-divider::before,
 .login-page:not(.register-page) .auth-divider::after {
-    background: rgba(26, 161, 208, .2);
+    background: rgba(76, 119, 178, .16);
+}
+.login-page:not(.register-page) .auth-small-link,
+.login-page:not(.register-page) .auth-switch a {
+    color: #245df5;
 }
 .login-page:not(.register-page) .login-help {
-    color: rgba(234, 247, 251, .62);
+    color: #71829b;
 }
 
 @media (max-width: 900px) {

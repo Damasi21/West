@@ -2,10 +2,12 @@ from datetime import datetime, time
 
 from django.core.management.base import BaseCommand
 from django.db import IntegrityError
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.empresas.models import (
     AgendamentoSincronizacaoOmie,
+    Empresa,
     IntegracaoOmie,
     SincronizacaoOmie,
 )
@@ -45,7 +47,17 @@ class Command(BaseCommand):
         tolerancia_minutos = max(1, options.get("tolerancia_minutos") or 1)
         agendamentos = AgendamentoSincronizacaoOmie.objects.select_related(
             "empresa"
-        ).filter(ativo=True)
+        ).filter(ativo=True, empresa__ativa=True)
+        agendamentos = agendamentos.exclude(
+            Q(empresa__tipo_conta=Empresa.TipoConta.TRIAL)
+            & (
+                Q(empresa__status_conta__in=[
+                    Empresa.StatusConta.EXPIRADA,
+                    Empresa.StatusConta.CANCELADA,
+                ])
+                | Q(empresa__trial_expira_em__lte=agora)
+            )
+        )
         if empresa_slug:
             agendamentos = agendamentos.filter(empresa__slug=empresa_slug)
 
@@ -64,8 +76,8 @@ class Command(BaseCommand):
                 )
                 ignoradas += 1
                 continue
-            for horario in agendamento.horarios or []:
-                agendada_para = self._data_horario(agora, horario)
+            for item in agendamento.horarios_configurados:
+                agendada_para = self._data_horario(agora, item["horario"])
                 if not self._esta_dentro_da_janela(
                     agendada_para,
                     agora,
@@ -86,12 +98,20 @@ class Command(BaseCommand):
                     )
                     criadas += 1
                     continue
-                sincronizacao = self._criar_execucao(agendamento, agendada_para)
+                sincronizacao = self._criar_execucao(
+                    agendamento,
+                    agendada_para,
+                    item,
+                )
                 if not sincronizacao:
                     continue
                 criadas += 1
                 self.stdout.write(
-                    f"Executando {sincronizacao.empresa} em {agendada_para:%d/%m/%Y %H:%M}"
+                    (
+                        f"Executando {sincronizacao.empresa} em "
+                        f"{agendada_para:%d/%m/%Y %H:%M} "
+                        f"({sincronizacao.recurso_label}, {sincronizacao.periodo_label})"
+                    )
                 )
                 executar_sincronizacao_omie(sincronizacao.pk)
 
@@ -135,14 +155,15 @@ class Command(BaseCommand):
             ],
         ).exists()
 
-    def _criar_execucao(self, agendamento, agendada_para):
+    def _criar_execucao(self, agendamento, agendada_para, item):
         try:
             return SincronizacaoOmie.objects.create(
                 empresa=agendamento.empresa,
                 agendamento=agendamento,
                 agendada_para=agendada_para,
                 origem=SincronizacaoOmie.Origem.AGENDADA,
-                recurso="completa",
+                recurso=item["recurso"],
+                periodo=item["periodo"],
                 mensagem="Sincronizacao automatica adicionada a fila.",
             )
         except IntegrityError:

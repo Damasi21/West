@@ -86,15 +86,45 @@ class EmpresaAdmin(admin.ModelAdmin):
         "nome_fantasia",
         "grupo",
         "cnpj",
+        "tipo_conta",
+        "status_conta",
+        "trial_expira_em",
         "saldo_contas_omie",
         "saldo_contas_atualizado_em",
         "ativa",
         "atualizada_em",
     )
-    list_filter = ("ativa", "grupo")
+    list_filter = ("ativa", "tipo_conta", "status_conta", "grupo")
     search_fields = ("nome_fantasia", "nome", "cnpj", "grupo")
     prepopulated_fields = {"slug": ("nome_fantasia",)}
     inlines = [EmpresaUsuarioInline]
+    actions = ("converter_trials", "cancelar_trials")
+
+    @admin.action(description="Converter trials selecionados em clientes")
+    def converter_trials(self, request, queryset):
+        atualizadas = 0
+        for empresa in queryset.filter(tipo_conta=Empresa.TipoConta.TRIAL):
+            empresa.converter_trial()
+            empresa.save(
+                update_fields=[
+                    "tipo_conta",
+                    "status_conta",
+                    "trial_convertido_em",
+                    "atualizada_em",
+                ]
+            )
+            atualizadas += 1
+        self.message_user(request, f"{atualizadas} trial(s) convertido(s).")
+
+    @admin.action(description="Cancelar trials selecionados")
+    def cancelar_trials(self, request, queryset):
+        from django.utils import timezone
+
+        atualizadas = queryset.filter(tipo_conta=Empresa.TipoConta.TRIAL).update(
+            status_conta=Empresa.StatusConta.CANCELADA,
+            trial_cancelado_em=timezone.now(),
+        )
+        self.message_user(request, f"{atualizadas} trial(s) cancelado(s).")
 
 
 @admin.register(EmpresaUsuario)

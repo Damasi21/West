@@ -2,6 +2,7 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
@@ -21,6 +22,7 @@ from .forms import (
     EmpresaForm,
     EmpresaUsuarioForm,
     IntegracaoOmieForm,
+    TrialCadastroForm,
 )
 from .models import (
     AcaoUsuarioLog,
@@ -112,6 +114,84 @@ def lista_empresas(request):
         {
             "empresas": empresas,
             "total_empresas": empresas.count(),
+        },
+    )
+
+
+def trial_cadastro(request):
+    if request.user.is_authenticated:
+        return redirect("empresas:lista")
+
+    form = TrialCadastroForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            empresa = Empresa(
+                nome_fantasia=form.cleaned_data["nome_empresa"].strip(),
+                nome=(
+                    form.cleaned_data["razao_social"].strip()
+                    or form.cleaned_data["nome_empresa"].strip()
+                ),
+                cnpj=form.cleaned_data["cnpj"].strip(),
+                ativa=True,
+                trial_responsavel_nome=form.cleaned_data["responsavel"].strip(),
+                trial_responsavel_email=form.cleaned_data["email"],
+                trial_responsavel_telefone=form.cleaned_data["telefone"].strip(),
+            )
+            empresa.iniciar_trial()
+            empresa.save()
+
+            User = get_user_model()
+            usuario = User(
+                username=form.username_from_email(),
+                email=form.cleaned_data["email"],
+                first_name=form.cleaned_data["responsavel"].strip(),
+            )
+            usuario.set_password(form.cleaned_data["password"])
+            usuario.save()
+
+            EmpresaUsuario.objects.create(
+                empresa=empresa,
+                usuario=usuario,
+                papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+                ativo=True,
+            )
+
+            integracao = IntegracaoOmie(
+                empresa=empresa,
+                app_key=form.cleaned_data["app_key"].strip(),
+                ativa=True,
+            )
+            integracao.definir_app_secret(form.cleaned_data["app_secret"])
+            integracao.save()
+
+            sincronizacao = SincronizacaoOmie.objects.create(
+                empresa=empresa,
+                recurso="completa",
+                origem=SincronizacaoOmie.Origem.MANUAL,
+                disparada_por=usuario,
+                mensagem="Sincronizacao inicial do trial adicionada a fila.",
+            )
+
+        iniciar_sincronizacao_omie(sincronizacao.pk)
+        login(request, usuario)
+        messages.success(
+            request,
+            "Trial criado com sucesso. A sincronizacao inicial da OMIE ja foi iniciada.",
+        )
+        return redirect("dashboards:home", empresa_slug=empresa.slug)
+
+    return render(request, "empresas/trial_cadastro.html", {"form": form})
+
+
+@login_required
+def trial_expirado(request, empresa_slug):
+    empresa = get_object_or_404(Empresa, slug=empresa_slug)
+    return render(
+        request,
+        "empresas/trial_expirado.html",
+        {
+            "empresa": empresa,
+            "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
         },
     )
 
@@ -985,6 +1065,10 @@ def _dados_sincronizacao(sincronizacao):
         **_info_sincronizacao(sincronizacao),
         "origem": sincronizacao.origem,
         "origem_label": sincronizacao.get_origem_display(),
+        "recurso": sincronizacao.recurso,
+        "recurso_label": sincronizacao.recurso_label,
+        "periodo": sincronizacao.periodo,
+        "periodo_label": sincronizacao.periodo_label,
         "disparada_por": (
             sincronizacao.disparada_por.get_full_name()
             or sincronizacao.disparada_por.username

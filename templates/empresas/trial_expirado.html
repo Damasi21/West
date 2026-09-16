@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Trial expirado | {{ app_brand_name }}{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <span class="eyebrow">TRIAL ENCERRADO</span>
+        <h1>{{ empresa.nome_fantasia }}</h1>
+        <p>O periodo de teste desta base terminou.</p>
+    </div>
+</section>
+
+<section class="empty-state">
+    <i class="bi bi-hourglass-split"></i>
+    <h2>Seu trial de 7 dias expirou</h2>
+    <p>Para manter os dashboards, historico sincronizado e atualizacoes da OMIE, solicite a conversao para a base oficial.</p>
+    <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
+        <a class="btn btn-primary" href="https://elevdata.com.br" target="_blank" rel="noopener">
+            Falar com a Elevdata <i class="bi bi-arrow-up-right ms-2"></i>
+        </a>
+        <form method="post" action="{% url 'accounts:logout' %}">
+            {% csrf_token %}
+            <button class="btn btn-outline-secondary" type="submit">Sair</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

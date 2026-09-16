@@ -4234,6 +4234,14 @@ def executar_sincronizacao_omie(sincronizacao_id):
 
     try:
         integracao = sincronizacao.empresa.integracao_omie
+        recurso_selecionado = sincronizacao.recurso or SincronizacaoOmie.Recurso.COMPLETA
+        recursos_validos = {valor for valor, _ in SincronizacaoOmie.Recurso.choices}
+        if recurso_selecionado not in recursos_validos:
+            recurso_selecionado = SincronizacaoOmie.Recurso.COMPLETA
+
+        def escopos(*valores):
+            return set(valores)
+
         recursos = [
             {
                 "nome": "Clientes e fornecedores",
@@ -4425,6 +4433,64 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "ignorar_conta_corrente_ausente": True,
             },
         ]
+        escopos_por_recurso = {
+            "Clientes e fornecedores": escopos(
+                SincronizacaoOmie.Recurso.FINANCEIRO,
+                SincronizacaoOmie.Recurso.COMERCIAL,
+                SincronizacaoOmie.Recurso.COMPRAS,
+            ),
+            "Projetos": escopos(
+                SincronizacaoOmie.Recurso.FINANCEIRO,
+                SincronizacaoOmie.Recurso.COMERCIAL,
+            ),
+            "Departamentos": escopos(
+                SincronizacaoOmie.Recurso.FINANCEIRO,
+                SincronizacaoOmie.Recurso.COMERCIAL,
+                SincronizacaoOmie.Recurso.COMPRAS,
+            ),
+            "Vendedores": escopos(SincronizacaoOmie.Recurso.COMERCIAL),
+            "Produtos": escopos(
+                SincronizacaoOmie.Recurso.COMERCIAL,
+                SincronizacaoOmie.Recurso.COMPRAS,
+                SincronizacaoOmie.Recurso.ESTOQUE,
+            ),
+            "Produtos por fornecedor": escopos(
+                SincronizacaoOmie.Recurso.COMPRAS,
+                SincronizacaoOmie.Recurso.ESTOQUE,
+            ),
+            "Locais de estoque": escopos(SincronizacaoOmie.Recurso.ESTOQUE),
+            "Posicoes de estoque": escopos(SincronizacaoOmie.Recurso.ESTOQUE),
+            "Saldos pendentes de estoque": escopos(SincronizacaoOmie.Recurso.ESTOQUE),
+            "Pedidos de compra": escopos(SincronizacaoOmie.Recurso.COMPRAS),
+            "Recebimentos de NF-e": escopos(SincronizacaoOmie.Recurso.COMPRAS),
+            "Categorias": escopos(
+                SincronizacaoOmie.Recurso.FINANCEIRO,
+                SincronizacaoOmie.Recurso.COMERCIAL,
+                SincronizacaoOmie.Recurso.COMPRAS,
+            ),
+            "Servicos": escopos(SincronizacaoOmie.Recurso.COMERCIAL),
+            "Tipos de conta corrente": escopos(SincronizacaoOmie.Recurso.FINANCEIRO),
+            "Contas correntes": escopos(SincronizacaoOmie.Recurso.FINANCEIRO),
+            "Contratos": escopos(SincronizacaoOmie.Recurso.COMERCIAL),
+            "Ordens de servico": escopos(SincronizacaoOmie.Recurso.COMERCIAL),
+            "NFS-es": escopos(SincronizacaoOmie.Recurso.COMERCIAL),
+            "Contas a pagar": escopos(SincronizacaoOmie.Recurso.FINANCEIRO),
+            "Contas a receber": escopos(SincronizacaoOmie.Recurso.FINANCEIRO),
+            "Movimentos financeiros": escopos(SincronizacaoOmie.Recurso.FINANCEIRO),
+            "Titulos financeiros pesquisados": escopos(
+                SincronizacaoOmie.Recurso.FINANCEIRO
+            ),
+            "LanÃ§amentos de conta corrente": escopos(
+                SincronizacaoOmie.Recurso.FINANCEIRO
+            ),
+            "Pedidos": escopos(SincronizacaoOmie.Recurso.COMERCIAL),
+        }
+        if recurso_selecionado != SincronizacaoOmie.Recurso.COMPLETA:
+            recursos = [
+                recurso
+                for recurso in recursos
+                if recurso_selecionado in escopos_por_recurso.get(recurso["nome"], set())
+            ]
         avisos = []
 
         for recurso in recursos:
@@ -4545,62 +4611,70 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 )
                 sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
 
-        inicio_recurso = timezone.now()
-        contexto_atual = "Consultando movimentos de estoque"
-        sincronizacao.mensagem = f"{contexto_atual}..."
-        sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
-        processados = _sincronizar_movimentos_estoque(
-            sincronizacao.empresa,
-            integracao,
-        )
-        sincronizacao.registros_processados += processados
-        sincronizacao.mensagem = (
-            f"Movimentos de estoque: {processados} registro(s) processado(s)."
-        )
-        sincronizacao.save(
-            update_fields=[
-                "registros_processados",
-                "mensagem",
-                "atualizada_em",
-            ]
-        )
-        desativados = _desativar_registros_ausentes_na_omie(
-            MovimentoEstoqueOmie,
-            sincronizacao.empresa,
-            inicio_recurso,
-        )
-        sincronizacao.mensagem = (
-            f"Movimentos de estoque: {desativados} registro(s) obsoleto(s)."
-        )
-        sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
+        if recurso_selecionado in (
+            SincronizacaoOmie.Recurso.COMPLETA,
+            SincronizacaoOmie.Recurso.ESTOQUE,
+        ):
+            inicio_recurso = timezone.now()
+            contexto_atual = "Consultando movimentos de estoque"
+            sincronizacao.mensagem = f"{contexto_atual}..."
+            sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
+            processados = _sincronizar_movimentos_estoque(
+                sincronizacao.empresa,
+                integracao,
+            )
+            sincronizacao.registros_processados += processados
+            sincronizacao.mensagem = (
+                f"Movimentos de estoque: {processados} registro(s) processado(s)."
+            )
+            sincronizacao.save(
+                update_fields=[
+                    "registros_processados",
+                    "mensagem",
+                    "atualizada_em",
+                ]
+            )
+            desativados = _desativar_registros_ausentes_na_omie(
+                MovimentoEstoqueOmie,
+                sincronizacao.empresa,
+                inicio_recurso,
+            )
+            sincronizacao.mensagem = (
+                f"Movimentos de estoque: {desativados} registro(s) obsoleto(s)."
+            )
+            sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
 
-        processados = _atualizar_resumo_financeiro_empresa(
-            sincronizacao.empresa,
-            integracao,
-        )
-        sincronizacao.registros_processados += processados
-        sincronizacao.mensagem = "Resumo financeiro atualizado."
-        sincronizacao.save(
-            update_fields=[
-                "registros_processados",
-                "mensagem",
-                "atualizada_em",
-            ]
-        )
+        if recurso_selecionado in (
+            SincronizacaoOmie.Recurso.COMPLETA,
+            SincronizacaoOmie.Recurso.FINANCEIRO,
+        ):
+            processados = _atualizar_resumo_financeiro_empresa(
+                sincronizacao.empresa,
+                integracao,
+            )
+            sincronizacao.registros_processados += processados
+            sincronizacao.mensagem = "Resumo financeiro atualizado."
+            sincronizacao.save(
+                update_fields=[
+                    "registros_processados",
+                    "mensagem",
+                    "atualizada_em",
+                ]
+            )
 
-        processados = _atualizar_saldos_extrato_contas_correntes(
-            sincronizacao.empresa,
-            integracao,
-        )
-        sincronizacao.registros_processados += processados
-        sincronizacao.mensagem = "Saldos provisorios das contas correntes atualizados."
-        sincronizacao.save(
-            update_fields=[
-                "registros_processados",
-                "mensagem",
-                "atualizada_em",
-            ]
-        )
+            processados = _atualizar_saldos_extrato_contas_correntes(
+                sincronizacao.empresa,
+                integracao,
+            )
+            sincronizacao.registros_processados += processados
+            sincronizacao.mensagem = "Saldos provisorios das contas correntes atualizados."
+            sincronizacao.save(
+                update_fields=[
+                    "registros_processados",
+                    "mensagem",
+                    "atualizada_em",
+                ]
+            )
 
         sincronizacao.status = SincronizacaoOmie.Status.CONCLUIDA
         sincronizacao.finalizada_em = timezone.now()

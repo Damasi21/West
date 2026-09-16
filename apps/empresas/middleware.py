@@ -1,3 +1,4 @@
+from django.shortcuts import redirect
 from django.urls import Resolver404, resolve
 
 from .auditoria import registrar_acao
@@ -12,9 +13,41 @@ class AuditLogMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        bloqueio = self._bloquear_trial_expirado(request)
+        if bloqueio:
+            return bloqueio
         response = self.get_response(request)
         self._registrar_request(request, response)
         return response
+
+    def _bloquear_trial_expirado(self, request):
+        usuario = getattr(request, "user", None)
+        if not getattr(usuario, "is_authenticated", False):
+            return None
+        if usuario.is_superuser or usuario.is_staff:
+            return None
+        if request.path_info.startswith(self.SKIP_PREFIXES):
+            return None
+        try:
+            match = resolve(request.path_info)
+        except Resolver404:
+            return None
+
+        if match.view_name in {"accounts:logout", "empresas:trial_expirado"}:
+            return None
+        empresa_slug = match.kwargs.get("empresa_slug")
+        if not empresa_slug:
+            return None
+        empresa = Empresa.objects.filter(slug=empresa_slug, ativa=True).first()
+        if not empresa:
+            return None
+        if empresa.trial_expirado:
+            empresa.status_conta = Empresa.StatusConta.EXPIRADA
+            empresa.save(update_fields=["status_conta", "atualizada_em"])
+            return redirect("empresas:trial_expirado", empresa_slug=empresa.slug)
+        if empresa.em_trial and empresa.status_conta != Empresa.StatusConta.ATIVA:
+            return redirect("empresas:trial_expirado", empresa_slug=empresa.slug)
+        return None
 
     def _registrar_request(self, request, response):
         usuario = getattr(request, "user", None)

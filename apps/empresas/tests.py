@@ -505,7 +505,7 @@ class ParametrosOmieTests(TestCase):
 
         self.assertContains(response, "Sincronizacao")
         self.assertContains(response, "Sincronizacao automatica ativa")
-        self.assertContains(response, "Limite de 3 atualizacoes por dia.")
+        self.assertContains(response, "Sincronizacoes automaticas")
         self.assertContains(response, "Dia da semana")
         self.assertContains(response, "Todo dia")
         self.assertContains(response, "multiple")
@@ -578,8 +578,14 @@ class ParametrosOmieTests(TestCase):
                 "tipo_agendamento": AgendamentoSincronizacaoOmie.Tipo.DIAS_SEMANA,
                 "dias_semana": ["0", "2", "4"],
                 "horario_1": "07:00",
+                "recurso_1": SincronizacaoOmie.Recurso.FINANCEIRO,
+                "periodo_1": SincronizacaoOmie.Periodo.ANO_ATUAL,
                 "horario_2": "12:30",
+                "recurso_2": SincronizacaoOmie.Recurso.COMERCIAL,
+                "periodo_2": SincronizacaoOmie.Periodo.MES_ATUAL,
                 "horario_3": "18:00",
+                "recurso_3": SincronizacaoOmie.Recurso.ESTOQUE,
+                "periodo_3": SincronizacaoOmie.Periodo.TUDO,
             },
         )
 
@@ -593,17 +599,36 @@ class ParametrosOmieTests(TestCase):
         agendamento = AgendamentoSincronizacaoOmie.objects.get(empresa=self.empresa)
         self.assertTrue(agendamento.ativo)
         self.assertEqual(agendamento.dias_semana, [0, 2, 4])
-        self.assertEqual(agendamento.horarios, ["07:00", "12:30", "18:00"])
+        self.assertEqual(
+            agendamento.horarios,
+            [
+                {
+                    "horario": "07:00",
+                    "recurso": SincronizacaoOmie.Recurso.FINANCEIRO,
+                    "periodo": SincronizacaoOmie.Periodo.ANO_ATUAL,
+                },
+                {
+                    "horario": "12:30",
+                    "recurso": SincronizacaoOmie.Recurso.COMERCIAL,
+                    "periodo": SincronizacaoOmie.Periodo.MES_ATUAL,
+                },
+                {
+                    "horario": "18:00",
+                    "recurso": SincronizacaoOmie.Recurso.ESTOQUE,
+                    "periodo": SincronizacaoOmie.Periodo.TUDO,
+                },
+            ],
+        )
         self.assertEqual(agendamento.atualizado_por, self.administrador)
 
-    def test_agendamento_limita_tres_horarios_por_dia(self):
+    def test_agendamento_limita_cinco_horarios_por_dia(self):
         agendamento = AgendamentoSincronizacaoOmie(
             empresa=self.empresa,
             ativo=True,
-            horarios=["07:00", "10:00", "13:00", "16:00"],
+            horarios=["07:00", "10:00", "13:00", "16:00", "19:00", "22:00"],
         )
 
-        with self.assertRaisesMessage(Exception, "maximo 3 horarios"):
+        with self.assertRaisesMessage(Exception, "maximo 5 horarios"):
             agendamento.full_clean()
 
 
@@ -1487,7 +1512,13 @@ class SincronizacaoClientesOmieTests(TestCase):
             empresa=self.empresa,
             ativo=True,
             tipo_agendamento=AgendamentoSincronizacaoOmie.Tipo.TODO_DIA,
-            horarios=[horario],
+            horarios=[
+                {
+                    "horario": horario,
+                    "recurso": SincronizacaoOmie.Recurso.FINANCEIRO,
+                    "periodo": SincronizacaoOmie.Periodo.ANO_ATUAL,
+                }
+            ],
         )
         saida = StringIO()
 
@@ -1498,7 +1529,8 @@ class SincronizacaoClientesOmieTests(TestCase):
             agendamento=agendamento,
         )
         self.assertEqual(sincronizacao.origem, SincronizacaoOmie.Origem.AGENDADA)
-        self.assertEqual(sincronizacao.recurso, "completa")
+        self.assertEqual(sincronizacao.recurso, SincronizacaoOmie.Recurso.FINANCEIRO)
+        self.assertEqual(sincronizacao.periodo, SincronizacaoOmie.Periodo.ANO_ATUAL)
         self.assertIsNotNone(sincronizacao.agendada_para)
         executar_mock.assert_called_once_with(sincronizacao.pk)
         self.assertIn("Sincronizacoes criadas/executadas: 1", saida.getvalue())
@@ -2324,6 +2356,7 @@ class SincronizacaoClientesOmieTests(TestCase):
             "consultar_departamentos": {"total_de_paginas": 1, "total_de_registros": 0, "departamentos": []},
             "consultar_vendedores": {"total_de_paginas": 1, "total_de_registros": 0, "cadastro": []},
             "consultar_produtos": {"total_de_paginas": 1, "total_de_registros": 0, "produto_servico_cadastro": []},
+            "consultar_produtos_fornecedores": {"nTotPaginas": 1, "nTotRegistros": 0, "cadastros": []},
             "consultar_locais_estoque": {"nTotPaginas": 1, "nTotRegistros": 0, "locaisEncontrados": []},
             "consultar_posicoes_estoque": {"nTotPaginas": 1, "nTotRegistros": 0, "produtos": []},
             "consultar_saldos_pendentes_estoque": {"total_de_paginas": 1, "total_de_registros": 0, "saldo_pendente_lista": []},
