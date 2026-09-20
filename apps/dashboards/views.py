@@ -200,38 +200,13 @@ AREAS = {
             },
         ],
     },
-    "crm": {
-        "titulo": "CRM",
-        "subtitulo": "Funil, oportunidades, atividades e conversões.",
-        "icone": "bi-people",
-        "imagem": "crm.png",
+    "auditor": {
+        "titulo": "Auditor",
+        "subtitulo": "Auditoria, conferencias, logs e acompanhamento operacional.",
+        "icone": "bi-shield-check",
+        "imagem": "auditor.png",
         "cor": "danger",
-        "dashboards": [
-            {
-                "slug": "funil-de-vendas",
-                "titulo": "Funil de vendas",
-                "descricao": "Visualize oportunidades em cada etapa comercial.",
-                "icone": "bi-funnel",
-            },
-            {
-                "slug": "oportunidades",
-                "titulo": "Oportunidades",
-                "descricao": "Acompanhe valores, responsáveis e previsão de fechamento.",
-                "icone": "bi-bullseye",
-            },
-            {
-                "slug": "atividades-comerciais",
-                "titulo": "Atividades comerciais",
-                "descricao": "Monitore contatos, tarefas e interações da equipe.",
-                "icone": "bi-calendar-check",
-            },
-            {
-                "slug": "taxa-de-conversao",
-                "titulo": "Taxa de conversão",
-                "descricao": "Analise a eficiência das etapas e origens dos negócios.",
-                "icone": "bi-percent",
-            },
-        ],
+        "dashboards": [],
     },
 }
 
@@ -1837,3 +1812,4 @@ def exportar_faturamento_servicos(request, empresa_slug):
         filtros["vendedores"],
     )
     return _resposta_excel_faturamento_servicos(linhas, filtros["periodo"])
+

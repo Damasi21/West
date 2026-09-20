@@ -76,7 +76,7 @@ class DashboardPermissaoTests(TestCase):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
         self.client.force_login(self.usuario)
 
-        for area in ("comercial", "financeiro", "compras", "estoque", "crm"):
+        for area in ("comercial", "financeiro", "compras", "estoque", "auditor"):
             response = self.client.get(
                 reverse(
                     "dashboards:area",
@@ -98,9 +98,10 @@ class DashboardPermissaoTests(TestCase):
             "financeiro.png",
             "compras.png",
             "estoque.png",
-            "crm.png",
+            "auditor.png",
         ):
             self.assertContains(response, f"/media/{imagem}")
+        self.assertNotContains(response, "/media/crm.png")
 
     @override_settings(ENABLE_PAYMENT_APPROVAL_DASHBOARD=False)
     def test_aprovacao_pagamentos_pode_ser_desabilitada(self):
