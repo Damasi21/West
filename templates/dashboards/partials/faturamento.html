@@ -36,6 +36,15 @@
                     <i class="bi bi-tools"></i>
                     <span>Serviços</span>
                 </button>
+                <button
+                    class="chart-detail-button"
+                    type="button"
+                    data-billing-comparison-toggle
+                    aria-pressed="false"
+                >
+                    <i class="bi bi-bar-chart-steps"></i>
+                    <span>Comparativo</span>
+                </button>
             </div>
         </div>
         <div class="billing-chart-scroll">
@@ -218,9 +227,14 @@
     {{ dados.produtos_frete_despesas|json_script:"billing-chart-products-expenses" }}
     {{ dados.produtos_impostos|json_script:"billing-chart-products-taxes" }}
     {{ dados.servicos_impostos|json_script:"billing-chart-services-taxes" }}
+    {{ dados.produtos_anterior|json_script:"billing-chart-products-previous" }}
+    {{ dados.servicos_anterior|json_script:"billing-chart-services-previous" }}
+    {{ dados.produtos_impostos_anterior|json_script:"billing-chart-products-taxes-previous" }}
+    {{ dados.servicos_impostos_anterior|json_script:"billing-chart-services-taxes-previous" }}
     {{ dados.servicos|json_script:"billing-chart-services" }}
     {{ dados.media_anterior|json_script:"billing-chart-previous-average" }}
     {{ dados.acumulado|json_script:"billing-chart-accumulated" }}
     {{ dados.meta|json_script:"billing-chart-goal" }}
     {{ dados.tipos|json_script:"billing-chart-types" }}
 </section>
+

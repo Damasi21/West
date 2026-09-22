@@ -216,6 +216,130 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const marginDashboard = document.querySelector("[data-margin-dashboard]");
+    if (marginDashboard) {
+        const productOpen = marginDashboard.querySelector("[data-margin-product-search-open]");
+        const familyOpen = marginDashboard.querySelector("[data-margin-family-search-open]");
+        const clearButton = marginDashboard.querySelector("[data-margin-search-clear]");
+        const searchLabel = marginDashboard.querySelector("[data-margin-search-label]");
+        const searchEmpty = marginDashboard.querySelector("[data-margin-search-empty]");
+        const rows = [...marginDashboard.querySelectorAll("[data-margin-profit-row]")];
+
+        const productModal = marginDashboard.querySelector("[data-margin-product-search-modal]");
+        const productClose = marginDashboard.querySelector("[data-margin-product-search-close]");
+        const productInput = marginDashboard.querySelector("[data-margin-product-search-input]");
+        const productOptions = [...marginDashboard.querySelectorAll("[data-margin-product-option]")];
+        const productEmpty = marginDashboard.querySelector("[data-margin-product-search-empty]");
+
+        const familyModal = marginDashboard.querySelector("[data-margin-family-search-modal]");
+        const familyClose = marginDashboard.querySelector("[data-margin-family-search-close]");
+        const familyInput = marginDashboard.querySelector("[data-margin-family-search-input]");
+        const familyOptions = [...marginDashboard.querySelectorAll("[data-margin-family-option]")];
+        const familyEmpty = marginDashboard.querySelector("[data-margin-family-search-empty]");
+
+        const normalizeMarginText = (value) => (
+            String(value || "")
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .trim()
+        );
+
+        const filterOptions = (options, term, key, emptyElement) => {
+            let visibleOptions = 0;
+            options.forEach((option) => {
+                const visible = !term || normalizeMarginText(option.dataset[key]).includes(term);
+                option.classList.toggle("d-none", !visible);
+                if (visible) visibleOptions += 1;
+            });
+            emptyElement?.classList.toggle("d-none", visibleOptions > 0 || options.length === 0);
+        };
+
+        const setModalVisible = (modal, input, options, key, emptyElement, visible) => {
+            if (!modal) return;
+            modal.hidden = !visible;
+            if (visible) {
+                input.value = "";
+                filterOptions(options, "", key, emptyElement);
+                window.setTimeout(() => input.focus(), 50);
+            }
+        };
+
+        const closeModals = () => {
+            if (productModal) productModal.hidden = true;
+            if (familyModal) familyModal.hidden = true;
+        };
+
+        const updateRows = (matcher, label) => {
+            let visibleRows = 0;
+            rows.forEach((row) => {
+                const visible = matcher(row);
+                row.classList.toggle("d-none", !visible);
+                if (visible) visibleRows += 1;
+            });
+            searchEmpty?.classList.toggle("d-none", visibleRows > 0 || rows.length === 0);
+            if (searchLabel) {
+                searchLabel.textContent = label;
+                searchLabel.classList.toggle("d-none", !label);
+            }
+            clearButton?.classList.toggle("d-none", !label);
+        };
+
+        const showDefaultRows = () => {
+            rows.forEach((row) => {
+                row.classList.toggle("d-none", row.dataset.marginDefaultVisible !== "true");
+            });
+            searchEmpty?.classList.add("d-none");
+            searchLabel?.classList.add("d-none");
+            clearButton?.classList.add("d-none");
+            closeModals();
+        };
+
+        productOpen?.addEventListener("click", () => {
+            setModalVisible(productModal, productInput, productOptions, "marginProductName", productEmpty, true);
+        });
+        familyOpen?.addEventListener("click", () => {
+            setModalVisible(familyModal, familyInput, familyOptions, "marginFamilyName", familyEmpty, true);
+        });
+        productClose?.addEventListener("click", closeModals);
+        familyClose?.addEventListener("click", closeModals);
+        clearButton?.addEventListener("click", showDefaultRows);
+
+        productInput?.addEventListener("input", () => {
+            filterOptions(productOptions, normalizeMarginText(productInput.value), "marginProductName", productEmpty);
+        });
+        familyInput?.addEventListener("input", () => {
+            filterOptions(familyOptions, normalizeMarginText(familyInput.value), "marginFamilyName", familyEmpty);
+        });
+        productOptions.forEach((option) => {
+            option.addEventListener("click", () => {
+                updateRows(
+                    (row) => row.dataset.marginProductCode === option.dataset.marginProductCode,
+                    `Produto: ${option.dataset.marginProductName}`
+                );
+                closeModals();
+            });
+        });
+        familyOptions.forEach((option) => {
+            option.addEventListener("click", () => {
+                updateRows(
+                    (row) => row.dataset.marginFamilyCode === option.dataset.marginFamilyCode,
+                    `Familia: ${option.dataset.marginFamilyName}`
+                );
+                closeModals();
+            });
+        });
+        productModal?.addEventListener("click", (event) => {
+            if (event.target === productModal) closeModals();
+        });
+        familyModal?.addEventListener("click", (event) => {
+            if (event.target === familyModal) closeModals();
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") closeModals();
+        });
+    }
+
     const inventoryAbc = document.querySelector("[data-inventory-abc-dashboard]");
     if (inventoryAbc && typeof Chart !== "undefined") {
         const labels = JSON.parse(document.getElementById("inventory-abc-chart-labels").textContent);
@@ -972,6 +1096,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const productExpenses = JSON.parse(document.getElementById("billing-chart-products-expenses").textContent);
         const productTaxes = JSON.parse(document.getElementById("billing-chart-products-taxes").textContent);
         const serviceTaxes = JSON.parse(document.getElementById("billing-chart-services-taxes").textContent);
+        const previousProducts = JSON.parse(document.getElementById("billing-chart-products-previous").textContent);
+        const previousServices = JSON.parse(document.getElementById("billing-chart-services-previous").textContent);
+        const previousProductTaxes = JSON.parse(document.getElementById("billing-chart-products-taxes-previous").textContent);
+        const previousServiceTaxes = JSON.parse(document.getElementById("billing-chart-services-taxes-previous").textContent);
         const services = JSON.parse(document.getElementById("billing-chart-services").textContent);
         const previousAverage = JSON.parse(document.getElementById("billing-chart-previous-average").textContent);
         const accumulated = JSON.parse(document.getElementById("billing-chart-accumulated").textContent);
@@ -999,7 +1127,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const x = sourceEvent.clientX - rect.left;
                 const y = sourceEvent.clientY - rect.top;
 
-                const hoverBarIndexes = taxesMode ? [0, 1] : [0, 1, 2];
+                const hoverBarIndexes = taxesMode ? [0, 1, 3, 4] : [0, 1, 2, 4, 5];
                 for (const datasetIndex of hoverBarIndexes) {
                     const meta = chart.getDatasetMeta(datasetIndex);
                     const item = meta.data.find((bar) => {
@@ -1015,7 +1143,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 }
 
-                const billedDatasetIndex = taxesMode ? 3 : 4;
+                const billedDatasetIndex = taxesMode ? 5 : 6;
                 const billedMeta = chart.getDatasetMeta(billedDatasetIndex);
                 const point = billedMeta.data.find((element) => {
                     const props = element.getProps(["x", "y"], true);
@@ -1094,7 +1222,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     type: "bar",
                     label: "Impostos de produtos",
                     data: productTaxes,
-                    backgroundColor: "#ef4444",
+                    backgroundColor: "#FF8C00",
                     borderRadius: 4,
                     barPercentage: .5,
                     categoryPercentage: .68,
@@ -1105,7 +1233,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     type: "bar",
                     label: "Impostos de servicos",
                     data: serviceTaxes,
-                    backgroundColor: "#fca5a5",
+                    backgroundColor: "#0541FF",
                     borderRadius: 4,
                     barPercentage: .5,
                     categoryPercentage: .68,
@@ -1126,6 +1254,36 @@ document.addEventListener("DOMContentLoaded", () => {
                     yAxisID: "y",
                 },
                 {
+                    type: "bar",
+                    label: "Produtos periodo anterior",
+                    data: previousProductTaxes,
+                    backgroundColor: "#FEBA4F",
+                    borderColor: "#FEBA4F",
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    barPercentage: .5,
+                    categoryPercentage: .68,
+                    maxBarThickness: 26,
+                    yAxisID: "y",
+                    hidden: true,
+                    billingComparison: true,
+                },
+                {
+                    type: "bar",
+                    label: "Servicos periodo anterior",
+                    data: previousServiceTaxes,
+                    backgroundColor: "#74A3FF",
+                    borderColor: "#74A3FF",
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    barPercentage: .5,
+                    categoryPercentage: .68,
+                    maxBarThickness: 26,
+                    yAxisID: "y",
+                    hidden: true,
+                    billingComparison: true,
+                },
+                {
                     type: "line",
                     label: "Total de impostos",
                     data: accumulated,
@@ -1144,7 +1302,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     type: "bar",
                     label: "Mercadorias",
                     data: productGoods,
-                    backgroundColor: "#f59e0b",
+                    backgroundColor: "#FF8C00",
                     borderRadius: productStackRadius("goods"),
                     stack: "produtos",
                     barPercentage: .5,
@@ -1156,7 +1314,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     type: "bar",
                     label: "Frete e outras despesas",
                     data: productExpenses,
-                    backgroundColor: "#facc15",
+                    backgroundColor: "#F20298",
                     borderRadius: productStackRadius("expenses"),
                     stack: "produtos",
                     barPercentage: .5,
@@ -1168,7 +1326,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     type: "bar",
                     label: "Servicos",
                     data: services,
-                    backgroundColor: "#93c5fd",
+                    backgroundColor: "#0541FF",
                     borderRadius: 4,
                     stack: "servicos",
                     barPercentage: .5,
@@ -1190,6 +1348,38 @@ document.addEventListener("DOMContentLoaded", () => {
                     yAxisID: "y",
                 },
                 {
+                    type: "bar",
+                    label: "Produtos periodo anterior",
+                    data: previousProducts,
+                    backgroundColor: "#FEBA4F",
+                    borderColor: "#FEBA4F",
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    stack: "produtos-anterior",
+                    barPercentage: .5,
+                    categoryPercentage: .68,
+                    maxBarThickness: 26,
+                    yAxisID: "y",
+                    hidden: true,
+                    billingComparison: true,
+                },
+                {
+                    type: "bar",
+                    label: "Servicos periodo anterior",
+                    data: previousServices,
+                    backgroundColor: "#74A3FF",
+                    borderColor: "#74A3FF",
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    stack: "servicos-anterior",
+                    barPercentage: .5,
+                    categoryPercentage: .68,
+                    maxBarThickness: 26,
+                    yAxisID: "y",
+                    hidden: true,
+                    billingComparison: true,
+                },
+                {
                     type: "line",
                     label: "Faturado",
                     data: accumulated,
@@ -1204,7 +1394,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     yAxisID: "y",
                 },
             ];
-            new Chart(mainCanvas, {
+            const mainChart = new Chart(mainCanvas, {
                 plugins: [billingBarLabelsPlugin],
                 data: {
                     labels,
@@ -1259,6 +1449,22 @@ document.addEventListener("DOMContentLoaded", () => {
                     },
                 },
             });
+            const comparisonToggle = billing.querySelector("[data-billing-comparison-toggle]");
+            if (comparisonToggle) {
+                const comparisonIndexes = mainChart.data.datasets
+                    .map((dataset, index) => dataset.billingComparison ? index : -1)
+                    .filter((index) => index >= 0);
+                comparisonToggle.addEventListener("click", () => {
+                    if (!comparisonIndexes.length) return;
+                    const visible = comparisonIndexes.some((index) => mainChart.isDatasetVisible(index));
+                    comparisonIndexes.forEach((index) => {
+                        mainChart.setDatasetVisibility(index, !visible);
+                    });
+                    comparisonToggle.classList.toggle("is-active", !visible);
+                    comparisonToggle.setAttribute("aria-pressed", String(!visible));
+                    mainChart.update();
+                });
+            }
         }
 
         if (goalCanvas) {
@@ -1621,81 +1827,6 @@ document.addEventListener("DOMContentLoaded", () => {
                                 color: "#10b981",
                                 font: { size: 11 },
                                 callback: (value) => `${value}x/mes`,
-                            },
-                        },
-                    },
-                },
-            });
-        }
-    }
-
-    const marginDashboard = document.querySelector("[data-margin-dashboard]");
-    if (marginDashboard && typeof Chart !== "undefined") {
-        const bubbleData = JSON.parse(document.getElementById("margin-bubble-data").textContent);
-        const bubbleCanvas = marginDashboard.querySelector("[data-margin-bubble-chart]");
-        const datasetsByColor = bubbleData.reduce((acc, item) => {
-            acc[item.cor] = acc[item.cor] || {
-                label: item.faixa,
-                data: [],
-                backgroundColor: item.cor,
-                borderColor: item.cor,
-            };
-            acc[item.cor].data.push(item);
-            return acc;
-        }, {});
-
-        if (bubbleCanvas) {
-            new Chart(bubbleCanvas, {
-                type: "bubble",
-                data: {
-                    datasets: Object.values(datasetsByColor),
-                },
-                options: {
-                    ...chartBaseOptions,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                title: (items) => items[0]?.raw?.produto || "",
-                                label: (context) => {
-                                    const item = context.raw;
-                                    return [
-                                        `Codigo: ${item.codigo}`,
-                                        `Receita: ${moneyFormatter.format(item.x || 0)}`,
-                                        `Margem: ${(item.y || 0).toFixed(1)}%`,
-                                        `Volume: ${(item.volume || 0).toLocaleString("pt-BR")}`,
-                                    ];
-                                },
-                            },
-                        },
-                    },
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: "Receita",
-                                color: "#667085",
-                                font: { size: 11, weight: "600" },
-                            },
-                            grid: { color: "rgba(148, 163, 184, .18)" },
-                            ticks: {
-                                color: "#667085",
-                                font: { size: 11 },
-                                callback: (value) => moneyFormatter.format(value),
-                            },
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: "Margem bruta %",
-                                color: "#667085",
-                                font: { size: 11, weight: "600" },
-                            },
-                            grid: { color: "rgba(148, 163, 184, .18)" },
-                            ticks: {
-                                color: "#667085",
-                                font: { size: 11 },
-                                callback: (value) => `${value}%`,
                             },
                         },
                     },
@@ -2291,3 +2422,4 @@ document.addEventListener("DOMContentLoaded", () => {
     select.addEventListener("change", updateCharts);
     updateCharts();
 });
+

@@ -1639,6 +1639,9 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Produtos")
         self.assertContains(response, "Servicos")
         self.assertContains(response, "Impostos")
+        self.assertContains(response, "Comparativo")
+        self.assertContains(response, "billing-chart-products-previous")
+        self.assertContains(response, "billing-chart-services-previous")
         self.assertContains(response, "Notebook Pro 15")
         self.assertContains(response, "Suporte tecnico")
         self.assertContains(response, "data-billing-main-chart")
@@ -1671,6 +1674,8 @@ class DashboardPermissaoTests(TestCase):
             response.context["faturamento"]["indicadores"][1]["valor_completo"],
             "R$ 10.000,00",
         )
+        self.assertEqual(response.context["faturamento"]["produtos_anterior"], [0.0])
+        self.assertEqual(response.context["faturamento"]["servicos_anterior"], [0.0])
         self.assertEqual(
             response.context["faturamento_produtos_totais"]["total_mercadoria_fmt"],
             "R$ 2.700,00",
@@ -1833,6 +1838,39 @@ class DashboardPermissaoTests(TestCase):
         )
 
         self.assertEqual(contexto["acumulado"], [1300.0, 2400.0, 0.0])
+
+    def test_faturamento_comparativo_mes_usa_mes_anterior(self):
+        ano_atual = date.today().year
+        ano_anterior = ano_atual - 1
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=340,
+            numero_pedido="PV-340",
+            data_inclusao=date(ano_atual, 1, 5),
+            data_faturamento=date(ano_atual, 1, 8),
+            faturado=True,
+            valor_total_pedido=1000,
+        )
+        PedidoOmie.objects.create(
+            empresa=self.empresa,
+            codigo_pedido=341,
+            numero_pedido="PV-341",
+            data_inclusao=date(ano_anterior, 12, 5),
+            data_faturamento=date(ano_anterior, 12, 8),
+            faturado=True,
+            valor_total_pedido=700,
+        )
+
+        contexto = faturamento_comercial(
+            self.empresa,
+            f"mes-{ano_atual}-01",
+            empresas_ids=[self.empresa.pk],
+            tipos_selecionados=["produtos"],
+        )
+
+        self.assertEqual(contexto["acumulado"], [1000.0])
+        self.assertEqual(contexto["produtos_anterior"], [700.0])
+        self.assertEqual(contexto["servicos_anterior"], [0.0])
 
     def test_faturamento_produtos_considera_impostos_do_json_omie(self):
         ano_atual = date.today().year
@@ -2179,6 +2217,8 @@ class DashboardPermissaoTests(TestCase):
             codigo_produto=4101,
             codigo="LUC-01",
             descricao="Produto Lucrativo",
+            codigo_familia=901,
+            descricao_familia="Familia Beleza",
             info={"valor_custo": "40"},
         )
         produto_critico = ProdutoOmie.objects.create(
@@ -2186,6 +2226,8 @@ class DashboardPermissaoTests(TestCase):
             codigo_produto=4102,
             codigo="CRT-01",
             descricao="Produto Critico",
+            codigo_familia=902,
+            descricao_familia="Familia Risco",
             info={"valor_custo": "130"},
         )
         PosicaoEstoqueOmie.objects.create(
@@ -2263,12 +2305,40 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Receita total")
         self.assertContains(response, "Produtos c/ mg negativa")
         self.assertContains(response, "Desconto medio")
-        self.assertContains(response, "Receita x margem")
+        self.assertContains(response, "Receita, lucro bruto e eficiencia")
+        self.assertContains(response, "Lucro bruto")
+        self.assertContains(response, "Custo (CMV)")
+        self.assertContains(response, "data-margin-product-search-open")
+        self.assertContains(response, "data-margin-family-search-open")
+        self.assertContains(response, "Todas as familias")
+        self.assertContains(response, "Familia Beleza")
         self.assertContains(response, "Top 5 mais rentaveis")
         self.assertContains(response, "Bottom 5 - Atencao urgente")
         self.assertContains(response, "Produto Lucrativo")
         self.assertContains(response, "Produto Critico")
-        self.assertContains(response, "data-margin-bubble-chart")
+        self.assertContains(response, "lucro R$ 1.100,00")
+        self.assertEqual(response.context["margem_rentabilidade"]["mapa_lucro"][0]["produto"], "Produto Lucrativo")
+
+        response_filtrado = self.client.get(
+            reverse(
+                "dashboards:dashboard",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "area_slug": "comercial",
+                    "dashboard_slug": "margem-e-rentabilidade",
+                },
+            ),
+            {
+                "_filtrar": "1",
+                "periodo": f"mes-{ano_atual}-01",
+                "familia_produto": f"{self.empresa.pk}:901",
+            },
+        )
+        produtos_mapa = [
+            item["produto"]
+            for item in response_filtrado.context["margem_rentabilidade"]["mapa_lucro"]
+        ]
+        self.assertEqual(produtos_mapa, ["Produto Lucrativo"])
 
     def test_margem_rentabilidade_usa_cmc_e_valor_unitario_dos_pedidos(self):
         ano_atual = date.today().year

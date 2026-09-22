@@ -106,11 +106,15 @@ def _faixa_margem(margem):
     return {"rotulo": "Alta", "tom": "high", "cor": "#356d1d"}
 
 
-def _itens_agregados(pedidos):
-    produtos = defaultdict(
+def _itens_agregados(pedidos, produtos=None, familias=None):
+    produtos_filtrados = {str(valor) for valor in (produtos or []) if str(valor)}
+    familias_filtradas = {str(valor) for valor in (familias or []) if str(valor)}
+    agregados = defaultdict(
         lambda: {
             "codigo": "",
             "produto": "",
+            "familia_codigo": "",
+            "familia": "",
             "receita": Decimal("0"),
             "custo": Decimal("0"),
             "desconto": Decimal("0"),
@@ -124,6 +128,17 @@ def _itens_agregados(pedidos):
     )
     posicoes, posicoes_por_produto = _mapear_cmc_por_produto(itens)
     for item in itens:
+        produto_modelo = item.produto
+        codigo_produto = str(item.codigo_produto or item.codigo_produto_texto or "")
+        codigo_familia = str(
+            produto_modelo.codigo_familia
+            if produto_modelo and produto_modelo.codigo_familia is not None
+            else ""
+        )
+        if produtos_filtrados and codigo_produto not in produtos_filtrados:
+            continue
+        if familias_filtradas and codigo_familia not in familias_filtradas:
+            continue
         quantidade = _decimal(item.quantidade)
         cmc = _cmc_item(item, posicoes, posicoes_por_produto)
         if not cmc or not quantidade:
@@ -134,10 +149,16 @@ def _itens_agregados(pedidos):
             or item.produto_id
             or item.codigo_item
         )
-        produto = produtos[codigo]
+        produto = agregados[codigo]
         produto["codigo"] = item.codigo_produto_texto or (
             item.produto.codigo if item.produto_id else ""
         ) or str(item.codigo_produto or "")
+        produto["familia_codigo"] = codigo_familia
+        produto["familia"] = (
+            produto_modelo.descricao_familia
+            if produto_modelo and produto_modelo.descricao_familia
+            else "Sem familia"
+        )
         produto["produto"] = (
             item.produto.descricao if item.produto_id else ""
         ) or item.descricao or "Produto nao informado"
@@ -145,7 +166,7 @@ def _itens_agregados(pedidos):
         produto["custo"] += cmc * quantidade
         produto["desconto"] += _decimal(item.valor_desconto)
         produto["quantidade"] += quantidade
-    return list(produtos.values())
+    return list(agregados.values())
 
 
 def _preparar_linhas(produtos):
@@ -188,27 +209,51 @@ def _ranking(linhas, reverso=True):
     ]
 
 
-def _bolhas(linhas):
-    maior_volume = max((item["quantidade"] for item in linhas), default=Decimal("0"))
-    dados = []
-    for item in linhas:
-        volume = item["quantidade"]
-        raio = Decimal("7")
-        if maior_volume:
-            raio += (volume / maior_volume) * Decimal("18")
-        dados.append(
+def _mapa_lucro(linhas):
+    maiores = sorted(
+        linhas,
+        key=lambda item: (item["receita"], item["lucro"], item["margem"]),
+        reverse=True,
+    )
+    maior_receita = max((item["receita"] for item in maiores), default=Decimal("0"))
+    itens = []
+    for indice, item in enumerate(maiores):
+        receita = item["receita"]
+        lucro = max(item["lucro"], Decimal("0"))
+        custo = max(item["custo"], Decimal("0"))
+        receita_barra = float(_porcentagem(receita, maior_receita)) if maior_receita else 0
+        lucro_barra = float(_porcentagem(lucro, receita)) if receita else 0
+        custo_barra = max(100 - lucro_barra, 0)
+        itens.append(
             {
-                "x": float(item["receita"]),
-                "y": float(item["margem"]),
-                "r": float(raio),
                 "produto": item["produto"],
                 "codigo": item["codigo"] or "-",
-                "volume": float(volume),
-                "faixa": item["faixa"]["rotulo"],
-                "cor": item["faixa"]["cor"],
+                "familia_codigo": item["familia_codigo"],
+                "familia": item["familia"],
+                "receita_fmt": _formatar_moeda(receita),
+                "lucro_fmt": _formatar_moeda(lucro),
+                "margem_fmt": _formatar_percentual(item["margem"]),
+                "receita_barra": receita_barra,
+                "lucro_barra": lucro_barra,
+                "custo_barra": custo_barra,
+                "faixa": item["faixa"],
+                "padrao_visivel": indice < 5,
             }
         )
-    return dados
+    return itens
+
+
+def _familias_mapa(linhas):
+    familias = {}
+    for item in linhas:
+        codigo = item["familia_codigo"]
+        if not codigo:
+            continue
+        familias[codigo] = item["familia"]
+    return [
+        {"codigo": codigo, "nome": nome}
+        for codigo, nome in sorted(familias.items(), key=lambda item: item[1])
+    ]
 
 
 def margem_rentabilidade_comercial(
@@ -218,16 +263,22 @@ def margem_rentabilidade_comercial(
     data_fim="",
     empresas_ids=None,
     projetos_selecionados=None,
+    produtos_selecionados=None,
+    familias_selecionadas=None,
 ):
     empresas_ids = empresas_ids or [empresa.pk]
     inicio, fim = _intervalo_periodo(periodo, data_inicio, data_fim)
     inicio_anterior, fim_anterior = _periodo_anterior(inicio, fim)
     projetos = _normalizar_filtro_composto(projetos_selecionados or [])
+    produtos = _normalizar_filtro_composto(produtos_selecionados or [])
+    familias = _normalizar_filtro_composto(familias_selecionadas or [])
     pedidos = _query_pedidos(inicio, fim, empresas_ids, projetos)
     pedidos_anteriores = _query_pedidos(inicio_anterior, fim_anterior, empresas_ids, projetos)
 
-    linhas = _preparar_linhas(_itens_agregados(pedidos))
-    linhas_anteriores = _preparar_linhas(_itens_agregados(pedidos_anteriores))
+    linhas = _preparar_linhas(_itens_agregados(pedidos, produtos, familias))
+    linhas_anteriores = _preparar_linhas(
+        _itens_agregados(pedidos_anteriores, produtos, familias)
+    )
     receita_total = sum((item["receita"] for item in linhas), Decimal("0"))
     custo_total = sum((item["custo"] for item in linhas), Decimal("0"))
     desconto_total = _decimal(pedidos.aggregate(total=Sum("valor_descontos"))["total"])
@@ -271,7 +322,8 @@ def margem_rentabilidade_comercial(
                 "tom": "neutral",
             },
         ],
-        "bubble_data": _bolhas(linhas),
+        "mapa_lucro": _mapa_lucro(linhas),
+        "familias_mapa": _familias_mapa(linhas),
         "top_rentaveis": _ranking(linhas, True),
         "bottom_urgente": _ranking(linhas, False),
     }

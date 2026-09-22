@@ -1,7 +1,8 @@
 """Calculos do dashboard comercial Faturamento."""
 
+from calendar import monthrange
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Count, DecimalField, Exists, ExpressionWrapper, F, OuterRef, Q, Sum
@@ -122,7 +123,30 @@ def _codigos_vendedores(valores):
     return _normalizar_filtro_composto(valores or [])
 
 
-def _periodo_anterior(inicio, fim):
+def _subtrair_meses(ano, mes, quantidade):
+    indice = (ano * 12) + (mes - 1) - quantidade
+    return indice // 12, (indice % 12) + 1
+
+
+def _periodo_anterior(periodo, inicio, fim):
+    partes = (periodo or "").split("-")
+    if partes[0] == "mes" and len(partes) >= 3:
+        ano, mes = _subtrair_meses(int(partes[1]), int(partes[2]), 1)
+        return date(ano, mes, 1), date(ano, mes, monthrange(ano, mes)[1])
+    if partes[0] == "tri" and len(partes) >= 3:
+        ano = int(partes[1])
+        trimestre = int(partes[2])
+        mes_inicial = ((trimestre - 1) * 3) + 1
+        ano_anterior, mes_anterior = _subtrair_meses(ano, mes_inicial, 3)
+        mes_final = mes_anterior + 2
+        return date(ano_anterior, mes_anterior, 1), date(
+            ano_anterior,
+            mes_final,
+            monthrange(ano_anterior, mes_final)[1],
+        )
+    if partes[0] == "ano" and len(partes) >= 2:
+        ano = int(partes[1]) - 1
+        return date(ano, 1, 1), date(ano, 12, 31)
     dias = (fim - inicio).days + 1
     fim_anterior = inicio - timedelta(days=1)
     inicio_anterior = fim_anterior - timedelta(days=dias - 1)
@@ -624,8 +648,9 @@ def faturamento_comercial(
 ):
     empresas_ids = empresas_ids or [empresa.pk]
     inicio, fim = _intervalo_periodo(periodo, data_inicio, data_fim)
-    inicio_anterior, fim_anterior = _periodo_anterior(inicio, fim)
+    inicio_anterior, fim_anterior = _periodo_anterior(periodo, inicio, fim)
     meses = _meses_do_intervalo(inicio, fim)
+    meses_anteriores = _meses_do_intervalo(inicio_anterior, fim_anterior)
     projetos = _normalizar_filtro_composto(projetos_selecionados or [])
     vendedores = _codigos_vendedores(vendedores_selecionados or [])
     tipos = _tipos_validos(tipos_selecionados or [])
@@ -697,6 +722,11 @@ def faturamento_comercial(
         "data_faturamento",
         "valor_total",
     )
+    servicos_anterior_mes = _totais_por_mes(
+        ordens_faturadas_anteriores,
+        "data_faturamento",
+        "valor_total",
+    )
     produtos_anterior = _decimal(
         pedidos_faturados_anteriores.aggregate(total=Sum("valor_total_pedido"))[
             "total"
@@ -721,6 +751,10 @@ def faturamento_comercial(
     meta_periodo = sum((metas_mes[item["chave"]] for item in meses), Decimal("0"))
 
     acumulado = []
+    produtos_anterior_grafico = []
+    servicos_anterior_grafico = []
+    produtos_impostos_anterior = []
+    servicos_impostos_anterior = []
     for item in meses:
         valor_mes = Decimal("0")
         if "impostos" in tipos:
@@ -734,6 +768,44 @@ def faturamento_comercial(
         if "impostos" not in tipos and "servicos" in tipos:
             valor_mes += servicos_mes[item["chave"]]
         acumulado.append(float(valor_mes))
+    for item_anterior in meses_anteriores[: len(meses)]:
+        produtos_anterior = Decimal("0")
+        if "produtos" in tipos:
+            produtos_anterior = (
+                produtos_componentes_anteriores["mercadorias"][
+                    item_anterior["chave"]
+                ]
+                + produtos_componentes_anteriores["frete_despesas"][
+                    item_anterior["chave"]
+                ]
+            )
+        produtos_anterior_grafico.append(float(produtos_anterior))
+        servicos_anterior_grafico.append(
+            float(
+                servicos_anterior_mes[item_anterior["chave"]]
+                if "servicos" in tipos
+                else Decimal("0")
+            )
+        )
+        produtos_impostos_anterior.append(
+            float(
+                produtos_componentes_anteriores["impostos"][item_anterior["chave"]]
+                if "impostos" in tipos
+                else Decimal("0")
+            )
+        )
+        servicos_impostos_anterior.append(
+            float(
+                impostos_servicos_anteriores[item_anterior["chave"]]
+                if "impostos" in tipos
+                else Decimal("0")
+            )
+        )
+    while len(produtos_anterior_grafico) < len(meses):
+        produtos_anterior_grafico.append(0.0)
+        servicos_anterior_grafico.append(0.0)
+        produtos_impostos_anterior.append(0.0)
+        servicos_impostos_anterior.append(0.0)
 
     ranking = []
     if "produtos" in tipos and "impostos" not in tipos:
@@ -822,6 +894,10 @@ def faturamento_comercial(
             else 0
             for item in meses
         ],
+        "produtos_anterior": produtos_anterior_grafico,
+        "servicos_anterior": servicos_anterior_grafico,
+        "produtos_impostos_anterior": produtos_impostos_anterior,
+        "servicos_impostos_anterior": servicos_impostos_anterior,
         "servicos": [
             float(servicos_mes[item["chave"]]) if "servicos" in tipos else 0
             for item in meses

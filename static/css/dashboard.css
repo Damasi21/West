@@ -680,6 +680,11 @@
     box-shadow: 0 8px 18px rgba(29, 78, 216, .1);
     transform: translateY(-1px);
 }
+.chart-detail-button.is-active {
+    color: #ffffff;
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
 .chart-detail-button:focus-visible {
     outline: 3px solid rgba(59, 130, 246, .22);
     outline-offset: 2px;
@@ -2094,36 +2099,116 @@
 }
 .margin-kpi-positive small { color: #2d6a19; }
 .margin-kpi-negative small { color: #b91c1c; }
-.margin-bubble-card {
-    min-height: 475px;
+.margin-profit-map-card {
+    min-height: 430px;
 }
-.margin-bubble-canvas {
-    height: 355px;
-    padding: 0 1.35rem 1.25rem;
+.margin-profit-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .45rem;
 }
-.margin-legend {
+.margin-profit-toolbar .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    min-height: 32px;
+    font-size: .74rem;
+    font-weight: 800;
+}
+.margin-profit-search-label {
+    margin: 0 1.35rem .85rem;
+    padding: .55rem .7rem;
+    color: #1d2939;
+    background: #f3f7ff;
+    border: 1px solid #d9e5ff;
+    border-radius: 8px;
+    font-size: .78rem;
+    font-weight: 800;
+}
+.margin-profit-legend {
     display: flex;
     flex-wrap: wrap;
     gap: .45rem .95rem;
-    padding: 0 1.35rem .75rem;
+    padding: 0 1.35rem .85rem;
     color: #475467;
     font-size: .74rem;
     font-weight: 700;
 }
-.margin-legend span {
+.margin-profit-legend span {
     display: inline-flex;
     align-items: center;
     gap: .35rem;
 }
-.margin-legend i {
+.margin-profit-legend i {
     width: 11px;
     height: 11px;
-    border-radius: 50%;
+    border-radius: 3px;
 }
-.margin-dot-high { background: #356d1d; }
-.margin-dot-medium { background: #965f11; }
-.margin-dot-low { background: #a83232; }
-.margin-dot-negative { background: #80837d; }
+.margin-profit-dot-profit { background: #397713; }
+.margin-profit-dot-cost { background: #b9b7b0; }
+.margin-profit-map {
+    display: grid;
+    gap: 0;
+    padding: 0 1.35rem 1.3rem;
+}
+.margin-profit-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 120px) minmax(220px, 1fr) 58px 64px;
+    gap: .8rem;
+    align-items: center;
+    min-height: 76px;
+    padding: .8rem 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+.margin-profit-row:last-child { border-bottom: 0; }
+.margin-profit-name {
+    overflow: hidden;
+    color: #111827;
+    font-size: .86rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.margin-profit-main {
+    min-width: 0;
+}
+.margin-profit-bar {
+    display: flex;
+    min-width: 4px;
+    max-width: 100%;
+    height: 30px;
+    overflow: hidden;
+    border-radius: 5px;
+    background: #ecebe7;
+}
+.margin-profit-fill {
+    display: block;
+    min-width: 3px;
+    background: #397713;
+}
+.margin-cost-fill {
+    display: block;
+    background: #b9b7b0;
+}
+.margin-profit-main small {
+    display: block;
+    margin-top: .35rem;
+    color: #3f3f46;
+    font-size: .76rem;
+}
+.margin-profit-main small em {
+    display: inline-block;
+    margin-left: .35rem;
+    color: #667085;
+    font-style: normal;
+    font-weight: 700;
+}
+.margin-profit-efficiency {
+    color: #111827;
+    font-size: 1rem;
+    font-weight: 800;
+    text-align: right;
+}
 .margin-ranking-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4838,6 +4923,28 @@
     .margin-ranking-head { display: none; }
     .margin-ranking-row strong {
         white-space: normal;
+    }
+    .margin-profit-row {
+        grid-template-columns: 1fr auto;
+        gap: .45rem .7rem;
+    }
+    .margin-profit-toolbar {
+        justify-content: stretch;
+        width: 100%;
+    }
+    .margin-profit-toolbar .btn {
+        flex: 1 1 0;
+        justify-content: center;
+    }
+    .margin-profit-name,
+    .margin-profit-main {
+        grid-column: 1 / -1;
+    }
+    .margin-profit-name {
+        white-space: normal;
+    }
+    .margin-profit-efficiency {
+        text-align: left;
     }
     .billing-ranking-row {
         grid-template-columns: 28px minmax(0, 1fr);

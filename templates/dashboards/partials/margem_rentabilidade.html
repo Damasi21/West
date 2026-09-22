@@ -9,21 +9,127 @@
         {% endfor %}
     </div>
 
-    <article class="dre-chart-card margin-bubble-card">
+    <article class="dre-chart-card margin-profit-map-card">
         <div class="dre-chart-header">
             <div>
                 <small>MAPA DE RENTABILIDADE</small>
-                <h2>Receita x margem</h2>
+                <h2>Receita, lucro bruto e eficiencia</h2>
+            </div>
+            <div class="margin-profit-toolbar">
+                <button class="btn btn-outline-primary btn-sm" type="button" data-margin-product-search-open>
+                    <i class="bi bi-search"></i>
+                    Produtos
+                </button>
+                <button class="btn btn-outline-primary btn-sm" type="button" data-margin-family-search-open>
+                    <i class="bi bi-boxes"></i>
+                    Familias
+                </button>
+                <button class="btn btn-outline-secondary btn-sm d-none" type="button" data-margin-search-clear>
+                    <i class="bi bi-x-circle"></i>
+                    Limpar
+                </button>
             </div>
         </div>
-        <div class="margin-legend">
-            <span><i class="margin-dot-high"></i>Margem alta (&gt;=35%)</span>
-            <span><i class="margin-dot-medium"></i>Margem media (15-34%)</span>
-            <span><i class="margin-dot-low"></i>Margem baixa (&lt;15%)</span>
-            <span><i class="margin-dot-negative"></i>Margem negativa</span>
+        <div class="margin-profit-search-label d-none" data-margin-search-label></div>
+        <div class="margin-profit-legend">
+            <span><i class="margin-profit-dot-profit"></i>Lucro bruto</span>
+            <span><i class="margin-profit-dot-cost"></i>Custo (CMV)</span>
         </div>
-        <div class="margin-bubble-canvas">
-            <canvas data-margin-bubble-chart></canvas>
+        <div class="margin-profit-map">
+            {% for item in dados.mapa_lucro %}
+                <div class="margin-profit-row{% if not item.padrao_visivel %} d-none{% endif %}"
+                     data-margin-profit-row
+                     data-margin-default-visible="{{ item.padrao_visivel|yesno:'true,false' }}"
+                     data-margin-product-code="{{ item.codigo }}"
+                     data-margin-product-name="{{ item.produto }}"
+                     data-margin-family-code="{{ item.familia_codigo }}"
+                     data-margin-family-name="{{ item.familia }}">
+                    <strong class="margin-profit-name" title="{{ item.produto }}">{{ item.produto }}</strong>
+                    <div class="margin-profit-main">
+                        <div class="margin-profit-bar" style="width: {{ item.receita_barra }}%">
+                            <i class="margin-profit-fill" style="width: {{ item.lucro_barra }}%"></i>
+                            <i class="margin-cost-fill" style="width: {{ item.custo_barra }}%"></i>
+                        </div>
+                        <small>
+                            {{ item.receita_fmt }} - lucro {{ item.lucro_fmt }}
+                            {% if item.familia %}<em>{{ item.familia }}</em>{% endif %}
+                        </small>
+                    </div>
+                    <span class="margin-profit-efficiency">{{ item.margem_fmt }}</span>
+                    <b class="margin-pill margin-pill-{{ item.faixa.tom }}">{{ item.faixa.rotulo }}</b>
+                </div>
+            {% empty %}
+                <div class="margin-ranking-empty">Sem produtos faturados no periodo.</div>
+            {% endfor %}
+            <div class="margin-ranking-empty d-none" data-margin-search-empty>Nenhum produto encontrado para a busca.</div>
+        </div>
+
+        <div class="supplier-search-modal" data-margin-product-search-modal hidden>
+            <div class="supplier-search-dialog">
+                <header>
+                    <div>
+                        <small>BUSCA NO MAPA</small>
+                        <h2>Selecionar produto</h2>
+                    </div>
+                    <button class="supplier-search-close" type="button" data-margin-product-search-close aria-label="Fechar busca">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </header>
+                <label class="supplier-search-field">
+                    <i class="bi bi-search"></i>
+                    <input class="form-control" type="search" placeholder="Buscar produto" data-margin-product-search-input>
+                </label>
+                <div class="supplier-search-list">
+                    {% for item in dados.mapa_lucro %}
+                        <button type="button"
+                                data-margin-product-option
+                                data-margin-product-code="{{ item.codigo }}"
+                                data-margin-product-name="{{ item.produto }}">
+                            <span>{{ forloop.counter }}</span>
+                            <strong>{{ item.produto }}</strong>
+                            <mark>{{ item.codigo }}</mark>
+                            <em>{{ item.margem_fmt }}</em>
+                        </button>
+                    {% empty %}
+                        <div class="supplier-search-empty">Nenhum produto disponivel.</div>
+                    {% endfor %}
+                    <div class="supplier-search-empty d-none" data-margin-product-search-empty>Nenhum produto encontrado.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="supplier-search-modal" data-margin-family-search-modal hidden>
+            <div class="supplier-search-dialog">
+                <header>
+                    <div>
+                        <small>BUSCA NO MAPA</small>
+                        <h2>Selecionar familia</h2>
+                    </div>
+                    <button class="supplier-search-close" type="button" data-margin-family-search-close aria-label="Fechar busca">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </header>
+                <label class="supplier-search-field">
+                    <i class="bi bi-search"></i>
+                    <input class="form-control" type="search" placeholder="Buscar familia" data-margin-family-search-input>
+                </label>
+                <div class="supplier-search-list">
+                    {% for familia in dados.familias_mapa %}
+                        <button type="button"
+                                data-margin-family-option
+                                data-margin-family-code="{{ familia.codigo }}"
+                                data-margin-family-name="{{ familia.nome }}">
+                            <span>{{ forloop.counter }}</span>
+                            <strong>{{ familia.nome }}</strong>
+                            <mark>{{ familia.codigo }}</mark>
+                            <em>Familia</em>
+                        </button>
+                    {% empty %}
+                        <div class="supplier-search-empty">Nenhuma familia disponivel.</div>
+                    {% endfor %}
+                    <div class="supplier-search-empty d-none" data-margin-family-search-empty>Nenhuma familia encontrada.</div>
+                </div>
+            </div>
         </div>
     </article>
 
@@ -88,6 +194,4 @@
             </div>
         </article>
     </div>
-
-    {{ dados.bubble_data|json_script:"margin-bubble-data" }}
 </section>

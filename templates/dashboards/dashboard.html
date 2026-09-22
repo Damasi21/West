@@ -77,6 +77,9 @@
             {% include "dashboards/partials/multiselect_filter.html" with nome="projeto" titulo="Projetos" icone="bi-kanban" opcoes=projetos selecionados=projetos_selecionados vazio="Todos os projetos" %}
             {% include "dashboards/partials/multiselect_filter.html" with nome="departamento" titulo="Departamentos" icone="bi-diagram-3" opcoes=departamentos selecionados=departamentos_selecionados vazio="Todos os departamentos" %}
         {% endif %}
+        {% if area_slug == "comercial" and dashboard_slug == "margem-e-rentabilidade" %}
+            {% include "dashboards/partials/multiselect_filter.html" with nome="familia_produto" titulo="Familias" icone="bi-boxes" opcoes=familias_produtos selecionados=familias_produtos_selecionadas vazio="Todas as familias" %}
+        {% endif %}
         {% if area_slug == "financeiro" %}
             {% include "dashboards/partials/category_tree_filter.html" with categorias=categorias_arvore selecionados=categorias_selecionadas categorias_total=categorias_total %}
         {% endif %}

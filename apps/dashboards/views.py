@@ -1097,6 +1097,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
     from apps.empresas.models import (
         CategoriaOmie,
         DepartamentoOmie,
+        ProdutoOmie,
         ProjetoOmie,
         VendedorOmie,
     )
@@ -1123,6 +1124,14 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             ativo_omie=True,
             conta_inativa=False,
             nao_exibir=False,
+        ).select_related("empresa")
+    produtos_familias = ProdutoOmie.objects.none()
+    if area_slug == "comercial" and dashboard_slug == "margem-e-rentabilidade":
+        produtos_familias = ProdutoOmie.objects.filter(
+            empresa_id__in=empresas_consulta_ids,
+            ativo_omie=True,
+        ).exclude(codigo_familia__isnull=True).exclude(
+            descricao_familia__isnull=True
         ).select_related("empresa")
 
     projetos_opcoes = [
@@ -1161,6 +1170,24 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         }
         for categoria in categorias
     ]
+    familias_produtos_opcoes = []
+    familias_produtos_vistas = set()
+    for produto in produtos_familias:
+        codigo_familia = str(produto.codigo_familia or "").strip()
+        descricao_familia = str(produto.descricao_familia or "").strip()
+        if not codigo_familia or not descricao_familia:
+            continue
+        chave = (produto.empresa_id, codigo_familia)
+        if chave in familias_produtos_vistas:
+            continue
+        familias_produtos_vistas.add(chave)
+        familias_produtos_opcoes.append(
+            {
+                "valor": f"{produto.empresa_id}:{codigo_familia}",
+                "nome": descricao_familia,
+                "empresa": produto.empresa.nome_fantasia,
+            }
+        )
     categorias_arvore = _categorias_em_arvore(categorias)
 
     if "limpar_filtros" in request.GET:
@@ -1170,6 +1197,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         ]
         vendedores_selecionados = [item["valor"] for item in vendedores_opcoes]
         categorias_selecionadas = [item["valor"] for item in categorias_opcoes]
+        familias_produtos_selecionadas = [
+            item["valor"] for item in familias_produtos_opcoes
+        ]
         tipos_faturamento_selecionados = TIPOS_FATURAMENTO_PADRAO[:]
         budget_dimensao = "produto"
         curva_abc_tipo = TIPO_CURVA_ESTOQUE
@@ -1186,6 +1216,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "departamentos": departamentos_selecionados,
             "vendedores": vendedores_selecionados,
             "categorias": categorias_selecionadas,
+            "familias_produtos": familias_produtos_selecionadas,
             "tipos_faturamento": tipos_faturamento_selecionados,
             "budget_dimensao": budget_dimensao,
             "curva_abc_tipo": curva_abc_tipo,
@@ -1209,6 +1240,10 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         categorias_selecionadas = _valores_validos(
             request.GET.getlist("categoria"),
             (item["valor"] for item in categorias_opcoes),
+        )
+        familias_produtos_selecionadas = _valores_validos(
+            request.GET.getlist("familia_produto"),
+            (item["valor"] for item in familias_produtos_opcoes),
         )
         tipos_faturamento_selecionados = _valores_validos(
             request.GET.getlist("tipo_faturamento"),
@@ -1242,6 +1277,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "departamentos": departamentos_selecionados,
             "vendedores": vendedores_selecionados,
             "categorias": categorias_selecionadas,
+            "familias_produtos": familias_produtos_selecionadas,
             "tipos_faturamento": tipos_faturamento_selecionados,
             "budget_dimensao": budget_dimensao,
             "curva_abc_tipo": curva_abc_tipo,
@@ -1265,6 +1301,13 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         categorias_selecionadas = _valores_validos(
             estado.get("categorias", [item["valor"] for item in categorias_opcoes]),
             (item["valor"] for item in categorias_opcoes),
+        )
+        familias_produtos_selecionadas = _valores_validos(
+            estado.get(
+                "familias_produtos",
+                [item["valor"] for item in familias_produtos_opcoes],
+            ),
+            (item["valor"] for item in familias_produtos_opcoes),
         )
         tipos_faturamento_selecionados = _valores_validos(
             estado.get("tipos_faturamento", TIPOS_FATURAMENTO_PADRAO[:]),
@@ -1307,6 +1350,10 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             categorias_selecionadas,
             categorias_opcoes,
         )
+    )
+    familias_produtos_consulta = _valores_para_consulta(
+        familias_produtos_selecionadas,
+        familias_produtos_opcoes,
     )
     departamentos_consulta = _codigos_filtro_composto(
         _valores_para_consulta(
@@ -1372,6 +1419,8 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "categorias_arvore": categorias_arvore,
             "categorias_total": len(categorias_opcoes),
             "categorias_selecionadas": categorias_selecionadas,
+            "familias_produtos": familias_produtos_opcoes,
+            "familias_produtos_selecionadas": familias_produtos_selecionadas,
             "tipos_faturamento": tipos_faturamento_opcoes,
             "tipos_faturamento_selecionados": tipos_faturamento_selecionados,
             "budget_dimensao": budget_dimensao,
@@ -1482,6 +1531,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_fim,
             empresas_consulta_ids,
             projetos_consulta,
+            familias_selecionadas=familias_produtos_consulta,
         )
     if area_slug == "financeiro" and dashboard_slug == "dre-gerencial":
         contexto["dre_gerencial"] = dre_gerencial(
