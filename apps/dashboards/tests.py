@@ -1639,6 +1639,8 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Produtos")
         self.assertContains(response, "Servicos")
         self.assertContains(response, "Impostos")
+        self.assertContains(response, "css/dashboard.css?v=")
+        self.assertContains(response, "js/dashboard.js?v=")
         self.assertContains(response, "Comparativo")
         self.assertContains(response, "billing-chart-products-previous")
         self.assertContains(response, "billing-chart-services-previous")

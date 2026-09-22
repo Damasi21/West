@@ -424,6 +424,19 @@
             const previousServices = taxesMode
                 ? parseJson("billing-chart-services-taxes-previous")
                 : parseJson("billing-chart-services-previous");
+            const setDatasetColor = (labels, color) => {
+                chart.data.datasets.forEach((dataset) => {
+                    if (!labels.includes(dataset.label)) return;
+                    dataset.backgroundColor = color;
+                    dataset.borderColor = color;
+                });
+            };
+
+            setDatasetColor(["Mercadorias", "Impostos de produtos"], "#FF8C00");
+            setDatasetColor(["Frete e outras despesas"], "#F20298");
+            setDatasetColor(["Servicos", "Impostos de servicos"], "#0541FF");
+            setDatasetColor(["Produtos periodo anterior"], "#FEBA4F");
+            setDatasetColor(["Servicos periodo anterior"], "#74A3FF");
 
             if (!chart.data.datasets.some((dataset) => dataset.billingComparison)) {
                 chart.data.datasets.push(
@@ -460,8 +473,8 @@
                         billingComparison: true,
                     }
                 );
-                chart.update();
             }
+            chart.update();
 
             toggle.addEventListener("click", () => {
                 const comparisonIndexes = chart.data.datasets

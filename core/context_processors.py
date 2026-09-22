@@ -16,4 +16,5 @@ def brand(request):
         "app_brand_meta_description": settings.APP_BRAND_META_DESCRIPTION,
         "app_brand_footer_text": settings.APP_BRAND_FOOTER_TEXT,
         "app_brand_footer_subtitle": settings.APP_BRAND_FOOTER_SUBTITLE,
+        "static_asset_version": settings.STATIC_ASSET_VERSION,
     }
