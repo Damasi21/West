@@ -218,6 +218,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const marginDashboard = document.querySelector("[data-margin-dashboard]");
     if (marginDashboard) {
+        marginDashboard.dataset.marginMapReady = "true";
         const productOpen = marginDashboard.querySelector("[data-margin-product-search-open]");
         const familyOpen = marginDashboard.querySelector("[data-margin-family-search-open]");
         const clearButton = marginDashboard.querySelector("[data-margin-search-clear]");
@@ -1451,6 +1452,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             const comparisonToggle = billing.querySelector("[data-billing-comparison-toggle]");
             if (comparisonToggle) {
+                comparisonToggle.dataset.billingComparisonReady = "true";
                 const comparisonIndexes = mainChart.data.datasets
                     .map((dataset, index) => dataset.billingComparison ? index : -1)
                     .filter((index) => index >= 0);

@@ -3,6 +3,155 @@
 
 {% block title %}{{ dashboard_atual.titulo }} - {{ empresa.nome_fantasia }}{% endblock %}
 
+{% block extra_css %}
+{{ block.super }}
+{% if area_slug == "comercial" and dashboard_slug == "margem-e-rentabilidade" %}
+<style>
+    .margin-profit-map-card {
+        min-height: 430px;
+    }
+    .margin-profit-map-card .dre-chart-header {
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    .margin-profit-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: .45rem;
+        margin-left: auto;
+    }
+    .margin-profit-toolbar .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        min-height: 32px;
+        font-size: .74rem;
+        font-weight: 800;
+    }
+    .margin-profit-search-label {
+        margin: 0 1.35rem .85rem;
+        padding: .55rem .7rem;
+        color: #1d2939;
+        background: #f3f7ff;
+        border: 1px solid #d9e5ff;
+        border-radius: 8px;
+        font-size: .78rem;
+        font-weight: 800;
+    }
+    .margin-profit-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .45rem .95rem;
+        padding: 0 1.35rem .85rem;
+        color: #475467;
+        font-size: .74rem;
+        font-weight: 700;
+    }
+    .margin-profit-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+    }
+    .margin-profit-legend i {
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+    }
+    .margin-profit-dot-profit { background: #397713; }
+    .margin-profit-dot-cost { background: #b9b7b0; }
+    .margin-profit-map {
+        display: grid;
+        padding: 0 1.35rem 1.3rem;
+    }
+    .margin-profit-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 170px) minmax(240px, 1fr) 62px 78px;
+        gap: .85rem;
+        align-items: center;
+        min-height: 76px;
+        padding: .8rem 0;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .margin-profit-row:last-child { border-bottom: 0; }
+    .margin-profit-name {
+        overflow: hidden;
+        color: #111827;
+        font-size: .86rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .margin-profit-main {
+        min-width: 0;
+    }
+    .margin-profit-bar {
+        display: flex;
+        min-width: 4px;
+        max-width: 100%;
+        height: 30px;
+        overflow: hidden;
+        border-radius: 5px;
+        background: #ecebe7;
+    }
+    .margin-profit-fill {
+        display: block;
+        min-width: 3px;
+        background: #397713;
+    }
+    .margin-cost-fill {
+        display: block;
+        background: #b9b7b0;
+    }
+    .margin-profit-main small {
+        display: block;
+        margin-top: .35rem;
+        color: #3f3f46;
+        font-size: .76rem;
+    }
+    .margin-profit-main small em {
+        display: inline-block;
+        margin-left: .35rem;
+        color: #667085;
+        font-style: normal;
+        font-weight: 700;
+    }
+    .margin-profit-efficiency {
+        color: #111827;
+        font-size: 1rem;
+        font-weight: 800;
+        text-align: right;
+    }
+    @media (max-width: 767px) {
+        .margin-profit-map-card .dre-chart-header {
+            flex-direction: column;
+        }
+        .margin-profit-toolbar {
+            justify-content: stretch;
+            width: 100%;
+        }
+        .margin-profit-toolbar .btn {
+            flex: 1 1 0;
+            justify-content: center;
+        }
+        .margin-profit-row {
+            grid-template-columns: 1fr auto;
+            gap: .45rem .7rem;
+        }
+        .margin-profit-name,
+        .margin-profit-main {
+            grid-column: 1 / -1;
+        }
+        .margin-profit-name {
+            white-space: normal;
+        }
+        .margin-profit-efficiency {
+            text-align: left;
+        }
+    }
+</style>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="dashboard-page dashboard-area-{{ area_slug }}">
 <div class="page-heading">
@@ -231,4 +380,231 @@
 </div>
 {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+{% if area_slug == "comercial" and dashboard_slug == "faturamento" %}
+<script>
+(() => {
+    const ready = (callback) => {
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", callback);
+        } else {
+            callback();
+        }
+    };
+
+    ready(() => {
+        const billing = document.querySelector("[data-billing-dashboard]");
+        const toggle = billing?.querySelector("[data-billing-comparison-toggle]");
+        const canvas = billing?.querySelector("[data-billing-main-chart]");
+        if (!billing || !toggle || toggle.dataset.billingComparisonReady === "true" || !canvas || typeof Chart === "undefined") return;
+
+        let attempts = 0;
+        const installFallback = () => {
+            const chart = Chart.getChart(canvas);
+            if (!chart) {
+                attempts += 1;
+                if (attempts < 20) window.setTimeout(installFallback, 100);
+                return;
+            }
+            if (toggle.dataset.billingComparisonReady === "true") return;
+            toggle.dataset.billingComparisonReady = "fallback";
+
+            const parseJson = (id) => {
+                const element = document.getElementById(id);
+                return element ? JSON.parse(element.textContent) : [];
+            };
+            const types = parseJson("billing-chart-types");
+            const taxesMode = Array.isArray(types) && types.includes("impostos");
+            const previousProducts = taxesMode
+                ? parseJson("billing-chart-products-taxes-previous")
+                : parseJson("billing-chart-products-previous");
+            const previousServices = taxesMode
+                ? parseJson("billing-chart-services-taxes-previous")
+                : parseJson("billing-chart-services-previous");
+
+            if (!chart.data.datasets.some((dataset) => dataset.billingComparison)) {
+                chart.data.datasets.push(
+                    {
+                        type: "bar",
+                        label: "Produtos periodo anterior",
+                        data: previousProducts,
+                        backgroundColor: "#FEBA4F",
+                        borderColor: "#FEBA4F",
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        stack: taxesMode ? undefined : "produtos-anterior",
+                        barPercentage: .5,
+                        categoryPercentage: .68,
+                        maxBarThickness: 26,
+                        yAxisID: "y",
+                        hidden: true,
+                        billingComparison: true,
+                    },
+                    {
+                        type: "bar",
+                        label: "Servicos periodo anterior",
+                        data: previousServices,
+                        backgroundColor: "#74A3FF",
+                        borderColor: "#74A3FF",
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        stack: taxesMode ? undefined : "servicos-anterior",
+                        barPercentage: .5,
+                        categoryPercentage: .68,
+                        maxBarThickness: 26,
+                        yAxisID: "y",
+                        hidden: true,
+                        billingComparison: true,
+                    }
+                );
+                chart.update();
+            }
+
+            toggle.addEventListener("click", () => {
+                const comparisonIndexes = chart.data.datasets
+                    .map((dataset, index) => dataset.billingComparison ? index : -1)
+                    .filter((index) => index >= 0);
+                if (!comparisonIndexes.length) return;
+                const visible = comparisonIndexes.some((index) => chart.isDatasetVisible(index));
+                comparisonIndexes.forEach((index) => {
+                    chart.setDatasetVisibility(index, !visible);
+                });
+                toggle.classList.toggle("is-active", !visible);
+                toggle.setAttribute("aria-pressed", String(!visible));
+                chart.update();
+            });
+        };
+        installFallback();
+    });
+})();
+</script>
+{% endif %}
+{% if area_slug == "comercial" and dashboard_slug == "margem-e-rentabilidade" %}
+<script>
+(() => {
+    const ready = (callback) => {
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", callback);
+        } else {
+            callback();
+        }
+    };
+
+    ready(() => {
+        const dashboard = document.querySelector("[data-margin-dashboard]");
+        if (!dashboard || dashboard.dataset.marginMapReady === "true") return;
+        dashboard.dataset.marginMapReady = "fallback";
+
+        const productOpen = dashboard.querySelector("[data-margin-product-search-open]");
+        const familyOpen = dashboard.querySelector("[data-margin-family-search-open]");
+        const clearButton = dashboard.querySelector("[data-margin-search-clear]");
+        const label = dashboard.querySelector("[data-margin-search-label]");
+        const mapEmpty = dashboard.querySelector("[data-margin-search-empty]");
+        const rows = [...dashboard.querySelectorAll("[data-margin-profit-row]")];
+        const productModal = dashboard.querySelector("[data-margin-product-search-modal]");
+        const productClose = dashboard.querySelector("[data-margin-product-search-close]");
+        const productInput = dashboard.querySelector("[data-margin-product-search-input]");
+        const productOptions = [...dashboard.querySelectorAll("[data-margin-product-option]")];
+        const productEmpty = dashboard.querySelector("[data-margin-product-search-empty]");
+        const familyModal = dashboard.querySelector("[data-margin-family-search-modal]");
+        const familyClose = dashboard.querySelector("[data-margin-family-search-close]");
+        const familyInput = dashboard.querySelector("[data-margin-family-search-input]");
+        const familyOptions = [...dashboard.querySelectorAll("[data-margin-family-option]")];
+        const familyEmpty = dashboard.querySelector("[data-margin-family-search-empty]");
+
+        const normalize = (value) => String(value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .trim();
+
+        const filterOptions = (options, term, datasetKey, emptyElement) => {
+            let count = 0;
+            options.forEach((option) => {
+                const visible = !term || normalize(option.dataset[datasetKey]).includes(term);
+                option.classList.toggle("d-none", !visible);
+                if (visible) count += 1;
+            });
+            emptyElement?.classList.toggle("d-none", count > 0 || options.length === 0);
+        };
+
+        const openModal = (modal, input, options, datasetKey, emptyElement) => {
+            if (!modal) return;
+            modal.hidden = false;
+            if (input) input.value = "";
+            filterOptions(options, "", datasetKey, emptyElement);
+            window.setTimeout(() => input?.focus(), 50);
+        };
+
+        const closeModals = () => {
+            if (productModal) productModal.hidden = true;
+            if (familyModal) familyModal.hidden = true;
+        };
+
+        const showRows = (matcher, text) => {
+            let count = 0;
+            rows.forEach((row) => {
+                const visible = matcher(row);
+                row.classList.toggle("d-none", !visible);
+                if (visible) count += 1;
+            });
+            mapEmpty?.classList.toggle("d-none", count > 0 || rows.length === 0);
+            if (label) {
+                label.textContent = text || "";
+                label.classList.toggle("d-none", !text);
+            }
+            clearButton?.classList.toggle("d-none", !text);
+        };
+
+        const resetRows = () => {
+            rows.forEach((row) => {
+                row.classList.toggle("d-none", row.dataset.marginDefaultVisible !== "true");
+            });
+            mapEmpty?.classList.add("d-none");
+            label?.classList.add("d-none");
+            clearButton?.classList.add("d-none");
+            closeModals();
+        };
+
+        productOpen?.addEventListener("click", () => openModal(productModal, productInput, productOptions, "marginProductName", productEmpty));
+        familyOpen?.addEventListener("click", () => openModal(familyModal, familyInput, familyOptions, "marginFamilyName", familyEmpty));
+        productClose?.addEventListener("click", closeModals);
+        familyClose?.addEventListener("click", closeModals);
+        clearButton?.addEventListener("click", resetRows);
+        productInput?.addEventListener("input", () => filterOptions(productOptions, normalize(productInput.value), "marginProductName", productEmpty));
+        familyInput?.addEventListener("input", () => filterOptions(familyOptions, normalize(familyInput.value), "marginFamilyName", familyEmpty));
+        productOptions.forEach((option) => {
+            option.addEventListener("click", () => {
+                showRows(
+                    (row) => row.dataset.marginProductCode === option.dataset.marginProductCode,
+                    `Produto: ${option.dataset.marginProductName}`
+                );
+                closeModals();
+            });
+        });
+        familyOptions.forEach((option) => {
+            option.addEventListener("click", () => {
+                showRows(
+                    (row) => row.dataset.marginFamilyCode === option.dataset.marginFamilyCode,
+                    `Familia: ${option.dataset.marginFamilyName}`
+                );
+                closeModals();
+            });
+        });
+        productModal?.addEventListener("click", (event) => {
+            if (event.target === productModal) closeModals();
+        });
+        familyModal?.addEventListener("click", (event) => {
+            if (event.target === familyModal) closeModals();
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") closeModals();
+        });
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}
