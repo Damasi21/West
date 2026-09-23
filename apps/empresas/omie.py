@@ -3,7 +3,7 @@ import re
 import ssl
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -1089,16 +1089,26 @@ def consultar_pedidos(
     integracao,
     pagina,
     registros_por_pagina=100,
+    inicio=None,
+    fim=None,
 ):
+    parametros = {
+        "pagina": pagina,
+        "registros_por_pagina": registros_por_pagina,
+        "apenas_importado_api": "N",
+    }
+    if inicio and fim:
+        parametros.update(
+            {
+                "filtrar_por_data_de": inicio.strftime("%d/%m/%Y"),
+                "filtrar_por_data_ate": fim.strftime("%d/%m/%Y"),
+                "filtrar_apenas_inclusao": "S",
+                "filtrar_apenas_alteracao": "N",
+            }
+        )
     payload = {
         "call": "ListarPedidos",
-        "param": [
-            {
-                "pagina": pagina,
-                "registros_por_pagina": registros_por_pagina,
-                "apenas_importado_api": "N",
-            }
-        ],
+        "param": [parametros],
         "app_key": integracao.app_key,
         "app_secret": integracao.obter_app_secret(),
     }
@@ -1568,16 +1578,26 @@ def consultar_ordens_servico(
     integracao,
     pagina,
     registros_por_pagina=50,
+    inicio=None,
+    fim=None,
 ):
+    parametros = {
+        "pagina": pagina,
+        "registros_por_pagina": registros_por_pagina,
+        "apenas_importado_api": "N",
+    }
+    if inicio and fim:
+        parametros.update(
+            {
+                "filtrar_por_data_de": inicio.strftime("%d/%m/%Y"),
+                "filtrar_por_data_ate": fim.strftime("%d/%m/%Y"),
+                "filtrar_apenas_inclusao": "S",
+                "filtrar_apenas_alteracao": "N",
+            }
+        )
     payload = {
         "call": "ListarOS",
-        "param": [
-            {
-                "pagina": pagina,
-                "registros_por_pagina": registros_por_pagina,
-                "apenas_importado_api": "N",
-            }
-        ],
+        "param": [parametros],
         "app_key": integracao.app_key,
         "app_secret": integracao.obter_app_secret(),
     }
@@ -1612,15 +1632,25 @@ def consultar_nfses(
     integracao,
     pagina,
     registros_por_pagina=50,
+    inicio=None,
+    fim=None,
 ):
+    parametros = {
+        "nPagina": pagina,
+        "nRegPorPagina": registros_por_pagina,
+    }
+    if inicio and fim:
+        parametros.update(
+            {
+                "dEmiInicial": inicio.strftime("%d/%m/%Y"),
+                "hEmiInicial": "00:00:00",
+                "dEmiFinal": fim.strftime("%d/%m/%Y"),
+                "hEmiFinal": "23:59:59",
+            }
+        )
     payload = {
         "call": "ListarNFSEs",
-        "param": [
-            {
-                "nPagina": pagina,
-                "nRegPorPagina": registros_por_pagina,
-            }
-        ],
+        "param": [parametros],
         "app_key": integracao.app_key,
         "app_secret": integracao.obter_app_secret(),
     }
@@ -1655,16 +1685,26 @@ def consultar_contratos(
     integracao,
     pagina,
     registros_por_pagina=50,
+    inicio=None,
+    fim=None,
 ):
+    parametros = {
+        "pagina": pagina,
+        "registros_por_pagina": registros_por_pagina,
+        "apenas_importado_api": "N",
+    }
+    if inicio and fim:
+        parametros.update(
+            {
+                "filtrar_por_data_de": inicio.strftime("%d/%m/%Y"),
+                "filtrar_por_data_ate": fim.strftime("%d/%m/%Y"),
+                "filtrar_apenas_inclusao": "S",
+                "filtrar_apenas_alteracao": "N",
+            }
+        )
     payload = {
         "call": "ListarContratos",
-        "param": [
-            {
-                "pagina": pagina,
-                "registros_por_pagina": registros_por_pagina,
-                "apenas_importado_api": "N",
-            }
-        ],
+        "param": [parametros],
         "app_key": integracao.app_key,
         "app_secret": integracao.obter_app_secret(),
     }
@@ -2865,6 +2905,24 @@ def _saldo_provisorio_extrato(dados):
                 if isinstance(item, dict) and "nSaldoProvisorio" in item:
                     return item.get("nSaldoProvisorio")
     return None
+
+
+def _intervalo_sincronizacao(periodo):
+    if periodo == SincronizacaoOmie.Periodo.TUDO:
+        return None, None
+
+    hoje = timezone.localdate()
+    if periodo == SincronizacaoOmie.Periodo.ANO_ATUAL:
+        inicio = date(hoje.year, 1, 1)
+    elif periodo == SincronizacaoOmie.Periodo.MES_ATUAL:
+        inicio = date(hoje.year, hoje.month, 1)
+    elif periodo == SincronizacaoOmie.Periodo.ULTIMOS_30_DIAS:
+        inicio = hoje - timedelta(days=30)
+    else:
+        return None, None
+
+    margem = max(int(getattr(settings, "OMIE_SYNC_SAFETY_DAYS", 3)), 0)
+    return inicio - timedelta(days=margem), hoje
 
 
 def _atualizar_saldos_extrato_contas_correntes(empresa, integracao):
@@ -4238,9 +4296,22 @@ def executar_sincronizacao_omie(sincronizacao_id):
         recursos_validos = {valor for valor, _ in SincronizacaoOmie.Recurso.choices}
         if recurso_selecionado not in recursos_validos:
             recurso_selecionado = SincronizacaoOmie.Recurso.COMPLETA
+        periodo_inicio, periodo_fim = _intervalo_sincronizacao(sincronizacao.periodo)
 
         def escopos(*valores):
             return set(valores)
+
+        def consultar_recurso(recurso, pagina):
+            kwargs = {}
+            if (
+                "registros_por_pagina" in recurso
+                and recurso.get("registros_por_pagina") is not None
+            ):
+                kwargs["registros_por_pagina"] = recurso["registros_por_pagina"]
+            if recurso.get("usar_periodo") and periodo_inicio and periodo_fim:
+                kwargs["inicio"] = periodo_inicio
+                kwargs["fim"] = periodo_fim
+            return recurso["consultar"](integracao, pagina, **kwargs)
 
         recursos = [
             {
@@ -4366,6 +4437,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave": "contratoCadastro",
                 "salvar": _salvar_contratos,
                 "modelo": ContratoOmie,
+                "usar_periodo": True,
             },
             {
                 "nome": "Ordens de servico",
@@ -4373,6 +4445,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave": "osCadastro",
                 "salvar": _salvar_ordens_servico,
                 "modelo": OrdemServicoOmie,
+                "usar_periodo": True,
             },
             {
                 "nome": "NFS-es",
@@ -4382,6 +4455,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "chave_total_registros": "nTotRegistros",
                 "salvar": _salvar_nfses,
                 "modelo": NfseOmie,
+                "usar_periodo": True,
             },
             {
                 "nome": "Contas a pagar",
@@ -4431,6 +4505,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "salvar": _salvar_pedidos,
                 "modelo": PedidoOmie,
                 "ignorar_conta_corrente_ausente": True,
+                "usar_periodo": True,
             },
         ]
         escopos_por_recurso = {
@@ -4498,13 +4573,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
             sincronizacao.mensagem = f"{contexto_atual}..."
             sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
             try:
-                registros_por_pagina = recurso.get("registros_por_pagina")
-                recurso["primeira_resposta"] = (
-                    recurso["consultar"](integracao, 1, registros_por_pagina)
-                    if "registros_por_pagina" in recurso
-                    and registros_por_pagina is not None
-                    else recurso["consultar"](integracao, 1)
-                )
+                recurso["primeira_resposta"] = consultar_recurso(recurso, 1)
             except OmieAPIError as exc:
                 if recurso.get("ignorar_conta_corrente_ausente") and _eh_conta_corrente_nao_cadastrada_omie(exc):
                     avisos.append(f"{recurso['nome']}: pagina 1 ignorada: {exc}")
@@ -4554,16 +4623,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                     resposta = (
                         recurso["primeira_resposta"]
                         if pagina == 1
-                        else (
-                            recurso["consultar"](
-                                integracao,
-                                pagina,
-                                recurso.get("registros_por_pagina"),
-                            )
-                            if "registros_por_pagina" in recurso
-                            and recurso.get("registros_por_pagina") is not None
-                            else recurso["consultar"](integracao, pagina)
-                        )
+                        else consultar_recurso(recurso, pagina)
                     )
                 except OmieAPIError as exc:
                     if recurso.get("ignorar_conta_corrente_ausente") and _eh_conta_corrente_nao_cadastrada_omie(exc):
@@ -4600,7 +4660,11 @@ def executar_sincronizacao_omie(sincronizacao_id):
                             "atualizada_em",
                         ]
                     )
-            if recurso.get("modelo") and not recurso.get("sincronizacao_incompleta"):
+            if (
+                recurso.get("modelo")
+                and not recurso.get("sincronizacao_incompleta")
+                and not (recurso.get("usar_periodo") and periodo_inicio and periodo_fim)
+            ):
                 desativados = _desativar_registros_ausentes_na_omie(
                     recurso["modelo"],
                     sincronizacao.empresa,

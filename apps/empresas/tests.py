@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
 from unittest.mock import patch
@@ -1623,6 +1623,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         requisicao_tipos = urlopen_mock.call_args_list[0].args[0]
         payload_tipos = json.loads(requisicao_tipos.data)
         self.assertTrue(requisicao_tipos.full_url.endswith("/geral/tipocc/"))
+
         self.assertEqual(payload_tipos["call"], "ListarTiposCC")
         self.assertEqual(
             payload_tipos["param"][0],
@@ -2349,6 +2350,39 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(str(item.quantidade_recebida), "4.0000")
         self.assertEqual(str(item.preco_unitario), "52.0000")
 
+    @patch("apps.empresas.omie.urlopen")
+    def test_consultas_comerciais_enviam_filtro_de_periodo(self, urlopen_mock):
+        urlopen_mock.return_value.__enter__.return_value.read.return_value = (
+            b'{"pagina": 1, "total_de_paginas": 1, "total_de_registros": 0}'
+        )
+        inicio = date(2026, 9, 1)
+        fim = date(2026, 9, 23)
+
+        consultar_pedidos(self.integracao, 1, inicio=inicio, fim=fim)
+        payload_pedidos = json.loads(urlopen_mock.call_args.args[0].data)["param"][0]
+        self.assertEqual(payload_pedidos["filtrar_por_data_de"], "01/09/2026")
+        self.assertEqual(payload_pedidos["filtrar_por_data_ate"], "23/09/2026")
+        self.assertEqual(payload_pedidos["filtrar_apenas_inclusao"], "S")
+
+        consultar_ordens_servico(self.integracao, 1, inicio=inicio, fim=fim)
+        payload_os = json.loads(urlopen_mock.call_args.args[0].data)["param"][0]
+        self.assertEqual(payload_os["filtrar_por_data_de"], "01/09/2026")
+        self.assertEqual(payload_os["filtrar_por_data_ate"], "23/09/2026")
+        self.assertEqual(payload_os["filtrar_apenas_inclusao"], "S")
+
+        consultar_contratos(self.integracao, 1, inicio=inicio, fim=fim)
+        payload_contratos = json.loads(urlopen_mock.call_args.args[0].data)["param"][0]
+        self.assertEqual(payload_contratos["filtrar_por_data_de"], "01/09/2026")
+        self.assertEqual(payload_contratos["filtrar_por_data_ate"], "23/09/2026")
+        self.assertEqual(payload_contratos["filtrar_apenas_inclusao"], "S")
+
+        consultar_nfses(self.integracao, 1, inicio=inicio, fim=fim)
+        payload_nfses = json.loads(urlopen_mock.call_args.args[0].data)["param"][0]
+        self.assertEqual(payload_nfses["dEmiInicial"], "01/09/2026")
+        self.assertEqual(payload_nfses["dEmiFinal"], "23/09/2026")
+        self.assertEqual(payload_nfses["hEmiInicial"], "00:00:00")
+        self.assertEqual(payload_nfses["hEmiFinal"], "23:59:59")
+
     def test_sincronizacao_ignora_pedidos_com_conta_corrente_ausente_no_omie(self):
         respostas_vazias = {
             "consultar_clientes": {"total_de_paginas": 1, "total_de_registros": 0, "clientes_cadastro": []},
@@ -2411,6 +2445,58 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertIn("Conta Corrente", sincronizacao.erro)
         pedido_existente.refresh_from_db()
         self.assertTrue(pedido_existente.ativo_omie)
+
+    @override_settings(OMIE_SYNC_SAFETY_DAYS=0)
+    def test_sincronizacao_comercial_mes_atual_filtra_lancamentos_por_periodo(self):
+        respostas_vazias = {
+            "consultar_clientes": {"total_de_paginas": 1, "total_de_registros": 0, "clientes_cadastro": []},
+            "consultar_projetos": {"total_de_paginas": 1, "total_de_registros": 0, "cadastro": []},
+            "consultar_departamentos": {"total_de_paginas": 1, "total_de_registros": 0, "departamentos": []},
+            "consultar_vendedores": {"total_de_paginas": 1, "total_de_registros": 0, "cadastro": []},
+            "consultar_produtos": {"total_de_paginas": 1, "total_de_registros": 0, "produto_servico_cadastro": []},
+            "consultar_categorias": {"total_de_paginas": 1, "total_de_registros": 0, "categoria_cadastro": []},
+            "consultar_servicos": {"nTotPaginas": 1, "nTotRegistros": 0, "cadastros": []},
+            "consultar_contratos": {"total_de_paginas": 1, "total_de_registros": 0, "contratoCadastro": []},
+            "consultar_ordens_servico": {"total_de_paginas": 1, "total_de_registros": 0, "osCadastro": []},
+            "consultar_nfses": {"nTotPaginas": 1, "nTotRegistros": 0, "nfseEncontradas": []},
+            "consultar_pedidos": {"total_de_paginas": 1, "total_de_registros": 0, "pedido_venda_produto": []},
+        }
+        patchers = {
+            nome: patch(f"apps.empresas.omie.{nome}", return_value=resposta)
+            for nome, resposta in respostas_vazias.items()
+        }
+        mocks = {nome: patcher.start() for nome, patcher in patchers.items()}
+        self.addCleanup(lambda: [patcher.stop() for patcher in patchers.values()])
+
+        with patch("apps.empresas.omie.timezone.localdate", return_value=date(2026, 9, 23)), patch(
+            "apps.empresas.omie._desativar_registros_ausentes_na_omie",
+            return_value=0,
+        ) as desativar_mock:
+            sincronizacao = SincronizacaoOmie.objects.create(
+                empresa=self.empresa,
+                recurso=SincronizacaoOmie.Recurso.COMERCIAL,
+                periodo=SincronizacaoOmie.Periodo.MES_ATUAL,
+            )
+
+            executar_sincronizacao_omie(sincronizacao.pk)
+
+        inicio = date(2026, 9, 1)
+        fim = date(2026, 9, 23)
+        for nome in (
+            "consultar_contratos",
+            "consultar_ordens_servico",
+            "consultar_nfses",
+            "consultar_pedidos",
+        ):
+            self.assertEqual(mocks[nome].call_args.kwargs["inicio"], inicio)
+            self.assertEqual(mocks[nome].call_args.kwargs["fim"], fim)
+
+        self.assertNotIn("inicio", mocks["consultar_produtos"].call_args.kwargs)
+        modelos_desativados = [chamada.args[0] for chamada in desativar_mock.call_args_list]
+        self.assertNotIn(PedidoOmie, modelos_desativados)
+        self.assertNotIn(OrdemServicoOmie, modelos_desativados)
+        self.assertNotIn(NfseOmie, modelos_desativados)
+        self.assertNotIn(ContratoOmie, modelos_desativados)
 
     @patch("apps.empresas.omie.consultar_movimento_estoque")
     @patch("apps.empresas.omie.consultar_extrato_conta_corrente")
