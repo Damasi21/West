@@ -36,7 +36,7 @@ class Command(BaseCommand):
             type=int,
             default=TOLERANCIA_PADRAO_MINUTOS,
             help=(
-                "Janela maxima para executar um horario vencido. "
+                "Mantido por compatibilidade. Horarios vencidos no dia sao enfileirados. "
                 "Padrao: 10 minutos."
             ),
         )
@@ -45,7 +45,6 @@ class Command(BaseCommand):
         agora = timezone.localtime()
         empresa_slug = options.get("empresa")
         dry_run = options.get("dry_run")
-        tolerancia_minutos = max(1, options.get("tolerancia_minutos") or 1)
         self._encerrar_execucoes_obsoletas(agora, empresa_slug)
         pendentes_executadas = self._executar_pendentes(empresa_slug, dry_run)
         agendamentos = AgendamentoSincronizacaoOmie.objects.select_related(
@@ -81,26 +80,17 @@ class Command(BaseCommand):
                 continue
             for item in agendamento.horarios_configurados:
                 agendada_para = self._data_horario(agora, item["horario"])
-                if not self._esta_dentro_da_janela(
-                    agendada_para,
-                    agora,
-                    tolerancia_minutos,
-                ):
+                if not self._horario_venceu(agendada_para, agora):
                     continue
                 if self._existe_execucao(agendamento, agendada_para):
                     continue
-                if self._existe_execucao_ativa(agendamento.empresa):
-                    self.stdout.write(
-                        f"{agendamento.empresa}: ja existe sincronizacao em andamento."
-                    )
-                    ignoradas += 1
-                    break
                 if dry_run:
                     self.stdout.write(
                         f"[dry-run] {agendamento.empresa} em {agendada_para:%d/%m/%Y %H:%M}"
                     )
                     criadas += 1
                     continue
+                execucao_ativa = self._existe_execucao_ativa(agendamento.empresa)
                 sincronizacao = self._criar_execucao(
                     agendamento,
                     agendada_para,
@@ -109,6 +99,16 @@ class Command(BaseCommand):
                 if not sincronizacao:
                     continue
                 criadas += 1
+                if execucao_ativa:
+                    self.stdout.write(
+                        (
+                            f"{agendamento.empresa}: sincronizacao de "
+                            f"{agendada_para:%d/%m/%Y %H:%M} adicionada a fila; "
+                            "ja existe sincronizacao em andamento."
+                        )
+                    )
+                    ignoradas += 1
+                    continue
                 self.stdout.write(
                     (
                         f"Executando {sincronizacao.empresa} em "
@@ -180,11 +180,8 @@ class Command(BaseCommand):
         data_hora = datetime.combine(agora.date(), hora)
         return timezone.make_aware(data_hora, timezone.get_current_timezone())
 
-    def _esta_dentro_da_janela(self, agendada_para, agora, tolerancia_minutos):
-        if agendada_para > agora:
-            return False
-        atraso = agora - agendada_para
-        return atraso.total_seconds() <= tolerancia_minutos * 60
+    def _horario_venceu(self, agendada_para, agora):
+        return agendada_para <= agora
 
     def _existe_execucao(self, agendamento, agendada_para):
         return SincronizacaoOmie.objects.filter(

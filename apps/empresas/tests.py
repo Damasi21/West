@@ -1619,7 +1619,7 @@ class SincronizacaoClientesOmieTests(TestCase):
     @patch(
         "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
     )
-    def test_command_ignora_horario_antigo_fora_da_tolerancia(self, executar_mock):
+    def test_command_executa_horario_vencido_fora_da_tolerancia(self, executar_mock):
         horario = (timezone.localtime() - timedelta(hours=2)).strftime("%H:%M")
         agendamento = AgendamentoSincronizacaoOmie.objects.create(
             empresa=self.empresa,
@@ -1634,8 +1634,60 @@ class SincronizacaoClientesOmieTests(TestCase):
             stdout=StringIO(),
         )
 
-        self.assertFalse(
-            SincronizacaoOmie.objects.filter(agendamento=agendamento).exists()
+        sincronizacao = SincronizacaoOmie.objects.get(agendamento=agendamento)
+        executar_mock.assert_called_once_with(sincronizacao.pk)
+
+    @patch(
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+    )
+    def test_command_enfileira_horarios_vencidos_se_empresa_tem_execucao_ativa(
+        self,
+        executar_mock,
+    ):
+        primeiro = (timezone.localtime() - timedelta(hours=3)).strftime("%H:%M")
+        segundo = (timezone.localtime() - timedelta(hours=2)).strftime("%H:%M")
+        terceiro = (timezone.localtime() - timedelta(hours=1)).strftime("%H:%M")
+        agendamento = AgendamentoSincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            ativo=True,
+            tipo_agendamento=AgendamentoSincronizacaoOmie.Tipo.TODO_DIA,
+            horarios=[
+                {
+                    "horario": primeiro,
+                    "recurso": SincronizacaoOmie.Recurso.COMPLETA,
+                    "periodo": SincronizacaoOmie.Periodo.TUDO,
+                },
+                {
+                    "horario": segundo,
+                    "recurso": SincronizacaoOmie.Recurso.FINANCEIRO,
+                    "periodo": SincronizacaoOmie.Periodo.ANO_ATUAL,
+                },
+                {
+                    "horario": terceiro,
+                    "recurso": SincronizacaoOmie.Recurso.COMERCIAL,
+                    "periodo": SincronizacaoOmie.Periodo.ANO_ATUAL,
+                },
+            ],
+        )
+        SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+            mensagem="Sincronizacao anterior em andamento.",
+        )
+
+        call_command("executar_sincronizacoes_agendadas", stdout=StringIO())
+
+        sincronizacoes = SincronizacaoOmie.objects.filter(
+            agendamento=agendamento,
+        ).order_by("agendada_para")
+        self.assertEqual(sincronizacoes.count(), 3)
+        self.assertEqual(
+            [item.recurso for item in sincronizacoes],
+            [
+                SincronizacaoOmie.Recurso.COMPLETA,
+                SincronizacaoOmie.Recurso.FINANCEIRO,
+                SincronizacaoOmie.Recurso.COMERCIAL,
+            ],
         )
         executar_mock.assert_not_called()
 
