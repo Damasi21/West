@@ -1403,7 +1403,8 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.integracao.definir_app_secret("app-secret")
         self.integracao.save()
 
-    def test_endpoint_adiciona_sincronizacao_manual_a_fila(self):
+    @patch("apps.empresas.views.enfileirar_sincronizacao_omie")
+    def test_endpoint_adiciona_sincronizacao_manual_a_fila(self, enfileirar_mock):
         self.client.force_login(self.administrador)
         response = self.client.post(
             reverse(
@@ -1423,8 +1424,10 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(sincronizacao.disparada_por, self.administrador)
         self.assertEqual(sincronizacao.recurso, SincronizacaoOmie.Recurso.FINANCEIRO)
         self.assertEqual(sincronizacao.periodo, SincronizacaoOmie.Periodo.ANO_ATUAL)
+        enfileirar_mock.assert_called_once_with(sincronizacao)
 
-    def test_endpoint_manual_usa_fallback_para_opcoes_invalidas(self):
+    @patch("apps.empresas.views.enfileirar_sincronizacao_omie")
+    def test_endpoint_manual_usa_fallback_para_opcoes_invalidas(self, enfileirar_mock):
         self.client.force_login(self.administrador)
         response = self.client.post(
             reverse(
@@ -1438,8 +1441,10 @@ class SincronizacaoClientesOmieTests(TestCase):
         sincronizacao = SincronizacaoOmie.objects.get(empresa=self.empresa)
         self.assertEqual(sincronizacao.recurso, SincronizacaoOmie.Recurso.COMPLETA)
         self.assertEqual(sincronizacao.periodo, SincronizacaoOmie.Periodo.TUDO)
+        enfileirar_mock.assert_called_once_with(sincronizacao)
 
-    def test_nova_sincronizacao_substitui_pendente_obsoleta(self):
+    @patch("apps.empresas.views.enfileirar_sincronizacao_omie")
+    def test_nova_sincronizacao_substitui_pendente_obsoleta(self, enfileirar_mock):
         obsoleta = SincronizacaoOmie.objects.create(
             empresa=self.empresa,
             mensagem="Sincronização abandonada",
@@ -1461,6 +1466,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(obsoleta.status, SincronizacaoOmie.Status.ERRO)
         nova = SincronizacaoOmie.objects.exclude(pk=obsoleta.pk).get()
         self.assertEqual(response.json()["id"], nova.pk)
+        enfileirar_mock.assert_called_once_with(nova)
 
     def test_polling_encerra_sincronizacao_obsoleta(self):
         obsoleta = SincronizacaoOmie.objects.create(
@@ -1520,7 +1526,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         encerrar_mock.assert_not_called()
 
     @patch(
-        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.enfileirar_sincronizacao_omie"
     )
     def test_command_executa_sincronizacao_manual_pendente(self, executar_mock):
         sincronizacao = SincronizacaoOmie.objects.create(
@@ -1533,12 +1539,12 @@ class SincronizacaoClientesOmieTests(TestCase):
 
         call_command("executar_sincronizacoes_agendadas", stdout=saida)
 
-        executar_mock.assert_called_once_with(sincronizacao.pk)
-        self.assertIn("Executando pendente", saida.getvalue())
-        self.assertIn("Sincronizacoes criadas/executadas: 1", saida.getvalue())
+        executar_mock.assert_called_once_with(sincronizacao)
+        self.assertIn("Enfileirando pendente", saida.getvalue())
+        self.assertIn("Sincronizacoes criadas/enfileiradas: 1", saida.getvalue())
 
     @patch(
-        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.enfileirar_sincronizacao_omie"
     )
     def test_command_encerra_pendente_obsoleta_antes_de_executar(self, executar_mock):
         obsoleta = SincronizacaoOmie.objects.create(
@@ -1557,7 +1563,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         executar_mock.assert_not_called()
 
     @patch(
-        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.enfileirar_sincronizacao_omie"
     )
     def test_command_executa_sincronizacao_agendada_vencida(self, executar_mock):
         horario = (timezone.localtime() - timedelta(minutes=5)).strftime("%H:%M")
@@ -1585,20 +1591,20 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(sincronizacao.recurso, SincronizacaoOmie.Recurso.FINANCEIRO)
         self.assertEqual(sincronizacao.periodo, SincronizacaoOmie.Periodo.ANO_ATUAL)
         self.assertIsNotNone(sincronizacao.agendada_para)
-        executar_mock.assert_called_once_with(sincronizacao.pk)
-        self.assertIn("Sincronizacoes criadas/executadas: 1", saida.getvalue())
+        executar_mock.assert_called_once_with(sincronizacao)
+        self.assertIn("Sincronizacoes criadas/enfileiradas: 1", saida.getvalue())
 
     @patch(
-        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.enfileirar_sincronizacao_omie"
     )
     def test_command_nao_duplica_mesmo_horario_agendado(self, executar_mock):
-        def concluir_sincronizacao(sincronizacao_id):
-            SincronizacaoOmie.objects.filter(pk=sincronizacao_id).update(
-                status=SincronizacaoOmie.Status.CONCLUIDA,
-                finalizada_em=timezone.now(),
+        def marcar_enfileirada(sincronizacao):
+            SincronizacaoOmie.objects.filter(pk=sincronizacao.pk).update(
+                enfileirada_em=timezone.now(),
+                celery_task_id="task-test",
             )
 
-        executar_mock.side_effect = concluir_sincronizacao
+        executar_mock.side_effect = marcar_enfileirada
         horario = (timezone.localtime() - timedelta(minutes=5)).strftime("%H:%M")
         agendamento = AgendamentoSincronizacaoOmie.objects.create(
             empresa=self.empresa,
@@ -1617,7 +1623,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         executar_mock.assert_called_once()
 
     @patch(
-        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.enfileirar_sincronizacao_omie"
     )
     def test_command_executa_horario_vencido_fora_da_tolerancia(self, executar_mock):
         horario = (timezone.localtime() - timedelta(hours=2)).strftime("%H:%M")
@@ -1635,10 +1641,10 @@ class SincronizacaoClientesOmieTests(TestCase):
         )
 
         sincronizacao = SincronizacaoOmie.objects.get(agendamento=agendamento)
-        executar_mock.assert_called_once_with(sincronizacao.pk)
+        executar_mock.assert_called_once_with(sincronizacao)
 
     @patch(
-        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.executar_sincronizacao_omie"
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.enfileirar_sincronizacao_omie"
     )
     def test_command_enfileira_horarios_vencidos_se_empresa_tem_execucao_ativa(
         self,
@@ -1689,7 +1695,7 @@ class SincronizacaoClientesOmieTests(TestCase):
                 SincronizacaoOmie.Recurso.COMERCIAL,
             ],
         )
-        executar_mock.assert_not_called()
+        self.assertEqual(executar_mock.call_count, 3)
 
     @patch("apps.empresas.omie.urlopen")
     def test_consultas_novas_usam_os_contratos_da_omie(self, urlopen_mock):

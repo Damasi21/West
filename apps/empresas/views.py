@@ -52,6 +52,7 @@ from .services import (
     usuario_gestor_empresa,
     usuario_pode_gerenciar_vinculo,
 )
+from .tasks import enfileirar_sincronizacao_omie
 
 
 MESES_METAS = [
@@ -170,6 +171,10 @@ def trial_cadastro(request):
                 disparada_por=usuario,
                 mensagem="Sincronizacao inicial do trial adicionada a fila.",
             )
+            try:
+                enfileirar_sincronizacao_omie(sincronizacao)
+            except Exception:
+                pass
 
         login(request, usuario)
         messages.success(
@@ -1135,6 +1140,10 @@ def sincronizar_clientes_omie(request, empresa_slug):
         disparada_por=request.user,
         mensagem="Sincronização adicionada à fila.",
     )
+    try:
+        enfileirar_sincronizacao_omie(sincronizacao)
+    except Exception:
+        pass
     return JsonResponse(_dados_sincronizacao(sincronizacao), status=202)
 
 

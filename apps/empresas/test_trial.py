@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -8,7 +9,8 @@ from apps.empresas.models import Empresa, EmpresaUsuario, IntegracaoOmie, Sincro
 
 
 class TrialCadastroTests(TestCase):
-    def test_trial_cria_empresa_usuario_integracao_e_sincronizacao(self):
+    @patch("apps.empresas.views.enfileirar_sincronizacao_omie")
+    def test_trial_cria_empresa_usuario_integracao_e_sincronizacao(self, enfileirar_mock):
         dados = {
             "nome_empresa": "Loja Trial",
             "razao_social": "Loja Trial LTDA",
@@ -47,6 +49,7 @@ class TrialCadastroTests(TestCase):
         self.assertEqual(integracao.obter_app_secret(), dados["app_secret"])
         self.assertEqual(sincronizacao.recurso, "completa")
         self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.PENDENTE)
+        enfileirar_mock.assert_called_once_with(sincronizacao)
 
     def test_trial_expirado_redireciona_dashboard(self):
         usuario = get_user_model().objects.create_user(

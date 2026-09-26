@@ -11,7 +11,7 @@ from apps.empresas.models import (
     IntegracaoOmie,
     SincronizacaoOmie,
 )
-from apps.empresas.omie import executar_sincronizacao_omie
+from apps.empresas.tasks import enfileirar_sincronizacao_omie
 
 
 TOLERANCIA_PADRAO_MINUTOS = 10
@@ -19,7 +19,7 @@ SINCRONIZACAO_EXPIRA_APOS = timedelta(minutes=30)
 
 
 class Command(BaseCommand):
-    help = "Executa sincronizacoes OMIE agendadas e vencidas."
+    help = "Enfileira sincronizacoes OMIE agendadas e vencidas."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -101,26 +101,23 @@ class Command(BaseCommand):
                 criadas += 1
                 if execucao_ativa:
                     self.stdout.write(
+                        f"{agendamento.empresa}: sincronizacao de "
+                        f"{agendada_para:%d/%m/%Y %H:%M} enfileirada; "
+                        "worker aguardara a execucao atual terminar."
+                    )
+                else:
+                    self.stdout.write(
                         (
-                            f"{agendamento.empresa}: sincronizacao de "
-                            f"{agendada_para:%d/%m/%Y %H:%M} adicionada a fila; "
-                            "ja existe sincronizacao em andamento."
+                            f"Enfileirando {sincronizacao.empresa} em "
+                            f"{agendada_para:%d/%m/%Y %H:%M} "
+                            f"({sincronizacao.recurso_label}, {sincronizacao.periodo_label})"
                         )
                     )
-                    ignoradas += 1
-                    continue
-                self.stdout.write(
-                    (
-                        f"Executando {sincronizacao.empresa} em "
-                        f"{agendada_para:%d/%m/%Y %H:%M} "
-                        f"({sincronizacao.recurso_label}, {sincronizacao.periodo_label})"
-                    )
-                )
-                executar_sincronizacao_omie(sincronizacao.pk)
+                enfileirar_sincronizacao_omie(sincronizacao)
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Sincronizacoes criadas/executadas: {criadas}. Ignoradas: {ignoradas}."
+                f"Sincronizacoes criadas/enfileiradas: {criadas}. Ignoradas: {ignoradas}."
             )
         )
 
@@ -145,6 +142,7 @@ class Command(BaseCommand):
         sincronizacoes = SincronizacaoOmie.objects.select_related("empresa").filter(
             status=SincronizacaoOmie.Status.PENDENTE,
             empresa__ativa=True,
+            enfileirada_em__isnull=True,
         )
         if empresa_slug:
             sincronizacoes = sincronizacoes.filter(empresa__slug=empresa_slug)
@@ -152,19 +150,17 @@ class Command(BaseCommand):
 
         executadas = 0
         for sincronizacao in sincronizacoes:
-            if self._existe_execucao_em_andamento(sincronizacao.empresa):
-                continue
             if dry_run:
                 self.stdout.write(f"[dry-run] pendente {sincronizacao.empresa}")
                 executadas += 1
                 continue
             self.stdout.write(
                 (
-                    f"Executando pendente {sincronizacao.empresa} "
+                    f"Enfileirando pendente {sincronizacao.empresa} "
                     f"({sincronizacao.recurso_label}, {sincronizacao.periodo_label})"
                 )
             )
-            executar_sincronizacao_omie(sincronizacao.pk)
+            enfileirar_sincronizacao_omie(sincronizacao)
             executadas += 1
         return executadas
 

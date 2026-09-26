@@ -2672,6 +2672,8 @@ class SincronizacaoOmie(models.Model):
     total_registros = models.PositiveIntegerField(default=0)
     mensagem = models.CharField(max_length=255, blank=True)
     erro = models.TextField(blank=True)
+    enfileirada_em = models.DateTimeField(null=True, blank=True)
+    celery_task_id = models.CharField(max_length=255, blank=True)
     iniciada_em = models.DateTimeField(null=True, blank=True)
     finalizada_em = models.DateTimeField(null=True, blank=True)
     criada_em = models.DateTimeField(auto_now_add=True)

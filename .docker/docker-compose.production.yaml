@@ -24,6 +24,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-True}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-True}
       CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-True}
@@ -56,6 +58,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; request = urllib.request.Request('http://127.0.0.1:8000/healthz', headers={'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(request, timeout=5).read()\""]
       interval: 30s
@@ -82,6 +86,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-True}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-True}
       CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-True}
@@ -110,6 +116,95 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_network
+    logging: *default-logging
+
+  omie_worker_fast:
+    image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY}
+      OMIE_CREDENTIALS_ENCRYPTION_KEY: ${OMIE_CREDENTIALS_ENCRYPTION_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["celery", "-A", "core", "worker", "-Q", "omie_fast", "--concurrency", "${OMIE_FAST_CONCURRENCY:-4}", "--loglevel", "INFO", "--hostname", "omie-fast@%h"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_network
+    logging: *default-logging
+
+  omie_worker_normal:
+    image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY}
+      OMIE_CREDENTIALS_ENCRYPTION_KEY: ${OMIE_CREDENTIALS_ENCRYPTION_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["celery", "-A", "core", "worker", "-Q", "omie_normal", "--concurrency", "${OMIE_NORMAL_CONCURRENCY:-2}", "--loglevel", "INFO", "--hostname", "omie-normal@%h"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_network
+    logging: *default-logging
+
+  omie_worker_full:
+    image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY}
+      OMIE_CREDENTIALS_ENCRYPTION_KEY: ${OMIE_CREDENTIALS_ENCRYPTION_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["celery", "-A", "core", "worker", "-Q", "omie_full", "--concurrency", "${OMIE_FULL_CONCURRENCY:-2}", "--loglevel", "INFO", "--hostname", "omie-full@%h"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app_network
@@ -129,6 +224,22 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    restart: unless-stopped
+    networks:
+      - app_network
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
     networks:
       - app_network
@@ -178,6 +289,8 @@ volumes:
     name: ${STATIC_VOLUME_NAME:-WEST_STATIC}
   media_data:
     name: ${MEDIA_VOLUME_NAME:-WEST_MEDIA}
+  redis_data:
+    name: ${REDIS_VOLUME_NAME:-WEST_REDIS_DATA}
   certbot_www:
     name: ${CERTBOT_WWW_VOLUME_NAME:-WEST_CERTBOT_WWW}
   certbot_conf:
