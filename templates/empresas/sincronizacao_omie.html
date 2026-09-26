@@ -49,6 +49,8 @@
         const startedAt = panel.querySelector("[data-sync-started-at]");
         const finishedAt = panel.querySelector("[data-sync-finished-at]");
         const duration = panel.querySelector("[data-sync-duration]");
+        const manualRecurso = panel.querySelector("[data-sync-manual-recurso]");
+        const manualPeriodo = panel.querySelector("[data-sync-manual-periodo]");
         const frequency = document.querySelector("[name=tipo_agendamento]");
         const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
         let timer = null;
@@ -119,6 +121,8 @@
 
             const finished = data.status === "concluida" || data.status === "erro";
             button.disabled = !finished;
+            if (manualRecurso) manualRecurso.disabled = !finished;
+            if (manualPeriodo) manualPeriodo.disabled = !finished;
             button.querySelector("span").textContent = finished
                 ? "Atualizar dados da OMIE"
                 : "Atualizando...";
@@ -176,12 +180,18 @@
             progress.classList.remove("d-none");
             message.textContent = "Iniciando sincronizacao...";
             try {
+                const payload = new URLSearchParams({
+                    recurso: manualRecurso?.value || "completa",
+                    periodo: manualPeriodo?.value || "tudo",
+                });
                 const response = await fetch(panel.dataset.startUrl, {
                     method: "POST",
                     headers: {
+                        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
                         "X-CSRFToken": csrfToken,
                         "X-Requested-With": "XMLHttpRequest",
                     },
+                    body: payload.toString(),
                 });
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.erro || "Nao foi possivel iniciar.");

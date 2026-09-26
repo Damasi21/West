@@ -37,7 +37,6 @@ from .models import (
     VendedorOmie,
     EmpresaUsuario,
 )
-from .omie import iniciar_sincronizacao_omie
 from .categorias import excluir_categorias_transferencia
 from .planilhas import (
     PlanilhaInvalida,
@@ -172,11 +171,10 @@ def trial_cadastro(request):
                 mensagem="Sincronizacao inicial do trial adicionada a fila.",
             )
 
-        iniciar_sincronizacao_omie(sincronizacao.pk)
         login(request, usuario)
         messages.success(
             request,
-            "Trial criado com sucesso. A sincronizacao inicial da OMIE ja foi iniciada.",
+            "Trial criado com sucesso. A sincronizacao inicial da OMIE foi adicionada a fila.",
         )
         return redirect("dashboards:home", empresa_slug=empresa.slug)
 
@@ -389,6 +387,8 @@ def parametros(request, empresa_slug):
             "form_omie": form_omie,
             "form_agendamento": form_agendamento,
             "agendamento_sincronizacao": agendamento,
+            "manual_sync_recursos": SincronizacaoOmie.Recurso.choices,
+            "manual_sync_periodos": SincronizacaoOmie.Periodo.choices,
             "ultima_sincronizacao": empresa.sincronizacoes_omie.first(),
             "total_cadastros_omie": empresa.cadastros_omie.count(),
             "total_clientes_omie": empresa.cadastros_omie.filter(
@@ -461,6 +461,8 @@ def sincronizacao_omie(request, empresa_slug):
             "form_omie": form_omie,
             "form_agendamento": form_agendamento,
             "agendamento_sincronizacao": agendamento,
+            "manual_sync_recursos": SincronizacaoOmie.Recurso.choices,
+            "manual_sync_periodos": SincronizacaoOmie.Periodo.choices,
             "ultima_sincronizacao": ultima_sincronizacao,
             "ultima_sincronizacao_info": _info_sincronizacao(ultima_sincronizacao),
             "total_cadastros_omie": empresa.cadastros_omie.count(),
@@ -1116,14 +1118,23 @@ def sincronizar_clientes_omie(request, empresa_slug):
     if em_execucao:
         return JsonResponse(_dados_sincronizacao(em_execucao), status=202)
 
+    recursos_validos = {valor for valor, _ in SincronizacaoOmie.Recurso.choices}
+    periodos_validos = {valor for valor, _ in SincronizacaoOmie.Periodo.choices}
+    recurso = request.POST.get("recurso") or SincronizacaoOmie.Recurso.COMPLETA
+    periodo = request.POST.get("periodo") or SincronizacaoOmie.Periodo.TUDO
+    if recurso not in recursos_validos:
+        recurso = SincronizacaoOmie.Recurso.COMPLETA
+    if periodo not in periodos_validos:
+        periodo = SincronizacaoOmie.Periodo.TUDO
+
     sincronizacao = SincronizacaoOmie.objects.create(
         empresa=empresa,
-        recurso="completa",
+        recurso=recurso,
+        periodo=periodo,
         origem=SincronizacaoOmie.Origem.MANUAL,
         disparada_por=request.user,
         mensagem="Sincronização adicionada à fila.",
     )
-    iniciar_sincronizacao_omie(sincronizacao.pk)
     return JsonResponse(_dados_sincronizacao(sincronizacao), status=202)
 
 

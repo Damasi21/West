@@ -117,15 +117,33 @@
                 <h3>Dados da OMIE</h3>
                 <p>Atualiza cadastros, projetos, categorias e dados financeiros na base local.</p>
             </div>
-            <button
-                class="btn btn-primary"
-                type="button"
-                data-sync-start
-                {% if not form_omie.integracao or not form_omie.integracao.ativa %}disabled{% endif %}
-            >
-                <i class="bi bi-arrow-repeat me-2"></i>
-                <span>Atualizar dados da OMIE</span>
-            </button>
+            <div class="sync-manual-actions">
+                <div class="sync-manual-fields">
+                    <label class="form-label" for="manual-sync-recurso-{{ empresa.pk }}">Modulo</label>
+                    <select class="form-select" id="manual-sync-recurso-{{ empresa.pk }}" data-sync-manual-recurso>
+                        {% for valor, rotulo in manual_sync_recursos %}
+                            <option value="{{ valor }}" {% if valor == "completa" %}selected{% endif %}>{{ rotulo }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="sync-manual-fields">
+                    <label class="form-label" for="manual-sync-periodo-{{ empresa.pk }}">Periodo</label>
+                    <select class="form-select" id="manual-sync-periodo-{{ empresa.pk }}" data-sync-manual-periodo>
+                        {% for valor, rotulo in manual_sync_periodos %}
+                            <option value="{{ valor }}" {% if valor == "tudo" %}selected{% endif %}>{{ rotulo }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button
+                    class="btn btn-primary"
+                    type="button"
+                    data-sync-start
+                    {% if not form_omie.integracao or not form_omie.integracao.ativa %}disabled{% endif %}
+                >
+                    <i class="bi bi-arrow-repeat me-2"></i>
+                    <span>Atualizar dados da OMIE</span>
+                </button>
+            </div>
         </div>
 
         <div class="sync-last-run" aria-label="Ultima sincronizacao da OMIE">

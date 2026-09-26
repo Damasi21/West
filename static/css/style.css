@@ -579,6 +579,19 @@ a { text-decoration: none; }
 }
 .omie-sync-heading h3 { margin: .2rem 0; font-size: 1.05rem; }
 .omie-sync-heading p { margin: 0; color: var(--muted); font-size: .84rem; }
+.sync-manual-actions {
+    display: grid;
+    grid-template-columns: minmax(140px, 180px) minmax(140px, 180px) auto;
+    align-items: end;
+    gap: .75rem;
+}
+.sync-manual-fields .form-label {
+    margin-bottom: .25rem;
+    color: var(--muted);
+    font-size: .72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
 .sync-last-run {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -656,6 +669,9 @@ a { text-decoration: none; }
     .omie-sync-heading {
         align-items: stretch;
         flex-direction: column;
+    }
+    .sync-manual-actions {
+        grid-template-columns: 1fr;
     }
     .sync-last-run {
         grid-template-columns: 1fr;

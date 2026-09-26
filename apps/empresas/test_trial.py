@@ -1,6 +1,4 @@
 from datetime import timedelta
-from unittest.mock import patch
-
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -23,8 +21,7 @@ class TrialCadastroTests(TestCase):
             "password": "Senha-trial-2026",
         }
 
-        with patch("apps.empresas.views.iniciar_sincronizacao_omie") as iniciar:
-            response = self.client.post(reverse("empresas:trial"), dados)
+        response = self.client.post(reverse("empresas:trial"), dados)
 
         empresa = Empresa.objects.get(cnpj=dados["cnpj"])
         usuario = get_user_model().objects.get(email=dados["email"])
@@ -49,7 +46,7 @@ class TrialCadastroTests(TestCase):
         self.assertEqual(integracao.app_key, dados["app_key"])
         self.assertEqual(integracao.obter_app_secret(), dados["app_secret"])
         self.assertEqual(sincronizacao.recurso, "completa")
-        iniciar.assert_called_once_with(sincronizacao.pk)
+        self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.PENDENTE)
 
     def test_trial_expirado_redireciona_dashboard(self):
         usuario = get_user_model().objects.create_user(
