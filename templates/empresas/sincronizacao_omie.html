@@ -112,9 +112,13 @@
             percent.textContent = `${value}%`;
             completeBadge?.classList.toggle("d-none", data.status !== "concluida");
             message.textContent = data.mensagem || data.status_label || "Sincronizando...";
-            detail.textContent = data.total_registros
-                ? `${data.registros_processados} de ${data.total_registros} registros`
-                : `${data.registros_processados || 0} registros processados`;
+            if (data.aguardando_inicio) {
+                detail.textContent = `Aguardando inicio no worker ${data.fila_label}. ${data.recurso_label} / ${data.periodo_label}`;
+            } else {
+                detail.textContent = data.total_registros
+                    ? `${data.registros_processados} de ${data.total_registros} registros`
+                    : `${data.registros_processados || 0} registros processados`;
+            }
             startedAt.textContent = data.iniciada_em || "-";
             finishedAt.textContent = data.finalizada_em || "-";
             duration.textContent = data.duracao || "-";

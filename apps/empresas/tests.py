@@ -1426,6 +1426,85 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(sincronizacao.periodo, SincronizacaoOmie.Periodo.ANO_ATUAL)
         enfileirar_mock.assert_called_once_with(sincronizacao)
 
+    def test_sincronizacao_manual_usa_fila_propria(self):
+        from .tasks import FILA_OMIE_MANUAL, fila_sincronizacao_omie
+
+        sincronizacao = SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            origem=SincronizacaoOmie.Origem.MANUAL,
+            recurso=SincronizacaoOmie.Recurso.COMPLETA,
+            periodo=SincronizacaoOmie.Periodo.TUDO,
+        )
+
+        self.assertEqual(fila_sincronizacao_omie(sincronizacao), FILA_OMIE_MANUAL)
+
+    @patch("apps.empresas.tasks.executar_sincronizacao_omie_task.apply_async")
+    def test_enfileirar_manual_atualiza_status_visivel(self, apply_async_mock):
+        class Resultado:
+            id = "manual-task-id"
+
+        apply_async_mock.return_value = Resultado()
+        sincronizacao = SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            origem=SincronizacaoOmie.Origem.MANUAL,
+            recurso=SincronizacaoOmie.Recurso.COMPLETA,
+            periodo=SincronizacaoOmie.Periodo.TUDO,
+        )
+        from .tasks import FILA_OMIE_MANUAL, enfileirar_sincronizacao_omie
+
+        enfileirar_sincronizacao_omie(sincronizacao)
+
+        sincronizacao.refresh_from_db()
+        apply_async_mock.assert_called_once_with(
+            args=[sincronizacao.pk],
+            queue=FILA_OMIE_MANUAL,
+        )
+        self.assertEqual(sincronizacao.celery_task_id, "manual-task-id")
+        self.assertIsNotNone(sincronizacao.enfileirada_em)
+        self.assertIn("Aguardando inicio", sincronizacao.mensagem)
+
+    def test_sincronizacao_agendada_mantem_fila_por_escopo(self):
+        from .tasks import FILA_OMIE_FAST, FILA_OMIE_FULL, fila_sincronizacao_omie
+
+        completa = SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            origem=SincronizacaoOmie.Origem.AGENDADA,
+            recurso=SincronizacaoOmie.Recurso.COMPLETA,
+            periodo=SincronizacaoOmie.Periodo.TUDO,
+        )
+        financeira = SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            origem=SincronizacaoOmie.Origem.AGENDADA,
+            recurso=SincronizacaoOmie.Recurso.FINANCEIRO,
+            periodo=SincronizacaoOmie.Periodo.ANO_ATUAL,
+        )
+
+        self.assertEqual(fila_sincronizacao_omie(completa), FILA_OMIE_FULL)
+        self.assertEqual(fila_sincronizacao_omie(financeira), FILA_OMIE_FAST)
+
+    @patch("apps.empresas.tasks.executar_sincronizacao_omie")
+    def test_worker_manual_nao_aguarda_pendente_anterior(self, executar_mock):
+        SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            origem=SincronizacaoOmie.Origem.AGENDADA,
+            status=SincronizacaoOmie.Status.PENDENTE,
+            recurso=SincronizacaoOmie.Recurso.COMPLETA,
+            periodo=SincronizacaoOmie.Periodo.TUDO,
+        )
+        manual = SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            origem=SincronizacaoOmie.Origem.MANUAL,
+            status=SincronizacaoOmie.Status.PENDENTE,
+            recurso=SincronizacaoOmie.Recurso.COMPLETA,
+            periodo=SincronizacaoOmie.Periodo.TUDO,
+        )
+        from .tasks import executar_sincronizacao_omie_task
+
+        resultado = executar_sincronizacao_omie_task.run(manual.pk)
+
+        self.assertEqual(resultado, "concluida")
+        executar_mock.assert_called_once_with(manual.pk)
+
     @patch("apps.empresas.views.enfileirar_sincronizacao_omie")
     def test_endpoint_manual_usa_fallback_para_opcoes_invalidas(self, enfileirar_mock):
         self.client.force_login(self.administrador)
@@ -1492,6 +1571,37 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], SincronizacaoOmie.Status.ERRO)
         self.assertIn("mais de 30 minutos", response.json()["erro"])
+
+    def test_polling_nao_encerra_sincronizacao_pendente_obsoleta(self):
+        pendente = SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            status=SincronizacaoOmie.Status.PENDENTE,
+            mensagem="Sincronizacao adicionada a fila.",
+            enfileirada_em=timezone.now(),
+            celery_task_id="task-test",
+        )
+        SincronizacaoOmie.objects.filter(pk=pendente.pk).update(
+            atualizada_em=timezone.now() - timedelta(hours=1)
+        )
+        self.client.force_login(self.administrador)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:status_sincronizacao_omie",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "sincronizacao_id": pendente.pk,
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["status"],
+            SincronizacaoOmie.Status.PENDENTE,
+        )
+        pendente.refresh_from_db()
+        self.assertEqual(pendente.status, SincronizacaoOmie.Status.PENDENTE)
 
     @patch("apps.empresas.views._encerrar_sincronizacoes_omie_obsoletas")
     def test_polling_de_sincronizacao_ativa_nao_escreve_no_banco(
@@ -1560,6 +1670,27 @@ class SincronizacaoClientesOmieTests(TestCase):
 
         obsoleta.refresh_from_db()
         self.assertEqual(obsoleta.status, SincronizacaoOmie.Status.ERRO)
+        executar_mock.assert_not_called()
+
+    @patch(
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.enfileirar_sincronizacao_omie"
+    )
+    def test_command_nao_encerra_pendente_enfileirada_obsoleta(self, executar_mock):
+        enfileirada = SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            origem=SincronizacaoOmie.Origem.MANUAL,
+            mensagem="Sincronizacao manual adicionada a fila.",
+            enfileirada_em=timezone.now(),
+            celery_task_id="task-test",
+        )
+        SincronizacaoOmie.objects.filter(pk=enfileirada.pk).update(
+            atualizada_em=timezone.now() - timedelta(hours=1)
+        )
+
+        call_command("executar_sincronizacoes_agendadas", stdout=StringIO())
+
+        enfileirada.refresh_from_db()
+        self.assertEqual(enfileirada.status, SincronizacaoOmie.Status.PENDENTE)
         executar_mock.assert_not_called()
 
     @patch(

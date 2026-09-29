@@ -123,10 +123,11 @@ class Command(BaseCommand):
 
     def _encerrar_execucoes_obsoletas(self, agora, empresa_slug=None):
         sincronizacoes = SincronizacaoOmie.objects.filter(
-            status__in=[
-                SincronizacaoOmie.Status.PENDENTE,
-                SincronizacaoOmie.Status.EM_ANDAMENTO,
-            ],
+            Q(status=SincronizacaoOmie.Status.EM_ANDAMENTO)
+            | Q(
+                status=SincronizacaoOmie.Status.PENDENTE,
+                enfileirada_em__isnull=True,
+            ),
             atualizada_em__lt=agora - SINCRONIZACAO_EXPIRA_APOS,
         )
         if empresa_slug:

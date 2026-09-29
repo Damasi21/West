@@ -1,4 +1,5 @@
-<section class="inventory-rupture-dashboard">
+<section class="inventory-rupture-dashboard" data-inventory-rupture-dashboard>
+    {{ dados.fornecedores_modal|json_script:"inventory-rupture-suppliers-data" }}
     <div class="inventory-rupture-kpis">
         {% for indicador in dados.kpis %}
             <article class="inventory-rupture-kpi inventory-rupture-kpi-{{ indicador.tom }}">
@@ -80,7 +81,17 @@
                         </mark>
                     </span>
                     <span>
-                        <button class="inventory-rupture-order-button" type="button">Gerar pedido</button>
+                        <button
+                            class="inventory-rupture-order-button"
+                            type="button"
+                            data-rupture-order-open
+                            data-rupture-product-key="{{ produto.chave_modal }}"
+                            data-rupture-product-name="{{ produto.nome }}"
+                            data-rupture-product-code="{{ produto.codigo }}"
+                            data-rupture-product-quantity="{{ produto.quantidade_sugerida_fmt }}"
+                        >
+                            Gerar pedido
+                        </button>
                     </span>
                 </div>
             {% empty %}
@@ -88,4 +99,23 @@
             {% endfor %}
         </div>
     </article>
+
+    <div class="inventory-rupture-supplier-modal" data-rupture-supplier-modal hidden>
+        <div class="inventory-rupture-supplier-dialog" role="dialog" aria-modal="true" aria-labelledby="rupture-supplier-title">
+            <header>
+                <div>
+                    <small>Gerar pedido</small>
+                    <h2 id="rupture-supplier-title" data-rupture-modal-title>Escolher fornecedor</h2>
+                    <span data-rupture-modal-subtitle></span>
+                </div>
+                <button type="button" class="inventory-rupture-supplier-close" data-rupture-modal-close aria-label="Fechar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </header>
+            <div class="inventory-rupture-supplier-list" data-rupture-supplier-list></div>
+            <div class="inventory-rupture-supplier-empty" data-rupture-supplier-empty hidden>
+                Nenhum fornecedor vinculado a este produto.
+            </div>
+        </div>
+    </div>
 </section>

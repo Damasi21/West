@@ -273,19 +273,8 @@ def _montar_fornecedor(codigo_fornecedor, dados):
     }
 
 
-def score_fornecedores_compras(
-    empresa,
-    periodo_selecionado,
-    data_inicio,
-    data_fim,
-    empresas_ids,
-    projetos,
-):
-    data_inicio, data_fim = _resolver_datas(
-        periodo_selecionado,
-        data_inicio,
-        data_fim,
-    )
+def _calcular_fornecedores(data_inicio, data_fim, empresas_ids, projetos=None):
+    projetos = projetos or []
     itens = _query_itens(data_inicio, data_fim, empresas_ids, projetos)
     historico = _historico_produtos(empresas_ids)
     recebimentos = _recebimentos_por_pedido_produto(empresas_ids, data_inicio, data_fim)
@@ -317,9 +306,37 @@ def score_fornecedores_compras(
             _pontuar_otd(pedido.data_previsao, _data_real_recebimento(item, recebimento))
         )
 
-    fornecedores = [
+    return [
         _montar_fornecedor(codigo, dados) for codigo, dados in agregados.items()
     ]
+
+
+def score_fornecedores_por_codigo(data_inicio, data_fim, empresas_ids, projetos=None):
+    return {
+        fornecedor["codigo_fornecedor"]: fornecedor
+        for fornecedor in _calcular_fornecedores(
+            data_inicio,
+            data_fim,
+            empresas_ids,
+            projetos,
+        )
+    }
+
+
+def score_fornecedores_compras(
+    empresa,
+    periodo_selecionado,
+    data_inicio,
+    data_fim,
+    empresas_ids,
+    projetos,
+):
+    data_inicio, data_fim = _resolver_datas(
+        periodo_selecionado,
+        data_inicio,
+        data_fim,
+    )
+    fornecedores = _calcular_fornecedores(data_inicio, data_fim, empresas_ids, projetos)
     ranking = sorted(fornecedores, key=lambda item: item["score"], reverse=True)
     classificacoes = []
     for slug, rotulo, tom in (

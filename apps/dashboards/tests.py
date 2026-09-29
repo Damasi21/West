@@ -1103,7 +1103,7 @@ class DashboardPermissaoTests(TestCase):
         )
         fornecedor = CadastroOmie.objects.create(
             empresa=self.empresa,
-            codigo_cliente_omie=920,
+            codigo_cliente_omie=9990499663,
             razao_social="Fornecedor Ruptura",
             tipo="fornecedor",
         )
@@ -1122,6 +1122,7 @@ class DashboardPermissaoTests(TestCase):
             empresa=self.empresa,
             codigo_pedido=92011,
             numero_pedido="PC-92011",
+            etapa="10",
             codigo_fornecedor=fornecedor.codigo_cliente_omie,
             fornecedor=fornecedor,
             data_inclusao=date(2026, 8, 1),
@@ -1135,6 +1136,8 @@ class DashboardPermissaoTests(TestCase):
             codigo_produto=produto.codigo_produto,
             descricao=produto.descricao,
             quantidade=100,
+            quantidade_recebida=100,
+            valor_unitario=Decimal("12.50"),
         )
 
         self.client.force_login(self.usuario)
@@ -1158,6 +1161,12 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(contexto["runway"][0]["status"], "Ruptura")
         self.assertEqual(contexto["runway"][0]["consumo_dia_fmt"], "1/dia")
         self.assertEqual(contexto["fila_reposicao"][0]["fornecedor"], "LEVISA")
+        self.assertContains(response, "data-rupture-order-open")
+        opcoes_fornecedor = contexto["fornecedores_modal"][str(produto.pk)]
+        self.assertEqual(opcoes_fornecedor[0]["nome"], "LEVISA")
+        self.assertEqual(opcoes_fornecedor[0]["ultimo_valor_fmt"], "R$ 12,50")
+        self.assertEqual(opcoes_fornecedor[0]["score_fmt"], "67")
+        self.assertEqual(opcoes_fornecedor[0]["tom"], "danger")
 
     def test_kardex_exibe_movimentacoes_reais_de_saida_e_entrada(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)

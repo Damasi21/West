@@ -216,6 +216,92 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const ruptureDashboard = document.querySelector("[data-inventory-rupture-dashboard]");
+    if (ruptureDashboard) {
+        const modal = ruptureDashboard.querySelector("[data-rupture-supplier-modal]");
+        const closeButton = ruptureDashboard.querySelector("[data-rupture-modal-close]");
+        const title = ruptureDashboard.querySelector("[data-rupture-modal-title]");
+        const subtitle = ruptureDashboard.querySelector("[data-rupture-modal-subtitle]");
+        const list = ruptureDashboard.querySelector("[data-rupture-supplier-list]");
+        const empty = ruptureDashboard.querySelector("[data-rupture-supplier-empty]");
+        const dataElement = document.getElementById("inventory-rupture-suppliers-data");
+        const suppliersByProduct = dataElement ? JSON.parse(dataElement.textContent || "{}") : {};
+        let activeButton = null;
+
+        const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#039;",
+        })[char]);
+
+        const setRuptureModalVisible = (visible) => {
+            if (!modal) return;
+            modal.hidden = !visible;
+        };
+
+        const supplierScoreMarkup = (supplier) => {
+            const tom = supplier.tom || "neutral";
+            return `
+                <mark class="inventory-rupture-supplier-score inventory-rupture-supplier-score-${tom}">
+                    <strong>${escapeHtml(supplier.score_fmt || "-")}</strong>
+                    <span>${escapeHtml(supplier.classe || "Sem score")}</span>
+                </mark>
+            `;
+        };
+
+        const renderSuppliers = (button) => {
+            activeButton = button;
+            const productKey = button.dataset.ruptureProductKey;
+            const suppliers = suppliersByProduct[productKey] || [];
+            if (title) title.textContent = button.dataset.ruptureProductName || "Escolher fornecedor";
+            if (subtitle) {
+                subtitle.textContent = [
+                    button.dataset.ruptureProductCode,
+                    button.dataset.ruptureProductQuantity ? `Qtd. sugerida: ${button.dataset.ruptureProductQuantity}` : "",
+                ].filter(Boolean).join(" - ");
+            }
+            if (list) {
+                list.innerHTML = suppliers.map((supplier) => `
+                    <button
+                        type="button"
+                        class="inventory-rupture-supplier-option"
+                        data-rupture-supplier-name="${escapeHtml(supplier.nome || "Fornecedor nao informado")}"
+                    >
+                        <span>
+                            <strong>${escapeHtml(supplier.nome || "Fornecedor nao informado")}</strong>
+                            <small>Ultima compra: ${escapeHtml(supplier.ultimo_valor_fmt || "Sem historico")}</small>
+                        </span>
+                        ${supplierScoreMarkup(supplier)}
+                        <em>Escolher</em>
+                    </button>
+                `).join("");
+            }
+            empty.hidden = suppliers.length > 0;
+            setRuptureModalVisible(true);
+        };
+
+        ruptureDashboard.querySelectorAll("[data-rupture-order-open]").forEach((button) => {
+            button.addEventListener("click", () => renderSuppliers(button));
+        });
+        list?.addEventListener("click", (event) => {
+            const option = event.target.closest("[data-rupture-supplier-name]");
+            if (!option || !activeButton) return;
+            activeButton.textContent = "Fornecedor escolhido";
+            activeButton.title = option.dataset.ruptureSupplierName || "";
+            activeButton.classList.add("is-selected");
+            setRuptureModalVisible(false);
+        });
+        closeButton?.addEventListener("click", () => setRuptureModalVisible(false));
+        modal?.addEventListener("click", (event) => {
+            if (event.target === modal) setRuptureModalVisible(false);
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") setRuptureModalVisible(false);
+        });
+    }
+
     const marginDashboard = document.querySelector("[data-margin-dashboard]");
     if (marginDashboard) {
         marginDashboard.dataset.marginMapReady = "true";

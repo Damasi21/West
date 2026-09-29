@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils import timezone
 
 from apps.dashboards.dre_services import _formatar_moeda
+from apps.dashboards.score_fornecedores_services import score_fornecedores_por_codigo
 from apps.empresas.models import (
     PedidoCompraItemOmie,
     PedidoItemOmie,
@@ -126,12 +127,14 @@ def _compras_por_produto(empresas_ids):
         compras[chave] = {
             "lead_time": lead_time,
             "fornecedor": nome_fornecedor or str(pedido.codigo_fornecedor or "Fornecedor nao informado"),
+            "codigo_fornecedor": pedido.codigo_fornecedor,
         }
     return compras
 
 
 def _fornecedores_por_produto(empresas_ids):
-    fornecedores = {}
+    fornecedores = defaultdict(list)
+    vistos = defaultdict(set)
     vinculos = (
         ProdutoFornecedorOmie.objects.filter(
             empresa_id__in=empresas_ids,
@@ -144,10 +147,106 @@ def _fornecedores_por_produto(empresas_ids):
         nome = vinculo.nome_fantasia or vinculo.razao_social
         if not nome:
             continue
+        codigo_fornecedor = vinculo.codigo_fornecedor
         for chave in (vinculo.produto_id, vinculo.codigo_produto):
-            if chave and chave not in fornecedores:
-                fornecedores[chave] = nome
+            if not chave or codigo_fornecedor in vistos[chave]:
+                continue
+            vistos[chave].add(codigo_fornecedor)
+            fornecedores[chave].append(
+                {
+                    "codigo_fornecedor": codigo_fornecedor,
+                    "nome": nome,
+                }
+            )
     return fornecedores
+
+
+def _ultimas_compras_por_produto_fornecedor(empresas_ids):
+    compras = {}
+    itens = (
+        PedidoCompraItemOmie.objects.filter(
+            empresa_id__in=empresas_ids,
+            ativo_omie=True,
+            pedido__ativo_omie=True,
+        )
+        .select_related("pedido", "pedido__fornecedor")
+        .order_by("-pedido__data_previsao", "-pedido__data_inclusao", "-pedido_id", "-pk")
+    )
+    for item in itens:
+        pedido = item.pedido
+        codigo_fornecedor = pedido.codigo_fornecedor
+        if not codigo_fornecedor:
+            continue
+        fornecedor = pedido.fornecedor
+        nome_fornecedor = ""
+        if fornecedor:
+            nome_fornecedor = fornecedor.nome_fantasia or fornecedor.razao_social
+        for chave in (item.produto_id, item.codigo_produto):
+            chave_compra = (chave, codigo_fornecedor)
+            if not chave or chave_compra in compras:
+                continue
+            compras[chave_compra] = {
+                "valor_unitario": _decimal(item.valor_unitario),
+                "fornecedor": nome_fornecedor or str(codigo_fornecedor),
+            }
+    return compras
+
+
+def _opcao_fornecedor(fornecedor, compra=None, score=None):
+    compra = compra or {}
+    score = score or {}
+    valor_unitario = compra.get("valor_unitario")
+    tem_valor = valor_unitario is not None and _decimal(valor_unitario) > 0
+    return {
+        "codigo_fornecedor": fornecedor.get("codigo_fornecedor") or "",
+        "nome": fornecedor.get("nome") or compra.get("fornecedor") or "Fornecedor nao informado",
+        "ultimo_valor": str(_decimal(valor_unitario)) if tem_valor else "",
+        "ultimo_valor_fmt": _formatar_moeda(valor_unitario) if tem_valor else "Sem historico",
+        "score": score.get("score"),
+        "score_fmt": score.get("score_fmt") or "-",
+        "classe": score.get("classe") or "Sem score",
+        "tom": score.get("tom") or "neutral",
+    }
+
+
+def _fornecedores_modal_por_produto(linhas, fornecedores, compras, ultimas_compras, scores):
+    fornecedores_modal = {}
+    for item in linhas:
+        chave = item["chave"]
+        opcoes = []
+        vistos = set()
+        for fornecedor in fornecedores.get(chave, []):
+            codigo = fornecedor.get("codigo_fornecedor")
+            vistos.add(codigo)
+            opcoes.append(
+                _opcao_fornecedor(
+                    fornecedor,
+                    ultimas_compras.get((chave, codigo)),
+                    scores.get(codigo),
+                )
+            )
+        compra_principal = compras.get(chave, {})
+        codigo_compra = compra_principal.get("codigo_fornecedor")
+        if codigo_compra and codigo_compra not in vistos:
+            opcoes.append(
+                _opcao_fornecedor(
+                    {
+                        "codigo_fornecedor": codigo_compra,
+                        "nome": compra_principal.get("fornecedor"),
+                    },
+                    ultimas_compras.get((chave, codigo_compra)),
+                    scores.get(codigo_compra),
+                )
+            )
+        opcoes.sort(
+            key=lambda opcao: (
+                0 if opcao["score"] is not None else 1,
+                -(opcao["score"] or 0),
+                opcao["nome"],
+            )
+        )
+        fornecedores_modal[str(chave)] = opcoes
+    return fornecedores_modal
 
 
 def _linhas_posicoes(empresas_ids):
@@ -229,7 +328,8 @@ def _enriquecer_linhas(linhas, consumos=None, compras=None, fornecedores=None):
             estoque_minimo_base = item["saldo"] / Decimal([14, 4, 6, 14, 14, 48, 52][indice % 7] or 1)
             consumo_dia = max(estoque_minimo_base, Decimal("0.1"))
         compra = compras.get(item["chave"], {})
-        fornecedor_principal = fornecedores.get(item["chave"])
+        opcoes_fornecedor = fornecedores.get(item["chave"], [])
+        fornecedor_principal = opcoes_fornecedor[0]["nome"] if opcoes_fornecedor else ""
         lead_time = item.get("lead_time") or compra.get("lead_time") or Decimal([12, 9, 18, 10, 15, 29, 7][indice % 7])
         cobertura = item["saldo"] / consumo_dia if consumo_dia > 0 else Decimal("999")
         tom, status = _status(cobertura, lead_time, item["saldo"])
@@ -270,6 +370,7 @@ def _formatar_linhas(linhas):
         formatadas.append(
             {
                 **item,
+                "chave_modal": str(item["chave"]),
                 "saldo_fmt": _formatar_quantidade(item["saldo"], unidade),
                 "consumo_dia_fmt": _formatar_dia(item["consumo_dia"]),
                 "cobertura_fmt": f"{item['cobertura_dias']} dias",
@@ -287,12 +388,16 @@ def _formatar_linhas(linhas):
 def ruptura_estoque(empresa, empresas_ids):
     del empresa
     linhas = _linhas_posicoes(empresas_ids)
+    fornecedores = _fornecedores_por_produto(empresas_ids)
+    compras = _compras_por_produto(empresas_ids)
+    ultimas_compras = _ultimas_compras_por_produto_fornecedor(empresas_ids)
+    scores = score_fornecedores_por_codigo(None, None, empresas_ids)
     if linhas:
         linhas = _enriquecer_linhas(
             linhas,
             consumos=_consumo_por_produto(empresas_ids),
-            compras=_compras_por_produto(empresas_ids),
-            fornecedores=_fornecedores_por_produto(empresas_ids),
+            compras=compras,
+            fornecedores=fornecedores,
         )
     else:
         linhas = _enriquecer_linhas(_linhas_demo())
@@ -302,6 +407,7 @@ def ruptura_estoque(empresa, empresas_ids):
     risco = [item for item in linhas if item["status_tom"] != "saudavel"]
     valor_risco = sum((item["valor_risco"] for item in risco), Decimal("0"))
     fila = [item for item in linhas if item["status_tom"] in {"ruptura", "critico", "atencao"}]
+    fila_formatada = _formatar_linhas(fila[:10])
     return {
         "kpis": [
             {
@@ -330,5 +436,12 @@ def ruptura_estoque(empresa, empresas_ids):
             },
         ],
         "runway": _formatar_linhas(linhas[:8]),
-        "fila_reposicao": _formatar_linhas(fila[:10]),
+        "fila_reposicao": fila_formatada,
+        "fornecedores_modal": _fornecedores_modal_por_produto(
+            fila[:10],
+            fornecedores,
+            compras,
+            ultimas_compras,
+            scores,
+        ),
     }
