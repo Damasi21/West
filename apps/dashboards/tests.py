@@ -1168,6 +1168,81 @@ class DashboardPermissaoTests(TestCase):
         self.assertEqual(opcoes_fornecedor[0]["score_fmt"], "67")
         self.assertEqual(opcoes_fornecedor[0]["tom"], "danger")
 
+    def test_ruptura_estoque_salva_fornecedor_do_pedido_na_sessao(self):
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            reverse(
+                "dashboards:salvar_fornecedor_ruptura",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            data=json.dumps(
+                {
+                    "produto_chave": "9201",
+                    "produto_nome": "Produto em Ruptura",
+                    "produto_codigo": "CP-9201",
+                    "codigo_produto_omie": "9201",
+                    "quantidade": "10",
+                    "unidade": "un",
+                    "valor_unitario": "12.5",
+                    "fornecedor_codigo": "9990499663",
+                    "fornecedor_nome": "LEVISA",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["sucesso"])
+        estado = self.client.session[f"ruptura_pedidos:{self.empresa.pk}"]
+        self.assertEqual(estado["9201"]["status"], "salvo")
+        self.assertEqual(estado["9201"]["supplier_name"], "LEVISA")
+
+    @patch("apps.dashboards.views.incluir_pedido_compra_ruptura")
+    def test_ruptura_estoque_envia_pedido_salvo_para_omie(self, incluir_mock):
+        incluir_mock.return_value = {
+            "nCodPed": 123456,
+            "cNumero": "77",
+            "cDescStatus": "Pedido de compra incluido com sucesso.",
+        }
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
+        integracao = IntegracaoOmie(empresa=self.empresa, app_key="app-key", ativa=True)
+        integracao.definir_app_secret("app-secret")
+        integracao.save()
+        sessao = self.client.session
+        sessao[f"ruptura_pedidos:{self.empresa.pk}"] = {
+            "9201": {
+                "status": "salvo",
+                "supplier_code": "9990499663",
+                "supplier_name": "LEVISA",
+                "product_name": "Produto em Ruptura",
+                "product_code": "CP-9201",
+                "omie_product_code": "9201",
+                "quantity": "10",
+                "unit": "un",
+                "unit_price": "12.5",
+            }
+        }
+        sessao.save()
+        self.client.force_login(self.usuario)
+
+        response = self.client.post(
+            reverse(
+                "dashboards:enviar_pedido_ruptura_omie",
+                kwargs={"empresa_slug": self.empresa.slug},
+            ),
+            data=json.dumps({"produto_chave": "9201"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["sucesso"])
+        incluir_mock.assert_called_once()
+        estado = self.client.session[f"ruptura_pedidos:{self.empresa.pk}"]
+        self.assertEqual(estado["9201"]["status"], "enviado")
+        self.assertEqual(estado["9201"]["omie_numero"], "77")
+
     def test_kardex_exibe_movimentacoes_reais_de_saida_e_entrada(self):
         EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.usuario)
         produto = ProdutoOmie.objects.create(

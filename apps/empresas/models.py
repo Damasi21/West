@@ -2610,6 +2610,7 @@ class SincronizacaoOmie(models.Model):
     class Status(models.TextChoices):
         PENDENTE = "pendente", "Pendente"
         EM_ANDAMENTO = "em_andamento", "Em andamento"
+        INTERROMPIDA = "interrompida", "Interrompida pelo usuario"
         CONCLUIDA = "concluida", "Concluída"
         ERRO = "erro", "Erro"
 
@@ -2674,6 +2675,14 @@ class SincronizacaoOmie(models.Model):
     erro = models.TextField(blank=True)
     enfileirada_em = models.DateTimeField(null=True, blank=True)
     celery_task_id = models.CharField(max_length=255, blank=True)
+    parada_solicitada_em = models.DateTimeField(null=True, blank=True)
+    parada_solicitada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sincronizacoes_omie_interrompidas",
+    )
     iniciada_em = models.DateTimeField(null=True, blank=True)
     finalizada_em = models.DateTimeField(null=True, blank=True)
     criada_em = models.DateTimeField(auto_now_add=True)

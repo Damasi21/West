@@ -456,7 +456,9 @@ def sincronizacao_omie(request, empresa_slug):
         )
 
     form_omie = IntegracaoOmieForm(None, empresa=empresa)
-    ultima_sincronizacao = empresa.sincronizacoes_omie.first()
+    ultima_sincronizacao = empresa.sincronizacoes_omie.filter(
+        status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+    ).first() or empresa.sincronizacoes_omie.first()
     return render(
         request,
         "empresas/sincronizacao_omie.html",
@@ -1063,6 +1065,7 @@ def _dados_sincronizacao(sincronizacao):
         "id": sincronizacao.pk,
         "status": sincronizacao.status,
         "status_label": sincronizacao.get_status_display(),
+        "parada_solicitada": bool(sincronizacao.parada_solicitada_em),
         "aguardando_inicio": (
             sincronizacao.status == SincronizacaoOmie.Status.PENDENTE
             and bool(sincronizacao.enfileirada_em)
@@ -1094,19 +1097,30 @@ def _dados_sincronizacao(sincronizacao):
 
 def _encerrar_sincronizacoes_omie_obsoletas(empresa):
     agora = timezone.now()
-    return empresa.sincronizacoes_omie.filter(
+    limite = agora - SINCRONIZACAO_OMIE_EXPIRA_APOS
+    dados_erro = {
+        "status": SincronizacaoOmie.Status.ERRO,
+        "finalizada_em": agora,
+        "mensagem": "Sincronizacao interrompida. Inicie uma nova atualizacao.",
+        "erro": "A sincronizacao ficou sem atividade por mais de 30 minutos.",
+    }
+    encerradas = empresa.sincronizacoes_omie.filter(
         Q(status=SincronizacaoOmie.Status.EM_ANDAMENTO)
         | Q(
             status=SincronizacaoOmie.Status.PENDENTE,
             enfileirada_em__isnull=True,
         ),
-        atualizada_em__lt=agora - SINCRONIZACAO_OMIE_EXPIRA_APOS,
-    ).update(
-        status=SincronizacaoOmie.Status.ERRO,
-        finalizada_em=agora,
-        mensagem="Sincronização interrompida. Inicie uma nova atualização.",
-        erro="A sincronização ficou sem atividade por mais de 30 minutos.",
-    )
+        atualizada_em__lt=limite,
+    ).update(**dados_erro)
+    if not empresa.sincronizacoes_omie.filter(
+        status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+    ).exists():
+        encerradas += empresa.sincronizacoes_omie.filter(
+            status=SincronizacaoOmie.Status.PENDENTE,
+            enfileirada_em__isnull=False,
+            atualizada_em__lt=limite,
+        ).update(**dados_erro)
+    return encerradas
 
 
 @login_required
@@ -1156,6 +1170,31 @@ def sincronizar_clientes_omie(request, empresa_slug):
 
 
 @login_required
+@require_POST
+def parar_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
+    with transaction.atomic():
+        sincronizacao = get_object_or_404(
+            SincronizacaoOmie.objects.select_for_update(),
+            pk=sincronizacao_id,
+            empresa=empresa,
+        )
+        if sincronizacao.status != SincronizacaoOmie.Status.EM_ANDAMENTO:
+            return JsonResponse(
+                {"erro": "Apenas sincronizacoes em andamento podem ser paradas."},
+                status=409,
+            )
+        if not sincronizacao.parada_solicitada_em:
+            sincronizacao.parada_solicitada_em = timezone.now()
+            sincronizacao.parada_solicitada_por = request.user
+            sincronizacao.save(update_fields=[
+                "parada_solicitada_em", "parada_solicitada_por",
+            ])
+    return JsonResponse(_dados_sincronizacao(sincronizacao), status=202)
+
+
+@login_required
 @require_GET
 def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
     empresa = _obter_empresa_administravel(empresa_slug)
@@ -1165,13 +1204,10 @@ def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
         pk=sincronizacao_id,
         empresa=empresa,
     )
-    if (
-        sincronizacao.status == SincronizacaoOmie.Status.EM_ANDAMENTO
-        or (
-            sincronizacao.status == SincronizacaoOmie.Status.PENDENTE
-            and not sincronizacao.enfileirada_em
-        )
-    ) and (
+    if sincronizacao.status in {
+        SincronizacaoOmie.Status.EM_ANDAMENTO,
+        SincronizacaoOmie.Status.PENDENTE,
+    } and (
         sincronizacao.atualizada_em < timezone.now() - SINCRONIZACAO_OMIE_EXPIRA_APOS
     ):
         _encerrar_sincronizacoes_omie_obsoletas(empresa)

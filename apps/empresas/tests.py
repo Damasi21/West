@@ -1385,6 +1385,146 @@ class CategoriasOmieTests(TestCase):
 
 
 class SincronizacaoClientesOmieTests(TestCase):
+    def _url_parada(self, sincronizacao, empresa=None):
+        return reverse("dashboards:parar_sincronizacao_omie", kwargs={
+            "empresa_slug": (empresa or self.empresa).slug,
+            "sincronizacao_id": sincronizacao.pk,
+        })
+
+    def test_parada_afeta_apenas_execucao_escolhida_e_e_idempotente(self):
+        self.client.force_login(self.administrador)
+        ativa = SincronizacaoOmie.objects.create(
+            empresa=self.empresa, status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+        )
+        pendente = SincronizacaoOmie.objects.create(empresa=self.empresa)
+        outra_empresa = Empresa.objects.create(nome="Outra", cnpj="00.000.000/0001-98")
+        outra = SincronizacaoOmie.objects.create(
+            empresa=outra_empresa, status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+        )
+        response = self.client.post(self._url_parada(ativa))
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.json()["parada_solicitada"])
+        ativa.refresh_from_db()
+        instante = ativa.parada_solicitada_em
+        self.assertEqual(ativa.parada_solicitada_por, self.administrador)
+        self.assertEqual(ativa.status, SincronizacaoOmie.Status.EM_ANDAMENTO)
+        self.assertEqual(self.client.post(self._url_parada(ativa)).status_code, 202)
+        ativa.refresh_from_db()
+        self.assertEqual(ativa.parada_solicitada_em, instante)
+        for sincronizacao in (pendente, outra):
+            sincronizacao.refresh_from_db()
+            self.assertIsNone(sincronizacao.parada_solicitada_em)
+
+    def test_parada_rejeita_status_nao_ativo(self):
+        self.client.force_login(self.administrador)
+        for status in ("pendente", "concluida", "erro", "interrompida"):
+            with self.subTest(status=status):
+                sincronizacao = SincronizacaoOmie.objects.create(empresa=self.empresa, status=status)
+                self.assertEqual(self.client.post(self._url_parada(sincronizacao)).status_code, 409)
+                sincronizacao.refresh_from_db()
+                self.assertIsNone(sincronizacao.parada_solicitada_em)
+
+    def test_parada_exige_admin_post_e_empresa_correta(self):
+        ativa = SincronizacaoOmie.objects.create(
+            empresa=self.empresa, status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+        )
+        usuario = get_user_model().objects.create_user(username="sem_permissao")
+        self.client.force_login(usuario)
+        self.assertEqual(self.client.post(self._url_parada(ativa)).status_code, 403)
+        self.client.force_login(self.administrador)
+        self.assertEqual(self.client.get(self._url_parada(ativa)).status_code, 405)
+        outra = Empresa.objects.create(nome="Outra", cnpj="00.000.000/0001-98")
+        self.assertEqual(self.client.post(self._url_parada(ativa, outra)).status_code, 404)
+        ativa.refresh_from_db()
+        self.assertIsNone(ativa.parada_solicitada_em)
+
+    def test_worker_para_entre_paginas_preservando_dados_e_contexto(self):
+        from .omie import _sincronizacao_em_execucao, _salvar_clientes
+
+        sincronizacao = SincronizacaoOmie.objects.create(
+            empresa=self.empresa, recurso=SincronizacaoOmie.Recurso.COMERCIAL,
+        )
+        antigo = CadastroOmie.objects.create(
+            empresa=self.empresa, codigo_cliente_omie=99, razao_social="Antigo",
+        )
+        consultas = [
+            "consultar_clientes", "consultar_projetos", "consultar_departamentos",
+            "consultar_vendedores", "consultar_produtos", "consultar_categorias",
+            "consultar_servicos", "consultar_contratos", "consultar_ordens_servico",
+            "consultar_nfses", "consultar_pedidos",
+        ]
+        mocks = {}
+        for nome in consultas:
+            patcher = patch(f"apps.empresas.omie.{nome}", return_value={})
+            mocks[nome] = patcher.start()
+            self.addCleanup(patcher.stop)
+        mocks["consultar_clientes"].return_value = {
+            "total_de_paginas": 2, "total_de_registros": 2,
+            "clientes_cadastro": [{"codigo_cliente_omie": 1, "razao_social": "Novo"}],
+        }
+
+        def salvar_e_solicitar(empresa, itens):
+            total = _salvar_clientes(empresa, itens)
+            SincronizacaoOmie.objects.filter(pk=sincronizacao.pk).update(
+                parada_solicitada_em=timezone.now(),
+            )
+            return total
+
+        with patch("apps.empresas.omie._salvar_clientes", side_effect=salvar_e_solicitar), patch(
+            "apps.empresas.omie._desativar_registros_ausentes_na_omie",
+        ) as desativar:
+            executar_sincronizacao_omie(sincronizacao.pk)
+            desativar.assert_not_called()
+        sincronizacao.refresh_from_db()
+        self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.INTERROMPIDA)
+        self.assertEqual(sincronizacao.registros_processados, 1)
+        self.assertIsNotNone(sincronizacao.finalizada_em)
+        self.assertTrue(CadastroOmie.objects.filter(empresa=self.empresa, codigo_cliente_omie=1).exists())
+        antigo.refresh_from_db()
+        self.assertTrue(antigo.ativo_omie)
+        self.assertEqual(mocks["consultar_clientes"].call_count, 1)
+        self.assertIsNone(_sincronizacao_em_execucao.get())
+
+    def test_tela_prioriza_execucao_ativa_sobre_fila_mais_recente(self):
+        self.client.force_login(self.administrador)
+        ativa = SincronizacaoOmie.objects.create(
+            empresa=self.empresa, status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+        )
+        SincronizacaoOmie.objects.create(empresa=self.empresa)
+        response = self.client.get(reverse("dashboards:sincronizacao_omie", kwargs={
+            "empresa_slug": self.empresa.slug,
+        }))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["ultima_sincronizacao"], ativa)
+        self.assertContains(response, "data-sync-stop")
+
+    def test_consultas_verificam_parada_sem_afetar_outro_contexto(self):
+        from .omie import (
+            SincronizacaoOmieInterrompida, _abrir_requisicao_omie,
+            _sincronizacao_em_execucao,
+        )
+        parada = SincronizacaoOmie.objects.create(
+            empresa=self.empresa, status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+            parada_solicitada_em=timezone.now(),
+        )
+        outra = SincronizacaoOmie.objects.create(
+            empresa=self.empresa, status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+        )
+        with patch("apps.empresas.omie.urlopen") as abrir:
+            token = _sincronizacao_em_execucao.set(parada.pk)
+            try:
+                with self.assertRaises(SincronizacaoOmieInterrompida):
+                    _abrir_requisicao_omie("request", timeout=30)
+                abrir.assert_not_called()
+            finally:
+                _sincronizacao_em_execucao.reset(token)
+            token = _sincronizacao_em_execucao.set(outra.pk)
+            try:
+                _abrir_requisicao_omie("request", timeout=30)
+                abrir.assert_called_once()
+            finally:
+                _sincronizacao_em_execucao.reset(token)
+
     def setUp(self):
         self.administrador = get_user_model().objects.create_user(
             username="admin_sync_omie",
@@ -1572,7 +1712,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(response.json()["status"], SincronizacaoOmie.Status.ERRO)
         self.assertIn("mais de 30 minutos", response.json()["erro"])
 
-    def test_polling_nao_encerra_sincronizacao_pendente_obsoleta(self):
+    def test_polling_encerra_sincronizacao_enfileirada_obsoleta_sem_execucao_ativa(self):
         pendente = SincronizacaoOmie.objects.create(
             empresa=self.empresa,
             status=SincronizacaoOmie.Status.PENDENTE,
@@ -1598,8 +1738,42 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json()["status"],
-            SincronizacaoOmie.Status.PENDENTE,
+            SincronizacaoOmie.Status.ERRO,
         )
+        pendente.refresh_from_db()
+        self.assertEqual(pendente.status, SincronizacaoOmie.Status.ERRO)
+        self.assertIn("mais de 30 minutos", pendente.erro)
+
+    def test_polling_mantem_pendente_enfileirada_quando_ha_execucao_ativa(self):
+        SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+            mensagem="Processando",
+        )
+        pendente = SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            status=SincronizacaoOmie.Status.PENDENTE,
+            mensagem="Sincronizacao adicionada a fila.",
+            enfileirada_em=timezone.now(),
+            celery_task_id="task-test",
+        )
+        SincronizacaoOmie.objects.filter(pk=pendente.pk).update(
+            atualizada_em=timezone.now() - timedelta(hours=1)
+        )
+        self.client.force_login(self.administrador)
+
+        response = self.client.get(
+            reverse(
+                "dashboards:status_sincronizacao_omie",
+                kwargs={
+                    "empresa_slug": self.empresa.slug,
+                    "sincronizacao_id": pendente.pk,
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], SincronizacaoOmie.Status.PENDENTE)
         pendente.refresh_from_db()
         self.assertEqual(pendente.status, SincronizacaoOmie.Status.PENDENTE)
 
@@ -1675,7 +1849,33 @@ class SincronizacaoClientesOmieTests(TestCase):
     @patch(
         "apps.empresas.management.commands.executar_sincronizacoes_agendadas.enfileirar_sincronizacao_omie"
     )
-    def test_command_nao_encerra_pendente_enfileirada_obsoleta(self, executar_mock):
+    def test_command_encerra_pendente_enfileirada_obsoleta_sem_execucao_ativa(self, executar_mock):
+        enfileirada = SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            origem=SincronizacaoOmie.Origem.MANUAL,
+            mensagem="Sincronizacao manual adicionada a fila.",
+            enfileirada_em=timezone.now(),
+            celery_task_id="task-test",
+        )
+        SincronizacaoOmie.objects.filter(pk=enfileirada.pk).update(
+            atualizada_em=timezone.now() - timedelta(hours=1)
+        )
+
+        call_command("executar_sincronizacoes_agendadas", stdout=StringIO())
+
+        enfileirada.refresh_from_db()
+        self.assertEqual(enfileirada.status, SincronizacaoOmie.Status.ERRO)
+        executar_mock.assert_not_called()
+
+    @patch(
+        "apps.empresas.management.commands.executar_sincronizacoes_agendadas.enfileirar_sincronizacao_omie"
+    )
+    def test_command_mantem_pendente_enfileirada_quando_ha_execucao_ativa(self, executar_mock):
+        SincronizacaoOmie.objects.create(
+            empresa=self.empresa,
+            status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+            mensagem="Processando",
+        )
         enfileirada = SincronizacaoOmie.objects.create(
             empresa=self.empresa,
             origem=SincronizacaoOmie.Origem.MANUAL,

@@ -39,6 +39,7 @@
         if (!panel) return;
 
         const button = panel.querySelector("[data-sync-start]");
+        const stopButton = panel.querySelector("[data-sync-stop]");
         const progress = panel.querySelector("[data-sync-progress]");
         const bar = panel.querySelector("[data-sync-bar]");
         const percent = panel.querySelector("[data-sync-percent]");
@@ -54,6 +55,9 @@
         const frequency = document.querySelector("[name=tipo_agendamento]");
         const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
         let timer = null;
+        let currentSyncId = panel.dataset.lastSyncId;
+        let stopRequestPending = false;
+        let stopRequested = false;
 
         document.querySelectorAll("[data-weekday-dropdown]").forEach((dropdown) => {
             const select = dropdown.previousElementSibling;
@@ -102,6 +106,12 @@
             panel.dataset.statusUrlTemplate.replace("999999999", id);
 
         function render(data) {
+            currentSyncId = data.id;
+            stopRequested = Boolean(data.parada_solicitada);
+            stopButton.classList.toggle("d-none", data.status !== "em_andamento");
+            stopButton.disabled = stopRequested || stopRequestPending;
+            stopButton.querySelector("span").textContent = stopRequested
+                ? "Parada solicitada" : "Parar sincronizacao";
             const value = Math.max(0, Math.min(100, data.percentual || 0));
             progress.classList.remove("d-none");
             progress.classList.toggle("is-complete", data.status === "concluida");
@@ -112,6 +122,9 @@
             percent.textContent = `${value}%`;
             completeBadge?.classList.toggle("d-none", data.status !== "concluida");
             message.textContent = data.mensagem || data.status_label || "Sincronizando...";
+            if (data.status === "em_andamento" && stopRequested) {
+                message.textContent = "Parada solicitada. Aguardando encerramento.";
+            }
             if (data.aguardando_inicio) {
                 detail.textContent = `Aguardando inicio no worker ${data.fila_label}. ${data.recurso_label} / ${data.periodo_label}`;
             } else {
@@ -123,7 +136,7 @@
             finishedAt.textContent = data.finalizada_em || "-";
             duration.textContent = data.duracao || "-";
 
-            const finished = data.status === "concluida" || data.status === "erro";
+            const finished = ["concluida", "erro", "interrompida"].includes(data.status);
             button.disabled = !finished;
             if (manualRecurso) manualRecurso.disabled = !finished;
             if (manualPeriodo) manualPeriodo.disabled = !finished;
@@ -176,6 +189,31 @@
                 errorBox.classList.remove("d-none");
             }
         }
+
+        stopButton?.addEventListener("click", async () => {
+            if (!currentSyncId || stopRequested || stopRequestPending) return;
+            if (!window.confirm("Parar esta sincronizacao? Os dados ja salvos serao preservados. As demais empresas continuarao normalmente.")) return;
+            stopRequestPending = true;
+            stopButton.disabled = true;
+            try {
+                const response = await fetch(
+                    panel.dataset.stopUrlTemplate.replace("999999999", currentSyncId),
+                    {
+                        method: "POST",
+                        headers: {"X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest"},
+                    },
+                );
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.erro || "Nao foi possivel solicitar a parada.");
+                stopRequestPending = false;
+                render(data);
+            } catch (error) {
+                stopRequestPending = false;
+                stopButton.disabled = stopRequested;
+                errorBox.textContent = error.message;
+                errorBox.classList.remove("d-none");
+            }
+        });
 
         button?.addEventListener("click", async () => {
             window.clearTimeout(timer);

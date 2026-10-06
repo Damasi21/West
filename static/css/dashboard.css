@@ -4558,6 +4558,12 @@
 .inventory-rupture-order-button.is-selected {
     background: #0f766e;
 }
+.inventory-rupture-order-button.is-sent,
+.inventory-rupture-order-button:disabled {
+    color: #667085;
+    background: #e9eef5;
+    cursor: not-allowed;
+}
 .inventory-rupture-supplier-modal {
     position: fixed;
     inset: 0;
@@ -4648,6 +4654,11 @@
     background: #f5f8ff;
     outline: 0;
 }
+.inventory-rupture-supplier-option.is-selected {
+    border-color: #0f766e;
+    background: #ecfdf5;
+    box-shadow: inset 3px 0 0 #0f766e;
+}
 .inventory-rupture-supplier-option strong {
     display: block;
     overflow: hidden;
@@ -4712,6 +4723,34 @@
     padding: 1rem 1.1rem 1.2rem;
     color: #667085;
     font-size: .84rem;
+}
+.inventory-rupture-supplier-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .85rem 1.1rem 1rem;
+    border-top: 1px solid #e6ebf2;
+    background: #fbfcfe;
+}
+.inventory-rupture-supplier-footer span {
+    color: #667085;
+    font-size: .76rem;
+}
+.inventory-rupture-supplier-save {
+    min-width: 96px;
+    min-height: 36px;
+    color: #fff;
+    background: #0f766e;
+    border: 0;
+    border-radius: 6px;
+    font-size: .76rem;
+    font-weight: 800;
+}
+.inventory-rupture-supplier-save:disabled {
+    color: #98a2b3;
+    background: #e4e9f2;
+    cursor: not-allowed;
 }
 .inventory-rupture-empty {
     padding: 1rem;

@@ -3,6 +3,7 @@ import re
 import ssl
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.error import HTTPError, URLError
@@ -79,6 +80,21 @@ NFSE_URL = "https://app.omie.com.br/api/v1/servicos/nfse/"
 CONTRATOS_URL = "https://app.omie.com.br/api/v1/servicos/contrato/"
 SSL_CONTEXT = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="omie-sync")
+_sincronizacao_em_execucao = ContextVar("sincronizacao_omie", default=None)
+
+
+class SincronizacaoOmieInterrompida(Exception):
+    pass
+
+
+def _verificar_parada_sincronizacao():
+    # ContextVar isolates cancellation across workers and local sync threads.
+    sincronizacao_id = _sincronizacao_em_execucao.get()
+    if sincronizacao_id and SincronizacaoOmie.objects.filter(
+        pk=sincronizacao_id,
+        parada_solicitada_em__isnull=False,
+    ).exists():
+        raise SincronizacaoOmieInterrompida()
 
 
 class OmieAPIError(Exception):
@@ -224,6 +240,7 @@ def _abrir_requisicao_omie(request, timeout):
     espera = getattr(settings, "OMIE_API_RETRY_DELAY", 2)
     ultimo_erro = None
     for tentativa in range(1, tentativas + 1):
+        _verificar_parada_sincronizacao()
         try:
             return urlopen(request, timeout=timeout, context=SSL_CONTEXT)
         except HTTPError as exc:
@@ -1188,6 +1205,68 @@ def consultar_pedidos_compra(
         except json.JSONDecodeError:
             detalhe = corpo
         raise OmieAPIError(f"OMIE respondeu HTTP {exc.code}: {detalhe}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invalida.") from exc
+
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def incluir_pedido_compra_ruptura(
+    integracao,
+    *,
+    codigo_integracao,
+    codigo_fornecedor,
+    codigo_produto,
+    descricao,
+    quantidade,
+    valor_unitario,
+    unidade,
+    observacao="Pedido gerado pelo dashboard de ruptura de estoque.",
+):
+    previsao = timezone.localdate().strftime("%d/%m/%Y")
+    payload = {
+        "call": "IncluirPedCompra",
+        "param": [
+            {
+                "cabecalho_incluir": {
+                    "cCodIntPed": codigo_integracao,
+                    "dDtPrevisao": previsao,
+                    "cCodParc": "999",
+                    "nQtdeParc": 1,
+                    "nCodFor": int(codigo_fornecedor),
+                    "cObs": observacao,
+                    "cObsInt": "Pedido gerado via WEST - Ruptura de estoque.",
+                },
+                "produtos_incluir": [
+                    {
+                        "cCodIntItem": f"{codigo_integracao}-1",
+                        "nCodProd": int(codigo_produto),
+                        "cUnidade": unidade or "UN",
+                        "nQtde": float(_decimal(quantidade)),
+                        "nValUnit": float(_decimal(valor_unitario)),
+                        "nDesconto": 0,
+                        "cObs": descricao or "",
+                    }
+                ],
+            }
+        ],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        PEDIDOS_COMPRA_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    timeout = getattr(settings, "OMIE_API_TIMEOUT", 45)
+    try:
+        with _abrir_requisicao_omie(request, timeout) as response:
+            dados = json.loads(response.read().decode("utf-8"))
     except (URLError, TimeoutError) as exc:
         raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
     except json.JSONDecodeError as exc:
@@ -4290,7 +4369,9 @@ def executar_sincronizacao_omie(sincronizacao_id):
         update_fields=["status", "iniciada_em", "mensagem", "atualizada_em"]
     )
 
+    contexto_token = _sincronizacao_em_execucao.set(sincronizacao_id)
     try:
+        _verificar_parada_sincronizacao()
         integracao = sincronizacao.empresa.integracao_omie
         recurso_selecionado = sincronizacao.recurso or SincronizacaoOmie.Recurso.COMPLETA
         recursos_validos = {valor for valor, _ in SincronizacaoOmie.Recurso.choices}
@@ -4302,6 +4383,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
             return set(valores)
 
         def consultar_recurso(recurso, pagina):
+            _verificar_parada_sincronizacao()
             kwargs = {}
             if (
                 "registros_por_pagina" in recurso
@@ -4569,6 +4651,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
         avisos = []
 
         for recurso in recursos:
+            _verificar_parada_sincronizacao()
             contexto_atual = f"Consultando {recurso['nome']}"
             sincronizacao.mensagem = f"{contexto_atual}..."
             sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
@@ -4618,6 +4701,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
         for recurso in recursos:
             inicio_recurso = timezone.now()
             for pagina in range(1, recurso["total_paginas"] + 1):
+                _verificar_parada_sincronizacao()
                 contexto_atual = f"{recurso['nome']}: pagina {pagina}"
                 try:
                     resposta = (
@@ -4660,6 +4744,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                             "atualizada_em",
                         ]
                     )
+            _verificar_parada_sincronizacao()
             if (
                 recurso.get("modelo")
                 and not recurso.get("sincronizacao_incompleta")
@@ -4675,6 +4760,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 )
                 sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
 
+        _verificar_parada_sincronizacao()
         if recurso_selecionado in (
             SincronizacaoOmie.Recurso.COMPLETA,
             SincronizacaoOmie.Recurso.ESTOQUE,
@@ -4698,6 +4784,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
                     "atualizada_em",
                 ]
             )
+            _verificar_parada_sincronizacao()
             desativados = _desativar_registros_ausentes_na_omie(
                 MovimentoEstoqueOmie,
                 sincronizacao.empresa,
@@ -4708,6 +4795,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
             )
             sincronizacao.save(update_fields=["mensagem", "atualizada_em"])
 
+        _verificar_parada_sincronizacao()
         if recurso_selecionado in (
             SincronizacaoOmie.Recurso.COMPLETA,
             SincronizacaoOmie.Recurso.FINANCEIRO,
@@ -4749,7 +4837,17 @@ def executar_sincronizacao_omie(sincronizacao_id):
         if avisos:
             sincronizacao.erro = "\n".join(avisos)[:2000]
             update_fields.append("erro")
-        sincronizacao.save(update_fields=update_fields)
+        with transaction.atomic():
+            SincronizacaoOmie.objects.select_for_update().get(pk=sincronizacao_id)
+            _verificar_parada_sincronizacao()
+            sincronizacao.save(update_fields=update_fields)
+    except SincronizacaoOmieInterrompida:
+        sincronizacao.status = SincronizacaoOmie.Status.INTERROMPIDA
+        sincronizacao.finalizada_em = timezone.now()
+        sincronizacao.mensagem = "Interrompida pelo usuario. Dados ja salvos preservados."
+        sincronizacao.save(update_fields=[
+            "status", "finalizada_em", "mensagem", "atualizada_em",
+        ])
     except Exception as exc:
         sincronizacao.status = SincronizacaoOmie.Status.ERRO
         sincronizacao.finalizada_em = timezone.now()
@@ -4766,6 +4864,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
             ]
         )
     finally:
+        _sincronizacao_em_execucao.reset(contexto_token)
         _fechar_conexoes_antigas_fora_de_transacao()
 
 

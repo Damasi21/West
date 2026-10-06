@@ -92,6 +92,11 @@ urlpatterns = [
         name="status_sincronizacao_omie",
     ),
     path(
+        "parametros/omie/sincronizacoes/<int:sincronizacao_id>/parar/",
+        empresas_views.parar_sincronizacao_omie,
+        name="parar_sincronizacao_omie",
+    ),
+    path(
         "financeiro/aprovacao-de-pagamentos/salvar/",
         views.salvar_aprovacao_pagamentos,
         name="salvar_aprovacao_pagamentos",
@@ -100,6 +105,16 @@ urlpatterns = [
         "financeiro/aprovacao-de-pagamentos/historico/exportar/",
         views.exportar_historico_aprovacao_pagamentos,
         name="exportar_historico_aprovacao_pagamentos",
+    ),
+    path(
+        "estoque/ruptura-de-estoque/fornecedor/salvar/",
+        views.salvar_fornecedor_ruptura,
+        name="salvar_fornecedor_ruptura",
+    ),
+    path(
+        "estoque/ruptura-de-estoque/pedido/enviar-omie/",
+        views.enviar_pedido_ruptura_omie,
+        name="enviar_pedido_ruptura_omie",
     ),
     path(
         "financeiro/fluxo-de-caixa/horizontal/",

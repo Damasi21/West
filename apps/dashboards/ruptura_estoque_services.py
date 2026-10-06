@@ -266,6 +266,7 @@ def _linhas_posicoes(empresas_ids):
         if chave not in grupos:
             grupos[chave] = {
                 "chave": chave,
+                "codigo_produto_omie": posicao.codigo_produto,
                 "codigo": _codigo_posicao(posicao),
                 "nome": _nome_posicao(posicao),
                 "tipo": _tipo_posicao(posicao),
@@ -292,6 +293,7 @@ def _linhas_demo():
     return [
         {
             "chave": codigo,
+            "codigo_produto_omie": "",
             "codigo": codigo,
             "nome": nome,
             "tipo": tipo,
@@ -363,29 +365,39 @@ def _enriquecer_linhas(linhas, consumos=None, compras=None, fornecedores=None):
     return enriquecidas
 
 
-def _formatar_linhas(linhas):
+def _formatar_linhas(linhas, pedidos_estado=None):
+    pedidos_estado = pedidos_estado or {}
     formatadas = []
     for item in linhas:
         unidade = item["unidade"]
+        chave_modal = str(item["chave"])
+        estado_pedido = pedidos_estado.get(chave_modal, {})
         formatadas.append(
             {
                 **item,
-                "chave_modal": str(item["chave"]),
+                "chave_modal": chave_modal,
+                "codigo_produto_omie": item.get("codigo_produto_omie") or "",
                 "saldo_fmt": _formatar_quantidade(item["saldo"], unidade),
                 "consumo_dia_fmt": _formatar_dia(item["consumo_dia"]),
                 "cobertura_fmt": f"{item['cobertura_dias']} dias",
                 "lead_time_fmt": f"{_formatar_numero(item['lead_time'])} dias",
+                "quantidade_sugerida_raw": str(item["quantidade_sugerida"]),
                 "quantidade_sugerida_fmt": (
                     _formatar_quantidade(item["quantidade_sugerida"], unidade)
                     if item["quantidade_sugerida"] > 0
                     else "-"
                 ),
+                "valor_unitario_raw": str(item["valor_unitario"]),
+                "pedido_estado": estado_pedido.get("status", ""),
+                "pedido_fornecedor": estado_pedido.get("supplier_name", ""),
+                "pedido_fornecedor_codigo": estado_pedido.get("supplier_code", ""),
+                "pedido_omie_numero": estado_pedido.get("omie_numero", ""),
             }
         )
     return formatadas
 
 
-def ruptura_estoque(empresa, empresas_ids):
+def ruptura_estoque(empresa, empresas_ids, pedidos_estado=None):
     del empresa
     linhas = _linhas_posicoes(empresas_ids)
     fornecedores = _fornecedores_por_produto(empresas_ids)
@@ -407,7 +419,7 @@ def ruptura_estoque(empresa, empresas_ids):
     risco = [item for item in linhas if item["status_tom"] != "saudavel"]
     valor_risco = sum((item["valor_risco"] for item in risco), Decimal("0"))
     fila = [item for item in linhas if item["status_tom"] in {"ruptura", "critico", "atencao"}]
-    fila_formatada = _formatar_linhas(fila[:10])
+    fila_formatada = _formatar_linhas(fila[:10], pedidos_estado=pedidos_estado)
     return {
         "kpis": [
             {

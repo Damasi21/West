@@ -592,6 +592,10 @@ a { text-decoration: none; }
     font-weight: 800;
     text-transform: uppercase;
 }
+.sync-manual-actions [data-sync-stop] {
+    grid-column: 1 / -1;
+    justify-self: end;
+}
 .sync-last-run {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -1,4 +1,9 @@
-<section class="inventory-rupture-dashboard" data-inventory-rupture-dashboard>
+<section
+    class="inventory-rupture-dashboard"
+    data-inventory-rupture-dashboard
+    data-rupture-save-url="{% url 'dashboards:salvar_fornecedor_ruptura' empresa.slug %}"
+    data-rupture-send-url="{% url 'dashboards:enviar_pedido_ruptura_omie' empresa.slug %}"
+>
     {{ dados.fornecedores_modal|json_script:"inventory-rupture-suppliers-data" }}
     <div class="inventory-rupture-kpis">
         {% for indicador in dados.kpis %}
@@ -82,15 +87,23 @@
                     </span>
                     <span>
                         <button
-                            class="inventory-rupture-order-button"
+                            class="inventory-rupture-order-button {% if produto.pedido_estado == 'salvo' %}is-selected{% elif produto.pedido_estado == 'enviado' %}is-sent{% endif %}"
                             type="button"
                             data-rupture-order-open
                             data-rupture-product-key="{{ produto.chave_modal }}"
                             data-rupture-product-name="{{ produto.nome }}"
                             data-rupture-product-code="{{ produto.codigo }}"
-                            data-rupture-product-quantity="{{ produto.quantidade_sugerida_fmt }}"
+                            data-rupture-product-omie-code="{{ produto.codigo_produto_omie }}"
+                            data-rupture-product-quantity="{{ produto.quantidade_sugerida_raw }}"
+                            data-rupture-product-quantity-label="{{ produto.quantidade_sugerida_fmt }}"
+                            data-rupture-product-unit="{{ produto.unidade }}"
+                            data-rupture-product-unit-price="{{ produto.valor_unitario_raw }}"
+                            data-rupture-order-status="{{ produto.pedido_estado }}"
+                            data-rupture-saved-supplier-code="{{ produto.pedido_fornecedor_codigo }}"
+                            data-rupture-saved-supplier-name="{{ produto.pedido_fornecedor }}"
+                            {% if produto.pedido_estado == 'enviado' %}disabled title="Pedido enviado ao Omie{% if produto.pedido_omie_numero %}: {{ produto.pedido_omie_numero }}{% endif %}"{% endif %}
                         >
-                            Gerar pedido
+                            {% if produto.pedido_estado == 'enviado' %}Enviado ao Omie{% else %}Gerar pedido{% endif %}
                         </button>
                     </span>
                 </div>
@@ -116,6 +129,12 @@
             <div class="inventory-rupture-supplier-empty" data-rupture-supplier-empty hidden>
                 Nenhum fornecedor vinculado a este produto.
             </div>
+            <footer class="inventory-rupture-supplier-footer">
+                <span data-rupture-modal-feedback>Selecione um fornecedor para salvar.</span>
+                <button type="button" class="inventory-rupture-supplier-save" data-rupture-supplier-save disabled>
+                    Salvar
+                </button>
+            </footer>
         </div>
     </div>
 </section>

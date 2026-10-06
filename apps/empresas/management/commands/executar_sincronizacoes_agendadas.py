@@ -122,22 +122,45 @@ class Command(BaseCommand):
         )
 
     def _encerrar_execucoes_obsoletas(self, agora, empresa_slug=None):
+        limite = agora - SINCRONIZACAO_EXPIRA_APOS
+        dados_erro = {
+            "status": SincronizacaoOmie.Status.ERRO,
+            "finalizada_em": agora,
+            "mensagem": "Sincronizacao interrompida. Inicie uma nova atualizacao.",
+            "erro": "A sincronizacao ficou sem atividade por mais de 30 minutos.",
+        }
         sincronizacoes = SincronizacaoOmie.objects.filter(
             Q(status=SincronizacaoOmie.Status.EM_ANDAMENTO)
             | Q(
                 status=SincronizacaoOmie.Status.PENDENTE,
                 enfileirada_em__isnull=True,
             ),
-            atualizada_em__lt=agora - SINCRONIZACAO_EXPIRA_APOS,
+            atualizada_em__lt=limite,
         )
         if empresa_slug:
             sincronizacoes = sincronizacoes.filter(empresa__slug=empresa_slug)
-        return sincronizacoes.update(
-            status=SincronizacaoOmie.Status.ERRO,
-            finalizada_em=agora,
-            mensagem="Sincronizacao interrompida. Inicie uma nova atualizacao.",
-            erro="A sincronizacao ficou sem atividade por mais de 30 minutos.",
+        encerradas = sincronizacoes.update(**dados_erro)
+        empresas_em_andamento = SincronizacaoOmie.objects.filter(
+            status=SincronizacaoOmie.Status.EM_ANDAMENTO,
         )
+        if empresa_slug:
+            empresas_em_andamento = empresas_em_andamento.filter(
+                empresa__slug=empresa_slug,
+            )
+        empresas_em_andamento = empresas_em_andamento.values("empresa_id")
+        enfileiradas_obsoletas = SincronizacaoOmie.objects.filter(
+            status=SincronizacaoOmie.Status.PENDENTE,
+            enfileirada_em__isnull=False,
+            atualizada_em__lt=limite,
+        )
+        if empresa_slug:
+            enfileiradas_obsoletas = enfileiradas_obsoletas.filter(
+                empresa__slug=empresa_slug,
+            )
+        encerradas += enfileiradas_obsoletas.exclude(
+            empresa_id__in=empresas_em_andamento,
+        ).update(**dados_erro)
+        return encerradas
 
     def _executar_pendentes(self, empresa_slug=None, dry_run=False):
         sincronizacoes = SincronizacaoOmie.objects.select_related("empresa").filter(

@@ -1,7 +1,7 @@
 import json
 from io import BytesIO
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -54,7 +54,8 @@ from apps.dashboards.margem_rentabilidade_services import (
 from apps.dashboards.ruptura_estoque_services import ruptura_estoque
 from apps.dashboards.score_fornecedores_services import score_fornecedores_compras
 from apps.dashboards.visao_geral_services import visao_geral_financeira
-from apps.empresas.models import SincronizacaoOmie
+from apps.empresas.models import IntegracaoOmie, SincronizacaoOmie
+from apps.empresas.omie import OmieAPIError, incluir_pedido_compra_ruptura
 from apps.empresas.services import (
     areas_permitidas_usuario,
     dashboards_permitidos_usuario,
@@ -209,6 +210,31 @@ AREAS = {
         "dashboards": [],
     },
 }
+
+
+def _ruptura_pedidos_key(empresa):
+    return f"ruptura_pedidos:{empresa.pk}"
+
+
+def _ruptura_pedidos_estado(request, empresa):
+    return request.session.get(_ruptura_pedidos_key(empresa), {})
+
+
+def _decimal_payload(valor):
+    texto = str(valor or "0").strip()
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    try:
+        return Decimal(texto)
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal("0")
+
+
+def _json_body(request):
+    try:
+        return json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return None
 
 
 def _dashboard_habilitado(area_slug, dashboard_slug):
@@ -1617,6 +1643,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         contexto["ruptura_estoque"] = ruptura_estoque(
             empresa,
             empresas_consulta_ids,
+            pedidos_estado=_ruptura_pedidos_estado(request, empresa),
         )
     return render(request, "dashboards/dashboard.html", contexto)
 
@@ -1781,6 +1808,135 @@ def salvar_aprovacao_pagamentos(request, empresa_slug):
 
     resultado = salvar_aprovacoes_pagamentos(empresa, request.user, itens)
     return JsonResponse(resultado, status=200 if resultado["sucesso"] else 207)
+
+
+@login_required
+@require_POST
+def salvar_fornecedor_ruptura(request, empresa_slug):
+    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    if not usuario_pode_acessar_dashboard(
+        request.user,
+        empresa,
+        "estoque",
+        "ruptura-de-estoque",
+    ):
+        raise Http404("Dashboard nao encontrado.")
+
+    payload = _json_body(request)
+    if not isinstance(payload, dict):
+        return JsonResponse({"sucesso": False, "erro": "Payload invalido."}, status=400)
+
+    produto_chave = str(payload.get("produto_chave") or "").strip()
+    fornecedor_codigo = str(payload.get("fornecedor_codigo") or "").strip()
+    fornecedor_nome = str(payload.get("fornecedor_nome") or "").strip()
+    if not produto_chave or not fornecedor_codigo:
+        return JsonResponse(
+            {"sucesso": False, "erro": "Selecione um fornecedor valido."},
+            status=400,
+        )
+
+    pedidos = _ruptura_pedidos_estado(request, empresa).copy()
+    pedidos[produto_chave] = {
+        "status": "salvo",
+        "supplier_code": fornecedor_codigo,
+        "supplier_name": fornecedor_nome or "Fornecedor selecionado",
+        "product_name": str(payload.get("produto_nome") or ""),
+        "product_code": str(payload.get("produto_codigo") or ""),
+        "omie_product_code": str(payload.get("codigo_produto_omie") or ""),
+        "quantity": str(_decimal_payload(payload.get("quantidade"))),
+        "unit": str(payload.get("unidade") or "UN"),
+        "unit_price": str(_decimal_payload(payload.get("valor_unitario"))),
+    }
+    request.session[_ruptura_pedidos_key(empresa)] = pedidos
+    request.session.modified = True
+    return JsonResponse(
+        {
+            "sucesso": True,
+            "status": "salvo",
+            "fornecedor_nome": pedidos[produto_chave]["supplier_name"],
+        }
+    )
+
+
+@login_required
+@require_POST
+def enviar_pedido_ruptura_omie(request, empresa_slug):
+    empresa = obter_empresa_permitida(request.user, empresa_slug)
+    if not usuario_pode_acessar_dashboard(
+        request.user,
+        empresa,
+        "estoque",
+        "ruptura-de-estoque",
+    ):
+        raise Http404("Dashboard nao encontrado.")
+
+    payload = _json_body(request)
+    if not isinstance(payload, dict):
+        return JsonResponse({"sucesso": False, "erro": "Payload invalido."}, status=400)
+    produto_chave = str(payload.get("produto_chave") or "").strip()
+    pedidos = _ruptura_pedidos_estado(request, empresa).copy()
+    pedido = pedidos.get(produto_chave)
+    if not pedido:
+        return JsonResponse(
+            {"sucesso": False, "erro": "Salve um fornecedor antes de enviar."},
+            status=400,
+        )
+    if pedido.get("status") == "enviado":
+        return JsonResponse(
+            {
+                "sucesso": True,
+                "status": "enviado",
+                "mensagem": "Pedido ja enviado ao Omie.",
+                "numero": pedido.get("omie_numero", ""),
+            }
+        )
+
+    integracao = IntegracaoOmie.objects.filter(empresa=empresa, ativa=True).first()
+    if not integracao:
+        return JsonResponse(
+            {"sucesso": False, "erro": "Integracao OMIE ativa nao encontrada."},
+            status=400,
+        )
+    if not pedido.get("omie_product_code"):
+        return JsonResponse(
+            {"sucesso": False, "erro": "Produto sem codigo OMIE para compra."},
+            status=400,
+        )
+
+    codigo_integracao = f"WEST-RUP-{empresa.pk}-{produto_chave}-{timezone.now():%Y%m%d%H%M%S}"
+    try:
+        resposta = incluir_pedido_compra_ruptura(
+            integracao,
+            codigo_integracao=codigo_integracao,
+            codigo_fornecedor=pedido["supplier_code"],
+            codigo_produto=pedido["omie_product_code"],
+            descricao=pedido.get("product_name") or pedido.get("product_code"),
+            quantidade=pedido["quantity"],
+            valor_unitario=pedido["unit_price"],
+            unidade=pedido.get("unit") or "UN",
+        )
+    except (OmieAPIError, ValueError) as exc:
+        return JsonResponse({"sucesso": False, "erro": str(exc)}, status=400)
+
+    pedido.update(
+        {
+            "status": "enviado",
+            "omie_codigo": str(resposta.get("nCodPed") or ""),
+            "omie_numero": str(resposta.get("cNumero") or ""),
+            "omie_status": str(resposta.get("cDescStatus") or "Pedido enviado ao Omie."),
+        }
+    )
+    pedidos[produto_chave] = pedido
+    request.session[_ruptura_pedidos_key(empresa)] = pedidos
+    request.session.modified = True
+    return JsonResponse(
+        {
+            "sucesso": True,
+            "status": "enviado",
+            "mensagem": pedido["omie_status"],
+            "numero": pedido["omie_numero"],
+        }
+    )
 
 
 @login_required

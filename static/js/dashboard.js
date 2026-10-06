@@ -224,9 +224,14 @@ document.addEventListener("DOMContentLoaded", () => {
         const subtitle = ruptureDashboard.querySelector("[data-rupture-modal-subtitle]");
         const list = ruptureDashboard.querySelector("[data-rupture-supplier-list]");
         const empty = ruptureDashboard.querySelector("[data-rupture-supplier-empty]");
+        const saveButton = ruptureDashboard.querySelector("[data-rupture-supplier-save]");
+        const feedback = ruptureDashboard.querySelector("[data-rupture-modal-feedback]");
         const dataElement = document.getElementById("inventory-rupture-suppliers-data");
         const suppliersByProduct = dataElement ? JSON.parse(dataElement.textContent || "{}") : {};
         let activeButton = null;
+        let selectedSupplier = null;
+        let savingSupplier = false;
+        let sendingOrder = false;
 
         const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({
             "&": "&amp;",
@@ -236,9 +241,136 @@ document.addEventListener("DOMContentLoaded", () => {
             "'": "&#039;",
         })[char]);
 
+        const getCookie = (name) => {
+            const cookies = document.cookie ? document.cookie.split(";") : [];
+            const prefix = `${name}=`;
+            const cookie = cookies.find((item) => item.trim().startsWith(prefix));
+            return cookie ? decodeURIComponent(cookie.trim().slice(prefix.length)) : "";
+        };
+
         const setRuptureModalVisible = (visible) => {
             if (!modal) return;
             modal.hidden = !visible;
+        };
+
+        const setModalFeedback = (message) => {
+            if (feedback) feedback.textContent = message;
+        };
+
+        const setSelectedSupplier = (option) => {
+            selectedSupplier = option ? {
+                code: option.dataset.ruptureSupplierCode || "",
+                name: option.dataset.ruptureSupplierName || "",
+                unitPrice: option.dataset.ruptureSupplierUnitPrice || "",
+            } : null;
+            list?.querySelectorAll("[data-rupture-supplier-code]").forEach((item) => {
+                item.classList.toggle("is-selected", item === option);
+            });
+            if (saveButton) saveButton.disabled = !selectedSupplier || savingSupplier;
+            setModalFeedback(selectedSupplier
+                ? `Fornecedor selecionado: ${selectedSupplier.name}`
+                : "Selecione um fornecedor para salvar."
+            );
+        };
+
+        const updateButtonSaved = (button, supplier) => {
+            button.dataset.ruptureOrderStatus = "salvo";
+            button.dataset.ruptureSavedSupplierCode = supplier.code;
+            button.dataset.ruptureSavedSupplierName = supplier.name;
+            if (supplier.unitPrice) button.dataset.ruptureProductUnitPrice = supplier.unitPrice;
+            button.textContent = "Gerar pedido";
+            button.title = `Fornecedor salvo: ${supplier.name}`;
+            button.disabled = false;
+            button.classList.add("is-selected");
+            button.classList.remove("is-sent");
+        };
+
+        const updateButtonSent = (button, result) => {
+            button.dataset.ruptureOrderStatus = "enviado";
+            button.textContent = "Enviado ao Omie";
+            button.title = result.numero
+                ? `Pedido enviado ao Omie: ${result.numero}`
+                : "Pedido enviado ao Omie";
+            button.disabled = true;
+            button.classList.remove("is-selected");
+            button.classList.add("is-sent");
+        };
+
+        const requestJson = async (url, payload) => {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": getCookie("csrftoken"),
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json();
+            if (!response.ok || data.sucesso === false) {
+                throw new Error(data.erro || "Nao foi possivel concluir a operacao.");
+            }
+            return data;
+        };
+
+        const orderPayload = (button, supplier = null) => ({
+            produto_chave: button.dataset.ruptureProductKey || "",
+            produto_nome: button.dataset.ruptureProductName || "",
+            produto_codigo: button.dataset.ruptureProductCode || "",
+            codigo_produto_omie: button.dataset.ruptureProductOmieCode || "",
+            quantidade: button.dataset.ruptureProductQuantity || "0",
+            unidade: button.dataset.ruptureProductUnit || "UN",
+            valor_unitario: supplier?.unitPrice || button.dataset.ruptureProductUnitPrice || "0",
+            fornecedor_codigo: supplier?.code || button.dataset.ruptureSavedSupplierCode || "",
+            fornecedor_nome: supplier?.name || button.dataset.ruptureSavedSupplierName || "",
+        });
+
+        const saveSelectedSupplier = async () => {
+            if (!activeButton || !selectedSupplier || savingSupplier) return;
+            savingSupplier = true;
+            if (saveButton) {
+                saveButton.disabled = true;
+                saveButton.textContent = "Salvando...";
+            }
+            setModalFeedback("Salvando fornecedor...");
+            try {
+                await requestJson(ruptureDashboard.dataset.ruptureSaveUrl, orderPayload(activeButton, selectedSupplier));
+                updateButtonSaved(activeButton, selectedSupplier);
+                setRuptureModalVisible(false);
+            } catch (error) {
+                setModalFeedback(error.message);
+            } finally {
+                savingSupplier = false;
+                if (saveButton) {
+                    saveButton.textContent = "Salvar";
+                    saveButton.disabled = !selectedSupplier;
+                }
+            }
+        };
+
+        const sendOrderToOmie = async (button) => {
+            if (sendingOrder || button.dataset.ruptureOrderStatus === "enviado") return;
+            if (button.dataset.ruptureOrderStatus !== "salvo") {
+                renderSuppliers(button);
+                return;
+            }
+            if (!window.confirm("Deseja enviar o pedido de compra para o Omie ?")) return;
+            sendingOrder = true;
+            button.disabled = true;
+            const originalText = button.textContent;
+            button.textContent = "Enviando...";
+            try {
+                const result = await requestJson(ruptureDashboard.dataset.ruptureSendUrl, {
+                    produto_chave: button.dataset.ruptureProductKey || "",
+                });
+                updateButtonSent(button, result);
+            } catch (error) {
+                button.disabled = false;
+                button.textContent = originalText;
+                window.alert(error.message);
+            } finally {
+                sendingOrder = false;
+            }
         };
 
         const supplierScoreMarkup = (supplier) => {
@@ -253,13 +385,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const renderSuppliers = (button) => {
             activeButton = button;
+            setSelectedSupplier(null);
             const productKey = button.dataset.ruptureProductKey;
             const suppliers = suppliersByProduct[productKey] || [];
             if (title) title.textContent = button.dataset.ruptureProductName || "Escolher fornecedor";
             if (subtitle) {
                 subtitle.textContent = [
                     button.dataset.ruptureProductCode,
-                    button.dataset.ruptureProductQuantity ? `Qtd. sugerida: ${button.dataset.ruptureProductQuantity}` : "",
+                    button.dataset.ruptureProductQuantityLabel ? `Qtd. sugerida: ${button.dataset.ruptureProductQuantityLabel}` : "",
                 ].filter(Boolean).join(" - ");
             }
             if (list) {
@@ -267,7 +400,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     <button
                         type="button"
                         class="inventory-rupture-supplier-option"
+                        data-rupture-supplier-code="${escapeHtml(supplier.codigo_fornecedor || "")}"
                         data-rupture-supplier-name="${escapeHtml(supplier.nome || "Fornecedor nao informado")}"
+                        data-rupture-supplier-unit-price="${escapeHtml(supplier.ultimo_valor || "")}"
                     >
                         <span>
                             <strong>${escapeHtml(supplier.nome || "Fornecedor nao informado")}</strong>
@@ -279,20 +414,23 @@ document.addEventListener("DOMContentLoaded", () => {
                 `).join("");
             }
             empty.hidden = suppliers.length > 0;
+            setModalFeedback(suppliers.length ? "Selecione um fornecedor para salvar." : "Nenhum fornecedor disponivel.");
+            if (saveButton) {
+                saveButton.textContent = "Salvar";
+                saveButton.disabled = true;
+            }
             setRuptureModalVisible(true);
         };
 
         ruptureDashboard.querySelectorAll("[data-rupture-order-open]").forEach((button) => {
-            button.addEventListener("click", () => renderSuppliers(button));
+            button.addEventListener("click", () => sendOrderToOmie(button));
         });
         list?.addEventListener("click", (event) => {
-            const option = event.target.closest("[data-rupture-supplier-name]");
+            const option = event.target.closest("[data-rupture-supplier-code]");
             if (!option || !activeButton) return;
-            activeButton.textContent = "Fornecedor escolhido";
-            activeButton.title = option.dataset.ruptureSupplierName || "";
-            activeButton.classList.add("is-selected");
-            setRuptureModalVisible(false);
+            setSelectedSupplier(option);
         });
+        saveButton?.addEventListener("click", saveSelectedSupplier);
         closeButton?.addEventListener("click", () => setRuptureModalVisible(false));
         modal?.addEventListener("click", (event) => {
             if (event.target === modal) setRuptureModalVisible(false);

@@ -108,6 +108,7 @@
         data-omie-sync
         data-start-url="{% url 'dashboards:sincronizar_clientes_omie' empresa.slug %}"
         data-status-url-template="{% url 'dashboards:status_sincronizacao_omie' empresa.slug 999999999 %}"
+        data-stop-url-template="{% url 'dashboards:parar_sincronizacao_omie' empresa.slug 999999999 %}"
         {% if ultima_sincronizacao %}data-last-sync-id="{{ ultima_sincronizacao.id }}"{% endif %}
         data-last-sync-status="{{ ultima_sincronizacao.status|default:'' }}"
     >
@@ -142,6 +143,12 @@
                 >
                     <i class="bi bi-arrow-repeat me-2"></i>
                     <span>Atualizar dados da OMIE</span>
+                </button>
+                <button class="btn btn-outline-danger {% if ultima_sincronizacao.status != 'em_andamento' %}d-none{% endif %}"
+                    type="button" data-sync-stop
+                    {% if ultima_sincronizacao.parada_solicitada_em %}disabled{% endif %}>
+                    <i class="bi bi-stop-circle me-2" aria-hidden="true"></i>
+                    <span>{% if ultima_sincronizacao.parada_solicitada_em %}Parada solicitada{% else %}Parar sincronizacao{% endif %}</span>
                 </button>
             </div>
         </div>
