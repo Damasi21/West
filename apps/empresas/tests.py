@@ -1578,6 +1578,38 @@ class SincronizacaoClientesOmieTests(TestCase):
 
         self.assertEqual(fila_sincronizacao_omie(sincronizacao), FILA_OMIE_MANUAL)
 
+    @patch("apps.empresas.views.enfileirar_sincronizacao_omie", side_effect=ConnectionError("broker indisponivel"))
+    def test_falha_ao_enfileirar_manual_nao_deixa_execucao_presa(self, enfileirar_mock):
+        self.client.force_login(self.administrador)
+        url = reverse("dashboards:sincronizar_clientes_omie", kwargs={
+            "empresa_slug": self.empresa.slug,
+        })
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["status"], SincronizacaoOmie.Status.ERRO)
+        sincronizacao = SincronizacaoOmie.objects.get(empresa=self.empresa)
+        self.assertIsNotNone(sincronizacao.finalizada_em)
+        self.assertIsNone(sincronizacao.enfileirada_em)
+        enfileirar_mock.side_effect = None
+        self.assertEqual(self.client.post(url).status_code, 202)
+        self.assertEqual(self.empresa.sincronizacoes_omie.count(), 2)
+
+    @patch("apps.empresas.views.enfileirar_sincronizacao_omie")
+    def test_falha_apos_worker_iniciar_nao_sobrescreve_execucao(self, enfileirar_mock):
+        def iniciar_e_falhar(sincronizacao):
+            SincronizacaoOmie.objects.filter(pk=sincronizacao.pk).update(
+                status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+            )
+            raise ConnectionError("falha posterior")
+
+        enfileirar_mock.side_effect = iniciar_e_falhar
+        self.client.force_login(self.administrador)
+        response = self.client.post(reverse("dashboards:sincronizar_clientes_omie", kwargs={
+            "empresa_slug": self.empresa.slug,
+        }))
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["status"], SincronizacaoOmie.Status.EM_ANDAMENTO)
+
     @patch("apps.empresas.tasks.executar_sincronizacao_omie_task.apply_async")
     def test_enfileirar_manual_atualiza_status_visivel(self, apply_async_mock):
         class Resultado:

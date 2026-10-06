@@ -1165,7 +1165,21 @@ def sincronizar_clientes_omie(request, empresa_slug):
     try:
         enfileirar_sincronizacao_omie(sincronizacao)
     except Exception:
-        pass
+        agora = timezone.now()
+        encerrada = SincronizacaoOmie.objects.filter(
+            pk=sincronizacao.pk,
+            status=SincronizacaoOmie.Status.PENDENTE,
+            enfileirada_em__isnull=True,
+        ).update(
+            status=SincronizacaoOmie.Status.ERRO,
+            finalizada_em=agora,
+            atualizada_em=agora,
+            mensagem="Nao foi possivel enviar a sincronizacao para a fila.",
+            erro="Falha ao enviar ao Redis/Celery. Verifique o servico de filas e tente novamente.",
+        )
+        sincronizacao.refresh_from_db()
+        if encerrada:
+            return JsonResponse(_dados_sincronizacao(sincronizacao), status=503)
     return JsonResponse(_dados_sincronizacao(sincronizacao), status=202)
 
 

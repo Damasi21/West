@@ -142,7 +142,7 @@
             if (manualPeriodo) manualPeriodo.disabled = !finished;
             button.querySelector("span").textContent = finished
                 ? "Atualizar dados da OMIE"
-                : "Atualizando...";
+                : data.status === "pendente" ? "Na fila..." : "Atualizando...";
 
             errorBox.classList.toggle("d-none", data.status !== "erro");
             errorBox.textContent = data.erro || "";
@@ -236,7 +236,10 @@
                     body: payload.toString(),
                 });
                 const data = await response.json();
-                if (!response.ok) throw new Error(data.erro || "Nao foi possivel iniciar.");
+                if (!response.ok) {
+                    if (data.status) render(data);
+                    throw new Error(data.erro || "Nao foi possivel iniciar.");
+                }
                 render(data);
                 poll(data.id);
             } catch (error) {
