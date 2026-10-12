@@ -1526,6 +1526,11 @@ class SincronizacaoClientesOmieTests(TestCase):
                 _sincronizacao_em_execucao.reset(token)
 
     def setUp(self):
+        patcher = patch("apps.empresas.omie.consultar_nfes_saida", return_value={
+            "total_de_paginas": 1, "total_de_registros": 0, "nfCadastro": [],
+        })
+        self.consultar_nfes_saida_mock = patcher.start()
+        self.addCleanup(patcher.stop)
         self.administrador = get_user_model().objects.create_user(
             username="admin_sync_omie",
             password="senha-segura",
@@ -1577,6 +1582,60 @@ class SincronizacaoClientesOmieTests(TestCase):
         )
 
         self.assertEqual(fila_sincronizacao_omie(sincronizacao), FILA_OMIE_MANUAL)
+
+    @patch("apps.empresas.views.enfileirar_sincronizacao_omie")
+    def test_manual_e_criada_com_automatica_pendente_e_agendamento_desligado(self, enfileirar_mock):
+        self.client.force_login(self.administrador)
+        AgendamentoSincronizacaoOmie.objects.create(empresa=self.empresa, ativo=False)
+        automatica = SincronizacaoOmie.objects.create(
+            empresa=self.empresa, origem=SincronizacaoOmie.Origem.AGENDADA,
+        )
+        url = reverse("dashboards:sincronizar_clientes_omie", kwargs={
+            "empresa_slug": self.empresa.slug,
+        })
+        response = self.client.post(url, {"recurso": "comercial", "periodo": "ano_atual"})
+        self.assertEqual(response.status_code, 202)
+        manual = SincronizacaoOmie.objects.get(pk=response.json()["id"])
+        self.assertNotEqual(manual.pk, automatica.pk)
+        self.assertEqual(manual.origem, SincronizacaoOmie.Origem.MANUAL)
+        self.assertEqual(manual.recurso, "comercial")
+        enfileirar_mock.assert_called_once_with(manual)
+        response = self.client.post(url)
+        self.assertEqual(response.json()["id"], manual.pk)
+        self.assertEqual(enfileirar_mock.call_count, 1)
+
+    @patch("apps.empresas.views.enfileirar_sincronizacao_omie")
+    def test_manual_preserva_execucao_em_andamento_da_empresa(self, enfileirar_mock):
+        self.client.force_login(self.administrador)
+        ativa = SincronizacaoOmie.objects.create(
+            empresa=self.empresa, origem=SincronizacaoOmie.Origem.AGENDADA,
+            status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+        )
+        response = self.client.post(reverse("dashboards:sincronizar_clientes_omie", kwargs={
+            "empresa_slug": self.empresa.slug,
+        }))
+        self.assertEqual(response.json()["id"], ativa.pk)
+        enfileirar_mock.assert_not_called()
+
+    def test_base_sem_credenciais_exibe_motivo_e_nao_cria_execucao(self):
+        self.integracao.delete()
+        self.client.force_login(self.administrador)
+        kwargs = {"empresa_slug": self.empresa.slug}
+        response = self.client.get(reverse("dashboards:sincronizacao_omie", kwargs=kwargs))
+        self.assertContains(response, "Cadastre a App Key e o App Secret desta empresa")
+        self.assertContains(response, "Configurar integracao OMIE")
+        response = self.client.post(reverse("dashboards:sincronizar_clientes_omie", kwargs=kwargs))
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(self.empresa.sincronizacoes_omie.exists())
+
+    def test_integracao_inativa_exibe_motivo(self):
+        self.integracao.ativa = False
+        self.integracao.save(update_fields=["ativa"])
+        self.client.force_login(self.administrador)
+        response = self.client.get(reverse("dashboards:sincronizacao_omie", kwargs={
+            "empresa_slug": self.empresa.slug,
+        }))
+        self.assertContains(response, "Ative a integracao OMIE desta empresa")
 
     @patch("apps.empresas.views.enfileirar_sincronizacao_omie", side_effect=ConnectionError("broker indisponivel"))
     def test_falha_ao_enfileirar_manual_nao_deixa_execucao_presa(self, enfileirar_mock):
@@ -4037,7 +4096,7 @@ class SincronizacaoClientesOmieTests(TestCase):
 
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA)
-        self.assertEqual(sincronizacao.pagina_atual, 25)
+        self.assertEqual(sincronizacao.pagina_atual, 26)
         self.assertEqual(sincronizacao.registros_processados, 26)
         self.assertEqual(CadastroOmie.objects.count(), 2)
         self.assertEqual(

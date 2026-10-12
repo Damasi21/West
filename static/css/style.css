@@ -596,6 +596,37 @@ a { text-decoration: none; }
     grid-column: 1 / -1;
     justify-self: end;
 }
+.cfop-workspace {
+    display: grid;
+    grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+}
+.cfop-list { min-width: 0; }
+.cfop-table th:first-child { width: 80px; white-space: nowrap; }
+.cfop-table td { overflow-wrap: anywhere; }
+@media (max-width: 1000px) {
+    .cfop-workspace { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+    .cfop-table, .cfop-table tbody { display: block; }
+    .cfop-table thead { display: none; }
+    .cfop-table tbody tr {
+        display: grid;
+        grid-template-columns: 80px minmax(0, 1fr) 80px;
+        grid-template-areas: "codigo venda acoes" "descricao descricao descricao";
+        align-items: center;
+        gap: .25rem .5rem;
+        padding: .75rem;
+        border-bottom: 1px solid var(--bs-border-color);
+        background: white;
+    }
+    .cfop-table tbody th, .cfop-table tbody td { padding: 0; border: 0; }
+    .cfop-table tbody th { grid-area: codigo; }
+    .cfop-table tbody td:nth-child(2) { grid-area: descricao; padding-top: .35rem; }
+    .cfop-table tbody td:nth-child(3) { grid-area: venda; }
+    .cfop-table tbody td:nth-child(4) { grid-area: acoes; }
+}
 .sync-last-run {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

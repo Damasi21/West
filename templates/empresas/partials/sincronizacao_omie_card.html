@@ -153,6 +153,17 @@
             </div>
         </div>
 
+        {% if not form_omie.integracao or not form_omie.integracao.ativa %}
+            <div class="alert alert-warning mt-3" role="status">
+                {% if not form_omie.integracao %}
+                    Cadastre a App Key e o App Secret desta empresa para sincronizar.
+                {% else %}
+                    Ative a integracao OMIE desta empresa para sincronizar.
+                {% endif %}
+                <a href="{% url 'dashboards:parametros' empresa.slug %}">Configurar integracao OMIE</a>
+            </div>
+        {% endif %}
+
         <div class="sync-last-run" aria-label="Ultima sincronizacao da OMIE">
             <div>
                 <span>Inicio da ultima sincronizacao</span>
@@ -176,6 +187,8 @@
             <div><span>Departamentos</span><strong data-total-departamentos>{{ total_departamentos_omie }}</strong></div>
             <div><span>Vendedores</span><strong data-total-vendedores>{{ total_vendedores_omie }}</strong></div>
             <div><span>Produtos</span><strong data-total-produtos>{{ total_produtos_omie }}</strong></div>
+            <div><span>NF-e de saida</span><strong data-total-nfes-saida>{{ total_nfes_saida_omie }}</strong></div>
+            <div><span>Itens NF-e saida</span><strong data-total-itens-nfe-saida>{{ total_itens_nfe_saida_omie }}</strong></div>
             <div><span>Servicos</span><strong data-total-servicos>{{ total_servicos_omie }}</strong></div>
             <div><span>Contratos</span><strong data-total-contratos>{{ total_contratos_omie }}</strong></div>
             <div><span>Itens contrato</span><strong data-total-itens-contrato>{{ total_itens_contrato_omie }}</strong></div>

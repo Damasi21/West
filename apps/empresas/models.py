@@ -1826,6 +1826,130 @@ class RecebimentoNfeItemOmie(models.Model):
         return f"{self.numero_pedido_compra} - {self.codigo_produto_texto}"
 
 
+class CfopVendaOmie(models.Model):
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name="cfops_venda_omie")
+    codigo = models.CharField(max_length=4)
+    descricao = models.CharField(max_length=255)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["codigo"]
+        constraints = [models.UniqueConstraint(fields=["empresa", "codigo"], name="cfop_venda_emp_codigo_unico")]
+        verbose_name = "CFOP de venda"
+        verbose_name_plural = "CFOPs de venda"
+
+    @property
+    def codigo_formatado(self):
+        return f"{self.codigo[0]}.{self.codigo[1:]}"
+
+    def save(self, *args, **kwargs):
+        from .cfops import normalizar_cfop
+        self.codigo = normalizar_cfop(self.codigo)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.codigo_formatado} - {self.descricao}"
+
+
+class NfeSaidaQuerySet(models.QuerySet):
+    def vendas(self):
+        from django.db.models import Exists, OuterRef, Subquery, Sum
+
+        itens_venda = NfeSaidaItemOmie.objects.vendas().filter(nota_id=OuterRef("pk"))
+        valor_venda = itens_venda.order_by().values("nota_id").annotate(total=Sum("valor_total")).values("total")
+        return self.filter(Exists(itens_venda)).annotate(valor_venda=Subquery(valor_venda))
+
+
+class NfeSaidaItemQuerySet(models.QuerySet):
+    def vendas(self):
+        from django.db.models import OuterRef, Subquery
+        from django.db.models.functions import Replace
+
+        codigos = CfopVendaOmie.objects.filter(empresa_id=OuterRef("empresa_id"), ativo=True).values("codigo")
+        return self.alias(cfop_normalizado=Replace("cfop", models.Value("."), models.Value(""))).filter(
+            cfop_normalizado__in=Subquery(codigos),
+            ativo_omie=True,
+            nota__ativo_omie=True,
+            nota__denegada=False,
+            nota__data_cancelamento__isnull=True,
+            nota__data_inutilizacao__isnull=True,
+        )
+
+
+class NfeSaidaOmie(models.Model):
+    objects = NfeSaidaQuerySet.as_manager()
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name="nfes_saida_omie")
+    codigo_nf = models.BigIntegerField()
+    chave_nfe = models.CharField(max_length=44, blank=True)
+    numero = models.CharField(max_length=30, blank=True)
+    serie = models.CharField(max_length=10, blank=True)
+    modelo = models.CharField(max_length=5, blank=True)
+    ambiente = models.CharField(max_length=1, blank=True)
+    finalidade = models.CharField(max_length=2, blank=True)
+    data_emissao = models.DateField(null=True, blank=True)
+    data_saida = models.DateField(null=True, blank=True)
+    data_registro = models.DateField(null=True, blank=True)
+    data_cancelamento = models.DateField(null=True, blank=True)
+    data_inutilizacao = models.DateField(null=True, blank=True)
+    denegada = models.BooleanField(default=False)
+    codigo_cliente = models.BigIntegerField(null=True, blank=True)
+    cliente = models.ForeignKey(CadastroOmie, on_delete=models.SET_NULL, null=True, blank=True)
+    razao_social_destinatario = models.CharField(max_length=255, blank=True)
+    cnpj_cpf_destinatario = models.CharField(max_length=20, blank=True)
+    codigo_pedido = models.BigIntegerField(null=True, blank=True)
+    codigo_categoria = models.CharField(max_length=80, blank=True)
+    valor_total = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_produtos = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_desconto = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_frete = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    importado_api = models.BooleanField(default=False)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data_emissao", "numero"]
+        constraints = [models.UniqueConstraint(fields=["empresa", "codigo_nf"], name="nfe_saida_emp_codigo_unico")]
+        indexes = [models.Index(fields=["empresa", "data_emissao"], name="nfe_saida_emp_data_idx")]
+        verbose_name = "NF-e de saida OMIE"
+        verbose_name_plural = "NF-e de saida OMIE"
+
+    def __str__(self):
+        return f"{self.numero} / {self.serie}"
+
+
+class NfeSaidaItemOmie(models.Model):
+    objects = NfeSaidaItemQuerySet.as_manager()
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name="itens_nfe_saida_omie")
+    nota = models.ForeignKey(NfeSaidaOmie, on_delete=models.CASCADE, related_name="itens")
+    sequencia = models.PositiveIntegerField()
+    codigo_item = models.BigIntegerField(null=True, blank=True)
+    codigo_produto = models.BigIntegerField(null=True, blank=True)
+    produto = models.ForeignKey(ProdutoOmie, on_delete=models.SET_NULL, null=True, blank=True)
+    codigo_produto_texto = models.CharField(max_length=60, blank=True)
+    descricao = models.CharField(max_length=255, blank=True)
+    cfop = models.CharField(max_length=10, blank=True)
+    ncm = models.CharField(max_length=20, blank=True)
+    unidade = models.CharField(max_length=10, blank=True)
+    quantidade = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_unitario = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_produtos = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_total = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_desconto = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    valor_frete = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    dados_originais = models.JSONField(default=dict, blank=True)
+    ativo_omie = models.BooleanField(default=True)
+    ultima_presenca_omie = models.DateTimeField(null=True, blank=True)
+    sincronizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["nota_id", "sequencia"]
+        constraints = [models.UniqueConstraint(fields=["nota", "sequencia"], name="nfe_saida_item_seq_unico")]
+
+
 class CategoriaOmie(models.Model):
     empresa = models.ForeignKey(
         Empresa,

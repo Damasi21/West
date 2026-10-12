@@ -11,6 +11,7 @@ app_name = "dashboards"
 urlpatterns = [
     path("", views.home, name="home"),
     path("parametros/", empresas_views.parametros, name="parametros"),
+    path("parametros/classificacoes/", empresas_views.classificacoes, name="classificacoes"),
     path(
         "parametros/dre-categorias/",
         empresas_views.dre_categorias,

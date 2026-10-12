@@ -18,6 +18,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .forms import (
     AgendamentoSincronizacaoOmieForm,
+    CfopVendaOmieForm,
     ContaDREForm,
     EmpresaForm,
     EmpresaUsuarioForm,
@@ -28,6 +29,7 @@ from .models import (
     AcaoUsuarioLog,
     AgendamentoSincronizacaoOmie,
     CadastroOmie,
+    CfopVendaOmie,
     CategoriaOmie,
     ContaDRE,
     Empresa,
@@ -337,9 +339,10 @@ def parametros(request, empresa_slug):
         },
         {
             "titulo": "Classificações",
-            "descricao": "Padronize categorias, centros de custo, vendedores, fornecedores e produtos.",
+            "descricao": "Defina os CFOPs de venda das notas fiscais de saida.",
             "icone": "bi-tags",
-            "status": "Planejado",
+            "status": "Disponivel",
+            "url": reverse("dashboards:classificacoes", kwargs={"empresa_slug": empresa.slug}),
         },
         {
             "titulo": "DRE",
@@ -409,6 +412,8 @@ def parametros(request, empresa_slug):
             "total_servicos_omie": empresa.servicos_omie.count(),
             "total_ordens_servico_omie": empresa.ordens_servico_omie.count(),
             "total_nfses_omie": empresa.nfses_omie.count(),
+            "total_nfes_saida_omie": empresa.nfes_saida_omie.count(),
+            "total_itens_nfe_saida_omie": empresa.itens_nfe_saida_omie.count(),
             "total_itens_ordem_servico_omie": (
                 empresa.itens_ordem_servico_omie.count()
             ),
@@ -486,6 +491,8 @@ def sincronizacao_omie(request, empresa_slug):
             "total_servicos_omie": empresa.servicos_omie.count(),
             "total_ordens_servico_omie": empresa.ordens_servico_omie.count(),
             "total_nfses_omie": empresa.nfses_omie.count(),
+            "total_nfes_saida_omie": empresa.nfes_saida_omie.count(),
+            "total_itens_nfe_saida_omie": empresa.itens_nfe_saida_omie.count(),
             "total_itens_ordem_servico_omie": (
                 empresa.itens_ordem_servico_omie.count()
             ),
@@ -672,6 +679,45 @@ def usuarios(request, empresa_slug):
             "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
         },
     )
+
+
+@login_required
+def classificacoes(request, empresa_slug):
+    empresa = _obter_empresa_administravel(empresa_slug)
+    _exigir_administrador_empresa(request, empresa)
+    cfop_id = request.POST.get("cfop_id") or request.GET.get("editar")
+    cfop = None
+    if cfop_id:
+        try:
+            cfop_id = int(cfop_id)
+        except ValueError:
+            return HttpResponse("CFOP invalido.", status=400)
+        cfop = get_object_or_404(CfopVendaOmie, pk=cfop_id, empresa=empresa)
+    if request.method == "POST" and request.POST.get("acao") in {"excluir", "alternar"}:
+        if not cfop:
+            return HttpResponse("Informe o CFOP.", status=400)
+        if request.POST["acao"] == "excluir":
+            cfop.delete()
+            messages.success(request, "CFOP removido da classificacao de vendas.")
+        else:
+            cfop.ativo = request.POST.get("ativo") == "on"
+            cfop.save(update_fields=["ativo"])
+            messages.success(request, "Classificacao do CFOP atualizada.")
+        return redirect("dashboards:classificacoes", empresa_slug=empresa.slug)
+    form = CfopVendaOmieForm(request.POST or None, empresa=empresa, instance=cfop)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "CFOP de venda salvo.")
+        return redirect("dashboards:classificacoes", empresa_slug=empresa.slug)
+    return render(request, "empresas/classificacoes.html", {
+        "empresa": empresa,
+        "form": form,
+        "cfop_edicao": cfop,
+        "cfops": empresa.cfops_venda_omie.all(),
+        "notas_venda": empresa.nfes_saida_omie.vendas().count(),
+        "itens_venda": empresa.itens_nfe_saida_omie.vendas().count(),
+        "pode_administrar_empresa": True,
+    })
 
 
 @login_required
@@ -1137,10 +1183,10 @@ def sincronizar_clientes_omie(request, empresa_slug):
 
     _encerrar_sincronizacoes_omie_obsoletas(empresa)
     em_execucao = empresa.sincronizacoes_omie.filter(
-        status__in=[
-            SincronizacaoOmie.Status.PENDENTE,
-            SincronizacaoOmie.Status.EM_ANDAMENTO,
-        ]
+        status=SincronizacaoOmie.Status.EM_ANDAMENTO,
+    ).first() or empresa.sincronizacoes_omie.filter(
+        status=SincronizacaoOmie.Status.PENDENTE,
+        origem=SincronizacaoOmie.Origem.MANUAL,
     ).first()
     if em_execucao:
         return JsonResponse(_dados_sincronizacao(em_execucao), status=202)
@@ -1243,6 +1289,8 @@ def status_sincronizacao_omie(request, empresa_slug, sincronizacao_id):
             "servicos": empresa.servicos_omie.count(),
             "ordens_servico": empresa.ordens_servico_omie.count(),
             "nfses": empresa.nfses_omie.count(),
+            "nfes_saida": empresa.nfes_saida_omie.count(),
+            "itens_nfe_saida": empresa.itens_nfe_saida_omie.count(),
             "itens_ordem_servico": empresa.itens_ordem_servico_omie.count(),
             "contratos": empresa.contratos_omie.count(),
             "itens_contrato": empresa.itens_contrato_omie.count(),

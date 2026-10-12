@@ -4,6 +4,7 @@ from .models import (
     AcaoUsuarioLog,
     AgendamentoSincronizacaoOmie,
     CadastroOmie,
+    CfopVendaOmie,
     CategoriaOmie,
     ContaCorrenteOmie,
     ContaPagarOmie,
@@ -21,6 +22,8 @@ from .models import (
     MovimentoEstoqueOmie,
     MovimentoFinanceiroOmie,
     NfseOmie,
+    NfeSaidaOmie,
+    NfeSaidaItemOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoCompraItemOmie,
@@ -40,6 +43,27 @@ from .models import (
     TipoContaCorrenteOmie,
     VendedorOmie,
 )
+
+
+@admin.register(NfeSaidaOmie)
+class NfeSaidaOmieAdmin(admin.ModelAdmin):
+    list_display = ("numero", "serie", "empresa", "data_emissao", "valor_total", "data_cancelamento")
+    list_filter = ("empresa", "ativo_omie", "denegada", "ambiente")
+    search_fields = ("numero", "chave_nfe", "razao_social_destinatario")
+
+
+@admin.register(CfopVendaOmie)
+class CfopVendaOmieAdmin(admin.ModelAdmin):
+    list_display = ("codigo", "descricao", "empresa", "ativo")
+    list_filter = ("empresa", "ativo")
+    search_fields = ("codigo", "descricao")
+
+
+@admin.register(NfeSaidaItemOmie)
+class NfeSaidaItemOmieAdmin(admin.ModelAdmin):
+    list_display = ("nota", "sequencia", "empresa", "descricao", "quantidade", "valor_total")
+    list_filter = ("empresa", "ativo_omie")
+    search_fields = ("descricao", "codigo_produto_texto", "nota__numero")
 
 
 @admin.register(AcaoUsuarioLog)

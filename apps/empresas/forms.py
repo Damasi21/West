@@ -5,6 +5,7 @@ from django.db.models import Max
 
 from .models import (
     AgendamentoSincronizacaoOmie,
+    CfopVendaOmie,
     ContaDRE,
     Empresa,
     EmpresaUsuario,
@@ -47,6 +48,35 @@ class EmpresaForm(forms.ModelForm):
         if len(numeros) != 14:
             raise forms.ValidationError("Informe um CNPJ com 14 números.")
         return cnpj
+
+
+class CfopVendaOmieForm(forms.ModelForm):
+    codigo = forms.CharField(label="CFOP", max_length=10, widget=forms.TextInput(attrs={
+        "class": "form-control", "placeholder": "5.102", "inputmode": "decimal",
+    }))
+
+    class Meta:
+        model = CfopVendaOmie
+        fields = ["codigo", "descricao", "ativo"]
+        labels = {"descricao": "Descricao", "ativo": "Considerar como venda"}
+        widgets = {
+            "descricao": forms.TextInput(attrs={"class": "form-control"}),
+            "ativo": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+
+    def __init__(self, *args, empresa, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance.empresa = empresa
+
+    def clean_codigo(self):
+        from .cfops import normalizar_cfop
+        codigo = normalizar_cfop(self.cleaned_data["codigo"])
+        existentes = self._meta.model.objects.filter(empresa=self.instance.empresa, codigo=codigo)
+        if self.instance.pk:
+            existentes = existentes.exclude(pk=self.instance.pk)
+        if existentes.exists():
+            raise forms.ValidationError("Este CFOP ja esta cadastrado para a empresa.")
+        return codigo
 
 
 class IntegracaoOmieForm(forms.Form):

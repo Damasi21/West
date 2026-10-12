@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Classificacoes | {{ empresa.nome_fantasia }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">CONFIGURACOES DA EMPRESA</span>
+        <h1>Classificacoes</h1>
+    </div>
+    <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">
+        <i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Voltar
+    </a>
+</div>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <h2 class="h5 mb-0">CFOPs de venda</h2>
+    <div class="text-muted small">{{ notas_venda }} notas de venda | {{ itens_venda }} itens de venda</div>
+</div>
+<div class="cfop-workspace">
+    <section>
+        <h3 class="h6 mb-3">{% if cfop_edicao %}Editar CFOP{% else %}Novo CFOP{% endif %}</h3>
+        <form method="post" action="{% url 'dashboards:classificacoes' empresa.slug %}">
+            {% csrf_token %}
+            {% if cfop_edicao %}<input type="hidden" name="cfop_id" value="{{ cfop_edicao.pk }}">{% endif %}
+            {% for field in form %}
+                {% if field.name == "ativo" %}
+                    <div class="form-check form-switch mb-3">{{ field }}<label for="{{ field.id_for_label }}" class="form-check-label">{{ field.label }}</label></div>
+                {% else %}
+                    <div class="mb-3"><label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>{{ field }}</div>
+                {% endif %}
+                {% for error in field.errors %}<div class="text-danger small mb-2">{{ error }}</div>{% endfor %}
+            {% endfor %}
+            {% for error in form.non_field_errors %}<div class="text-danger small mb-2">{{ error }}</div>{% endfor %}
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-2" aria-hidden="true"></i>Salvar CFOP</button>
+                {% if cfop_edicao %}<a class="btn btn-white" href="{% url 'dashboards:classificacoes' empresa.slug %}">Cancelar</a>{% endif %}
+            </div>
+        </form>
+    </section>
+    <section class="cfop-list">
+        <div class="table-responsive">
+            <table class="table align-middle cfop-table">
+                <thead><tr><th scope="col">CFOP</th><th scope="col">Descricao</th><th scope="col">Venda</th><th scope="col"><span class="visually-hidden">Acoes</span></th></tr></thead>
+                <tbody>
+                    {% for cfop in cfops %}
+                    <tr>
+                        <th scope="row">{{ cfop.codigo_formatado }}</th>
+                        <td>{{ cfop.descricao }}</td>
+                        <td>
+                            <form method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="acao" value="alternar">
+                                <input type="hidden" name="cfop_id" value="{{ cfop.pk }}">
+                                <div class="form-check form-switch mb-0">
+                                    <input type="checkbox" class="form-check-input" name="ativo" {% if cfop.ativo %}checked{% endif %}
+                                        aria-label="Considerar {{ cfop.codigo_formatado }} como venda" onchange="this.form.requestSubmit()">
+                                </div>
+                            </form>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1 justify-content-end">
+                                <a href="?editar={{ cfop.pk }}" class="btn btn-sm btn-white" title="Editar CFOP" aria-label="Editar {{ cfop.codigo_formatado }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>
+                                <form method="post" onsubmit="return confirm('Remover este CFOP da classificacao de vendas?')">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="acao" value="excluir">
+                                    <input type="hidden" name="cfop_id" value="{{ cfop.pk }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Remover CFOP" aria-label="Remover {{ cfop.codigo_formatado }}"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}<tr><td colspan="4" class="text-muted py-4">Nenhum CFOP cadastrado.</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

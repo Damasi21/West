@@ -15,6 +15,8 @@ from django.db import close_old_connections, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from .cfops import nota_tem_cfop_venda
+
 from .models import (
     CadastroOmie,
     CategoriaOmie,
@@ -29,6 +31,8 @@ from .models import (
     MovimentoEstoqueOmie,
     MovimentoFinanceiroOmie,
     NfseOmie,
+    NfeSaidaOmie,
+    NfeSaidaItemOmie,
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     PedidoCompraItemOmie,
@@ -77,6 +81,7 @@ PRODUTOS_FORNECEDORES_URL = "https://app.omie.com.br/api/v1/estoque/produtoforne
 SERVICOS_URL = "https://app.omie.com.br/api/v1/servicos/servico/"
 ORDENS_SERVICO_URL = "https://app.omie.com.br/api/v1/servicos/os/"
 NFSE_URL = "https://app.omie.com.br/api/v1/servicos/nfse/"
+NFES_SAIDA_URL = "https://app.omie.com.br/api/v1/produtos/nfconsultar/"
 CONTRATOS_URL = "https://app.omie.com.br/api/v1/servicos/contrato/"
 SSL_CONTEXT = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="omie-sync")
@@ -1702,6 +1707,43 @@ def consultar_ordens_servico(
     except json.JSONDecodeError as exc:
         raise OmieAPIError("A OMIE retornou uma resposta invÃ¡lida.") from exc
 
+    if "faultstring" in dados:
+        raise OmieAPIError(dados["faultstring"])
+    return dados
+
+
+def consultar_nfes_saida(integracao, pagina, registros_por_pagina=50, inicio=None, fim=None):
+    parametros = {
+        "pagina": pagina,
+        "registros_por_pagina": registros_por_pagina,
+        "tpNF": "1",
+        "cApenasResumo": "N",
+        "ordenar_por": "CODIGO",
+    }
+    if inicio and fim:
+        parametros.update({
+            "dEmiInicial": inicio.strftime("%d/%m/%Y"),
+            "dEmiFinal": fim.strftime("%d/%m/%Y"),
+            "hEmiInicial": "00:00:00",
+            "hEmiFinal": "23:59:59",
+        })
+    payload = {
+        "call": "ListarNF",
+        "param": [parametros],
+        "app_key": integracao.app_key,
+        "app_secret": integracao.obter_app_secret(),
+    }
+    request = Request(
+        NFES_SAIDA_URL, data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with _abrir_requisicao_omie(request, getattr(settings, "OMIE_API_TIMEOUT", 45)) as response:
+            dados = json.loads(response.read().decode("utf-8"))
+    except (URLError, TimeoutError) as exc:
+        raise OmieAPIError(f"Nao foi possivel conectar a OMIE: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise OmieAPIError("A OMIE retornou uma resposta invalida.") from exc
     if "faultstring" in dados:
         raise OmieAPIError(dados["faultstring"])
     return dados
@@ -4185,6 +4227,98 @@ def _itens_recebimento_nfe(recebimento):
     return []
 
 
+def _salvar_nfes_saida(empresa, itens):
+    agora = timezone.now()
+    codigos_venda = set(empresa.cfops_venda_omie.filter(ativo=True).values_list("codigo", flat=True))
+    itens = [nota for nota in itens if nota_tem_cfop_venda(nota, codigos_venda)]
+    clientes = {c.codigo_cliente_omie: c for c in CadastroOmie.objects.filter(
+        empresa=empresa, codigo_cliente_omie__in={
+            codigo for nota in itens
+            for codigo in [_inteiro_ou_none((nota.get("nfDestInt") or {}).get("nCodCli"))]
+            if codigo is not None
+        },
+    )}
+    produtos = {p.codigo_produto: p for p in ProdutoOmie.objects.filter(
+        empresa=empresa, codigo_produto__in={
+            codigo
+            for nota in itens for item in (nota.get("det") or [])
+            for codigo in [_inteiro_ou_none((item.get("nfProdInt") or {}).get("nCodProd"))]
+            if codigo is not None
+        },
+    )}
+    processados = 0
+    for nota in itens:
+        ide = nota.get("ide") or {}
+        if str(ide.get("tpNF")) != "1":
+            continue
+        compl = nota.get("compl") or {}
+        codigo_nf = _inteiro_ou_none(compl.get("nIdNF"))
+        if not codigo_nf:
+            raise OmieAPIError("NF-e de saida sem identificador compl.nIdNF.")
+        destinatario = nota.get("nfDestInt") or {}
+        totais = (nota.get("total") or {}).get("ICMSTot") or {}
+        codigo_cliente = _inteiro_ou_none(destinatario.get("nCodCli"))
+        with transaction.atomic():
+            obj, _ = NfeSaidaOmie.objects.update_or_create(
+                empresa=empresa, codigo_nf=codigo_nf, defaults={
+                    "chave_nfe": str(compl.get("cChaveNFe") or ""),
+                    "numero": str(ide.get("nNF") or ""),
+                    "serie": str(ide.get("serie") or ""),
+                    "modelo": str(ide.get("mod") or ""),
+                    "ambiente": str(ide.get("tpAmb") or ""),
+                    "finalidade": str(ide.get("finNFe") or ""),
+                    "data_emissao": _data_omie(ide.get("dEmi")),
+                    "data_saida": _data_omie(ide.get("dSaiEnt")),
+                    "data_registro": _data_omie(ide.get("dReg")),
+                    "data_cancelamento": _data_omie(ide.get("dCan")),
+                    "data_inutilizacao": _data_omie(ide.get("dInut")),
+                    "denegada": _sim_nao(ide.get("cDeneg")),
+                    "codigo_cliente": codigo_cliente,
+                    "cliente": clientes.get(codigo_cliente),
+                    "razao_social_destinatario": str(destinatario.get("cRazao") or ""),
+                    "cnpj_cpf_destinatario": str(destinatario.get("cnpj_cpf") or ""),
+                    "codigo_pedido": _inteiro_ou_none(compl.get("nIdPedido")),
+                    "codigo_categoria": str(compl.get("cCodCateg") or ""),
+                    "valor_total": _decimal(totais.get("vNF")),
+                    "valor_produtos": _decimal(totais.get("vProd")),
+                    "valor_desconto": _decimal(totais.get("vDesc")),
+                    "valor_frete": _decimal(totais.get("vFrete")),
+                    "importado_api": _sim_nao((nota.get("info") or {}).get("cImpAPI")),
+                    "dados_originais": nota,
+                    **_presenca_omie(agora),
+                },
+            )
+            sequencias = []
+            for sequencia, item in enumerate(nota.get("det") or [], start=1):
+                prod = item.get("prod") or {}
+                integracao_prod = item.get("nfProdInt") or {}
+                codigo_produto = _inteiro_ou_none(integracao_prod.get("nCodProd"))
+                NfeSaidaItemOmie.objects.update_or_create(nota=obj, sequencia=sequencia, defaults={
+                    "empresa": empresa,
+                    "codigo_item": _inteiro_ou_none(integracao_prod.get("nCodItem")),
+                    "codigo_produto": codigo_produto,
+                    "produto": produtos.get(codigo_produto),
+                    "codigo_produto_texto": str(prod.get("cProd") or ""),
+                    "descricao": str(prod.get("xProd") or ""),
+                    "cfop": str(prod.get("CFOP") or ""),
+                    "ncm": str(prod.get("NCM") or ""),
+                    "unidade": str(prod.get("uCom") or ""),
+                    "quantidade": _decimal(prod.get("qCom")),
+                    "valor_unitario": _decimal(prod.get("vUnCom")),
+                    "valor_produtos": _decimal(prod.get("vProd")),
+                    "valor_total": _decimal(_primeiro_valor(prod.get("vTotItem"), prod.get("vProd"))),
+                    "valor_desconto": _decimal(prod.get("vDesc")),
+                    "valor_frete": _decimal(prod.get("vFrete")),
+                    "dados_originais": item,
+                    **_presenca_omie(agora),
+                })
+                sequencias.append(sequencia)
+                processados += 1
+            obj.itens.exclude(sequencia__in=sequencias).update(ativo_omie=False)
+            processados += 1
+    return processados
+
+
 def _salvar_recebimentos_nfe(empresa, itens):
     agora = timezone.now()
     processados = 0
@@ -4547,6 +4681,14 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 "modelo": ContaPagarOmie,
             },
             {
+                "nome": "NF-e de saida",
+                "consultar": consultar_nfes_saida,
+                "chave": "nfCadastro",
+                "salvar": _salvar_nfes_saida,
+                "modelo": NfeSaidaOmie,
+                "usar_periodo": True,
+            },
+            {
                 "nome": "Contas a receber",
                 "consultar": consultar_contas_receber,
                 "chave": "conta_receber_cadastro",
@@ -4591,6 +4733,7 @@ def executar_sincronizacao_omie(sincronizacao_id):
             },
         ]
         escopos_por_recurso = {
+            "NF-e de saida": escopos(SincronizacaoOmie.Recurso.COMERCIAL),
             "Clientes e fornecedores": escopos(
                 SincronizacaoOmie.Recurso.FINANCEIRO,
                 SincronizacaoOmie.Recurso.COMERCIAL,
