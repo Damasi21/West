@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Count, DecimalField, Exists, ExpressionWrapper, F, OuterRef, Q, Sum
+from django.db.models import Count, DecimalField, Exists, ExpressionWrapper, F, OuterRef, Prefetch, Q, Sum
 from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
 from apps.dashboards.dre_services import (
@@ -22,6 +22,8 @@ from apps.empresas.models import (
     OrdemServicoItemOmie,
     OrdemServicoOmie,
     NfseOmie,
+    NfeSaidaOmie,
+    NfeSaidaItemOmie,
     PedidoItemOmie,
     PedidoOmie,
 )
@@ -219,6 +221,76 @@ def _query_ordens_emitidas(inicio, fim, empresas_ids, vendedores):
     if vendedores:
         queryset = queryset.filter(codigo_vendedor__in=vendedores)
     return queryset
+
+
+def _nfes_saida_faturadas(inicio, fim, empresas_ids, projetos, vendedores):
+    notas = list(NfeSaidaOmie.objects.vendas().filter(
+        empresa_id__in=empresas_ids,
+        data_emissao__range=(inicio, fim),
+    ).select_related("cliente").prefetch_related(
+        Prefetch("itens", queryset=NfeSaidaItemOmie.objects.vendas().select_related("produto"), to_attr="itens_venda"),
+        Prefetch("itens", queryset=NfeSaidaItemOmie.objects.filter(ativo_omie=True), to_attr="itens_ativos"),
+    ))
+    if not notas:
+        return []
+    codigos_pedidos = {nota.codigo_pedido for nota in notas if nota.codigo_pedido}
+    pedidos = PedidoOmie.objects.filter(empresa_id__in=empresas_ids).filter(
+        Q(codigo_pedido__in=codigos_pedidos)
+        | Q(ativo_omie=True, cancelado=False, faturado=True, data_faturamento__range=(inicio, fim))
+    ).only("empresa_id", "codigo_pedido", "codigo_projeto", "codigo_vendedor", "ativo_omie", "cancelado", "faturado", "dados_originais")
+    por_codigo = {}
+    chaves_faturadas = set()
+    for pedido in pedidos:
+        por_codigo[(pedido.empresa_id, pedido.codigo_pedido)] = pedido
+        if pedido.ativo_omie and pedido.faturado and not pedido.cancelado:
+            chave = _buscar_valor_json(pedido.dados_originais, {"chave_nfe", "cChaveNFe", "chNFe"})
+            if chave:
+                chaves_faturadas.add((pedido.empresa_id, str(chave)))
+    resultado = []
+    for nota in notas:
+        pedido = por_codigo.get((nota.empresa_id, nota.codigo_pedido))
+        if pedido and pedido.ativo_omie and pedido.faturado and not pedido.cancelado:
+            continue
+        if nota.chave_nfe and (nota.empresa_id, nota.chave_nfe) in chaves_faturadas:
+            continue
+        # Imported invoices can have no project or salesperson metadata.
+        dados_pedido = (nota.dados_originais or {}).get("pedido") or {}
+        projeto = getattr(pedido, "codigo_projeto", None) or _buscar_valor_json(dados_pedido, {"codProj", "codigo_projeto"})
+        vendedor = getattr(pedido, "codigo_vendedor", None) or _buscar_valor_json(dados_pedido, {"codVend", "codigo_vendedor"})
+        if projetos and str(projeto or "") not in {str(valor) for valor in projetos}:
+            continue
+        if vendedores and str(vendedor or "") not in {str(valor) for valor in vendedores}:
+            continue
+        resultado.append(nota)
+    return resultado
+
+
+def _componentes_produtos_nfe(nota):
+    itens = nota.itens_venda
+    nota_so_venda = len(itens) == len(nota.itens_ativos)
+    totais = (nota.dados_originais or {}).get("total", {}).get("ICMSTot") or {}
+    frete_despesas = sum((
+        _decimal(item.valor_frete) + _somar_chaves_json(item.dados_originais.get("prod") or {}, {"vSeg", "vOutro"})
+        for item in itens
+    ), Decimal("0"))
+    if nota_so_venda and not frete_despesas:
+        frete_despesas = _decimal(nota.valor_frete) + _somar_chaves_json(totais, {"vSeg", "vOutro"})
+    total = _decimal(nota.valor_total) if nota_so_venda else sum((_decimal(item.valor_total) for item in itens), Decimal("0"))
+    chaves_impostos = {"vICMS", "vST", "vIPI", "vPIS", "vCOFINS", "vISS", "vII", "vICMDest", "vICMRemet"}
+    impostos = sum((
+        _somar_chaves_json(item.dados_originais.get("prod") or {}, chaves_impostos)
+        for item in itens
+    ), Decimal("0"))
+    if nota_so_venda and not impostos:
+        impostos = _somar_chaves_json(totais, chaves_impostos)
+    return {"mercadorias": total - frete_despesas, "frete_despesas": frete_despesas, "impostos": impostos}
+
+
+def _adicionar_componentes_nfes(totais, notas):
+    for nota in notas:
+        chave = f"{nota.data_emissao.year}-{nota.data_emissao.month:02d}"
+        for nome, valor in _componentes_produtos_nfe(nota).items():
+            totais[nome][chave] += valor
 
 
 def _query_ordens_faturadas(inicio, fim, empresas_ids, vendedores):
@@ -502,7 +574,27 @@ def linhas_excel_faturamento_produtos(
                 "total_nota_fmt": _formatar_moeda(total_nota),
             }
         )
-    return linhas
+    for nota in _nfes_saida_faturadas(inicio, fim, empresas_ids, projetos, vendedores):
+        componentes = _componentes_produtos_nfe(nota)
+        total = componentes["mercadorias"] + componentes["frete_despesas"]
+        cliente = nota.cliente
+        nome_cliente = (
+            getattr(cliente, "nome_fantasia", "") or getattr(cliente, "razao_social", "")
+            or nota.razao_social_destinatario or nota.cnpj_cpf_destinatario or "Cliente nao informado"
+        )
+        linhas.append({
+            "data_emissao": nota.data_emissao,
+            "data_emissao_fmt": nota.data_emissao.strftime("%d/%m/%Y"),
+            "cliente": nome_cliente,
+            "numero_nf": nota.numero,
+            "total_mercadoria": componentes["mercadorias"],
+            "total_mercadoria_fmt": _formatar_moeda(componentes["mercadorias"]),
+            "frete": componentes["frete_despesas"],
+            "frete_fmt": _formatar_moeda(componentes["frete_despesas"]),
+            "total_nota": total,
+            "total_nota_fmt": _formatar_moeda(total),
+        })
+    return sorted(linhas, key=lambda linha: (linha["data_emissao"], linha["numero_nf"]))
 
 
 def linhas_excel_faturamento_servicos(
@@ -544,30 +636,30 @@ def linhas_excel_faturamento_servicos(
     return linhas
 
 
-def _ranking_produtos(queryset, queryset_anterior, total_periodo):
-    linhas = (
-        PedidoItemOmie.objects.filter(pedido__in=queryset, ativo_omie=True)
-        .values("produto__descricao", "descricao", "codigo_produto_texto")
-        .annotate(quantidade=Sum("quantidade"), total=Sum("valor_total"))
-        .order_by("-total")[:5]
-    )
-    anterior_base = PedidoItemOmie.objects.filter(
-        pedido__in=queryset_anterior,
-        ativo_omie=True,
-    )
+def _ranking_produtos(queryset, queryset_anterior, total_periodo, nfes=(), nfes_anteriores=()):
+    def agrupar(pedidos, notas):
+        grupos = defaultdict(lambda: {"quantidade": Decimal("0"), "total": Decimal("0")})
+        linhas = (
+            PedidoItemOmie.objects.filter(pedido__in=pedidos, ativo_omie=True)
+            .values("produto__descricao", "descricao", "codigo_produto_texto")
+            .annotate(quantidade=Sum("quantidade"), total=Sum("valor_total"))
+        )
+        for item in linhas:
+            nome = item["produto__descricao"] or item["descricao"] or item["codigo_produto_texto"] or "Produto nao informado"
+            grupos[nome]["quantidade"] += _decimal(item["quantidade"])
+            grupos[nome]["total"] += _decimal(item["total"])
+        for nota in notas:
+            for item in nota.itens_venda:
+                nome = getattr(item.produto, "descricao", "") or item.descricao or item.codigo_produto_texto or "Produto nao informado"
+                grupos[nome]["quantidade"] += _decimal(item.quantidade)
+                grupos[nome]["total"] += _decimal(item.valor_total)
+        return grupos
+
+    grupos = agrupar(queryset, nfes)
+    anteriores = agrupar(queryset_anterior, nfes_anteriores)
     itens = []
-    for item in linhas:
-        nome = (
-            item["produto__descricao"]
-            or item["descricao"]
-            or item["codigo_produto_texto"]
-            or "Produto nao informado"
-        )
-        anterior = _decimal(
-            anterior_base.filter(descricao=item["descricao"]).aggregate(
-                total=Sum("valor_total")
-            )["total"]
-        )
+    for nome, item in sorted(grupos.items(), key=lambda par: (-par[1]["total"], par[0]))[:5]:
+        anterior = anteriores[nome]["total"]
         total = _decimal(item["total"])
         variacao = _variacao_percentual(total, anterior)
         itens.append(
@@ -664,6 +756,8 @@ def faturamento_comercial(
     pedidos_faturados_anteriores = _query_pedidos_faturados(
         inicio_anterior, fim_anterior, empresas_ids, projetos, vendedores
     )
+    nfes_faturadas = _nfes_saida_faturadas(inicio, fim, empresas_ids, projetos, vendedores)
+    nfes_faturadas_anteriores = _nfes_saida_faturadas(inicio_anterior, fim_anterior, empresas_ids, projetos, vendedores)
     ordens_emitidas = _query_ordens_emitidas(inicio, fim, empresas_ids, vendedores)
     ordens_faturadas = _query_ordens_faturadas(inicio, fim, empresas_ids, vendedores)
     ordens_faturadas_anteriores = _query_ordens_faturadas(
@@ -674,13 +768,23 @@ def faturamento_comercial(
     produtos_componentes_anteriores = _componentes_produtos_por_mes(
         pedidos_faturados_anteriores
     )
+    _adicionar_componentes_nfes(produtos_componentes_mes, nfes_faturadas)
+    _adicionar_componentes_nfes(produtos_componentes_anteriores, nfes_faturadas_anteriores)
+    total_nfes = sum((
+        componentes["mercadorias"] + componentes["frete_despesas"]
+        for componentes in map(_componentes_produtos_nfe, nfes_faturadas)
+    ), Decimal("0"))
+    total_nfes_anterior = sum((
+        componentes["mercadorias"] + componentes["frete_despesas"]
+        for componentes in map(_componentes_produtos_nfe, nfes_faturadas_anteriores)
+    ), Decimal("0"))
     impostos_servicos_mes = _impostos_servicos_por_mes(ordens_faturadas)
     impostos_servicos_anteriores = _impostos_servicos_por_mes(
         ordens_faturadas_anteriores
     )
     total_produtos = _decimal(
         pedidos_faturados.aggregate(total=Sum("valor_total_pedido"))["total"]
-    )
+    ) + total_nfes
     total_impostos_produtos = sum(
         produtos_componentes_mes["impostos"].values(),
         Decimal("0"),
@@ -717,6 +821,10 @@ def faturamento_comercial(
         "data_faturamento",
         "valor_total_pedido",
     )
+    for nota in nfes_faturadas:
+        chave = f"{nota.data_emissao.year}-{nota.data_emissao.month:02d}"
+        componentes = _componentes_produtos_nfe(nota)
+        produtos_mes[chave] += componentes["mercadorias"] + componentes["frete_despesas"]
     servicos_mes = _totais_por_mes(
         ordens_faturadas,
         "data_faturamento",
@@ -731,7 +839,7 @@ def faturamento_comercial(
         pedidos_faturados_anteriores.aggregate(total=Sum("valor_total_pedido"))[
             "total"
         ]
-    )
+    ) + total_nfes_anterior
     servicos_anterior = _decimal(
         ordens_faturadas_anteriores.aggregate(total=Sum("valor_total"))["total"]
     )
@@ -814,6 +922,8 @@ def faturamento_comercial(
                 pedidos_faturados,
                 pedidos_faturados_anteriores,
                 total_faturado,
+                nfes_faturadas,
+                nfes_faturadas_anteriores,
             )
         )
     if "servicos" in tipos and "impostos" not in tipos:
