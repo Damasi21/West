@@ -2986,6 +2986,44 @@ class SincronizacaoClientesOmieTests(TestCase):
         pedido_existente.refresh_from_db()
         self.assertTrue(pedido_existente.ativo_omie)
 
+    def test_compras_atualiza_posicoes_e_cmc_sem_consultar_movimentos(self):
+        nomes = (
+            "clientes", "departamentos", "produtos", "produtos_fornecedores",
+            "locais_estoque", "posicoes_estoque", "categorias", "pedidos_compra", "recebimentos_nfe",
+        )
+        mocks = {}
+        for nome in nomes:
+            patcher = patch(f"apps.empresas.omie.consultar_{nome}", return_value={})
+            mocks[nome] = patcher.start()
+            self.addCleanup(patcher.stop)
+        mocks["produtos"].return_value = {
+            "produto_servico_cadastro": [{"codigo_produto": 123, "codigo": "PRD123", "descricao": "Produto CMC"}],
+        }
+        mocks["locais_estoque"].return_value = {
+            "locaisEncontrados": [{"codigo_local_estoque": 1, "descricao": "Padrao"}],
+        }
+        mocks["posicoes_estoque"].return_value = {
+            "nTotPaginas": 1, "nTotRegistros": 1,
+            "produtos": [{"nCodProd": 123, "codigo_local_estoque": 1, "cCodigo": "PRD123", "nSaldo": 100, "nCMC": 98}],
+        }
+        with patch("apps.empresas.omie._sincronizar_movimentos_estoque") as movimentos:
+            for origem in (SincronizacaoOmie.Origem.MANUAL, SincronizacaoOmie.Origem.AGENDADA):
+                with self.subTest(origem=origem):
+                    sincronizacao = SincronizacaoOmie.objects.create(
+                        empresa=self.empresa, recurso=SincronizacaoOmie.Recurso.COMPRAS,
+                        periodo=SincronizacaoOmie.Periodo.MES_ATUAL, origem=origem,
+                    )
+                    executar_sincronizacao_omie(sincronizacao.pk)
+                    sincronizacao.refresh_from_db()
+                    self.assertEqual(sincronizacao.status, SincronizacaoOmie.Status.CONCLUIDA, sincronizacao.erro)
+                    posicao = PosicaoEstoqueOmie.objects.get(empresa=self.empresa, codigo_produto=123)
+                    self.assertEqual(posicao.cmc, Decimal("98"))
+                    self.assertEqual(posicao.saldo, Decimal("100"))
+                    self.assertEqual(posicao.produto.codigo_produto, 123)
+                    self.assertEqual(posicao.local_estoque.codigo_local_estoque, 1)
+            movimentos.assert_not_called()
+        self.assertEqual(mocks["posicoes_estoque"].call_count, 2)
+
     @override_settings(OMIE_SYNC_SAFETY_DAYS=0)
     def test_sincronizacao_comercial_mes_atual_filtra_lancamentos_por_periodo(self):
         respostas_vazias = {

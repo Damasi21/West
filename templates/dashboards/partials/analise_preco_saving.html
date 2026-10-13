@@ -4,6 +4,7 @@
             <span>Saving no periodo</span>
             <strong>{{ dados.saving_total }}</strong>
             <small>{{ dados.itens_comparados }} itens comparados</small>
+            {% if dados.itens_sem_base %}<small>{{ dados.itens_sem_base }} itens sem base de comparacao</small>{% endif %}
         </article>
         <article class="price-saving-kpi price-saving-kpi-danger">
             <span>Perda por aumento</span>
@@ -41,7 +42,7 @@
                     <strong>{{ familia.impacto_sinal }}{{ familia.impacto }}</strong>
                 </div>
             {% empty %}
-                <div class="price-saving-empty">Sem dados de recebimento para o periodo selecionado.</div>
+                <div class="price-saving-empty">{% if dados.itens_sem_base %}Sem CMC anterior para calcular o impacto por familia.{% else %}Sem dados de recebimento para o periodo selecionado.{% endif %}</div>
             {% endfor %}
         </div>
     </article>
@@ -65,7 +66,7 @@
                 {% for item in dados.itens %}
                     <div class="price-saving-table-row">
                         <strong>{{ item.descricao }}</strong>
-                        <span>{{ item.preco_base }}</span>
+                        <span>{{ item.preco_base }}{% if not item.comparavel %}<small class="d-block text-muted">{{ item.base_origem }}</small>{% endif %}</span>
                         <span>{{ item.preco_atual }}</span>
                         <em class="is-{{ item.tom }}">{{ item.variacao }}</em>
                         <mark class="is-{{ item.tom }}">{{ item.impacto_sinal }}{{ item.impacto }}</mark>

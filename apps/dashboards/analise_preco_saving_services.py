@@ -106,8 +106,9 @@ def _produtos_por_codigo(empresas_ids):
     for produto in ProdutoOmie.objects.filter(empresa_id__in=empresas_ids, ativo_omie=True):
         for codigo in (produto.codigo, str(produto.codigo_produto or "")):
             codigo = str(codigo or "").strip()
-            if codigo and codigo not in produtos:
-                produtos[codigo] = produto
+            chave = (produto.empresa_id, codigo)
+            if codigo and chave not in produtos:
+                produtos[chave] = produto
     return produtos
 
 
@@ -127,12 +128,14 @@ def _estoque_atual_por_produto(empresas_ids):
         codigo = str(posicao.codigo or "").strip()
         codigo_produto = str(posicao.codigo_produto or "").strip()
         for chave in (codigo, codigo_produto):
-            if chave and chave not in estoques:
-                estoques[chave] = dados
+            chave_empresa = (posicao.empresa_id, chave)
+            if chave and chave_empresa not in estoques:
+                estoques[chave_empresa] = dados
         if posicao.produto:
             produto_codigo = str(posicao.produto.codigo or "").strip()
-            if produto_codigo and produto_codigo not in estoques:
-                estoques[produto_codigo] = dados
+            chave_empresa = (posicao.empresa_id, produto_codigo)
+            if produto_codigo and chave_empresa not in estoques:
+                estoques[chave_empresa] = dados
     return estoques
 
 
@@ -163,7 +166,7 @@ def _valor_total_item(item):
 
 def _cmc_anterior_ultima_entrada(item, estoques):
     codigo = str(item.codigo_produto_texto or "").strip()
-    estoque = estoques.get(codigo)
+    estoque = estoques.get((item.empresa_id, codigo))
     if not estoque:
         return Decimal("0"), "Sem CMC"
     saldo_atual = estoque["saldo"]
@@ -180,6 +183,7 @@ def _cmc_anterior_ultima_entrada(item, estoques):
 
 def _linha_item(item, produto, preco_base, base_origem, impacto):
     preco_atual = _numero(item.preco_unitario)
+    comparavel = preco_base > 0
     variacao = (
         (preco_atual - preco_base) / preco_base * Decimal("100")
         if preco_base > 0
@@ -190,12 +194,13 @@ def _linha_item(item, produto, preco_base, base_origem, impacto):
         "descricao": item.descricao or (produto.descricao if produto else ""),
         "familia": _familia_produto(produto),
         "fornecedor": _nome_fornecedor(item.recebimento),
-        "preco_base": _formatar_moeda(preco_base),
+        "preco_base": _formatar_moeda(preco_base) if comparavel else "-",
+        "comparavel": comparavel,
         "preco_atual": _formatar_moeda(preco_atual),
         "base_origem": base_origem,
-        "variacao": _formatar_percentual(variacao),
+        "variacao": _formatar_percentual(variacao) if comparavel else "-",
         "variacao_num": variacao,
-        "impacto": _formatar_moeda(abs(impacto)),
+        "impacto": _formatar_moeda(abs(impacto)) if comparavel else "-",
         "impacto_num": impacto,
         "impacto_sinal": "+" if impacto > 0 else "-" if impacto < 0 else "",
         "tom": "saving" if impacto > 0 else "loss" if impacto < 0 else "neutral",
@@ -227,9 +232,10 @@ def analise_preco_saving_compras(
         codigo = str(item.codigo_produto_texto or "").strip()
         if not codigo:
             continue
-        atual = ultimos_por_produto.get(codigo)
+        chave = (item.empresa_id, codigo)
+        atual = ultimos_por_produto.get(chave)
         if atual is None or (_ordem_item(item), item.pk) > (_ordem_item(atual), atual.pk):
-            ultimos_por_produto[codigo] = item
+            ultimos_por_produto[chave] = item
 
     linhas = []
     impactos_familia = defaultdict(Decimal)
@@ -239,9 +245,10 @@ def analise_preco_saving_compras(
 
     for item in ultimos_por_produto.values():
         codigo = str(item.codigo_produto_texto or "").strip()
-        produto = produtos.get(codigo)
+        produto = produtos.get((item.empresa_id, codigo))
         preco_base, base_origem = _cmc_anterior_ultima_entrada(item, estoques)
         if preco_base <= 0:
+            linhas.append(_linha_item(item, produto, preco_base, base_origem, Decimal("0")))
             continue
         preco_atual = _numero(item.preco_unitario)
         quantidade = _numero(item.quantidade_nfe)
@@ -257,7 +264,7 @@ def analise_preco_saving_compras(
         impactos_familia[familia] += impacto
         linhas.append(_linha_item(item, produto, preco_base, base_origem, impacto))
 
-    linhas.sort(key=lambda linha: abs(linha["impacto_num"]), reverse=True)
+    linhas.sort(key=lambda linha: (linha["comparavel"], abs(linha["impacto_num"])), reverse=True)
     maior_impacto = max((abs(valor) for valor in impactos_familia.values()), default=Decimal("0"))
     familias = []
     for familia, impacto in sorted(
@@ -285,7 +292,8 @@ def analise_preco_saving_compras(
         "saving_total": _formatar_moeda(saving_total),
         "perda_total": _formatar_moeda(perda_total),
         "itens_alta": itens_alta,
-        "itens_comparados": len(linhas),
+        "itens_comparados": sum(linha["comparavel"] for linha in linhas),
+        "itens_sem_base": sum(not linha["comparavel"] for linha in linhas),
         "familia_destaque": destaque["nome"] if destaque else "Sem saving",
         "familia_destaque_valor": destaque["impacto"] if destaque else "R$ 0,00",
         "familias": familias,

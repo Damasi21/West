@@ -4758,8 +4758,14 @@ def executar_sincronizacao_omie(sincronizacao_id):
                 SincronizacaoOmie.Recurso.COMPRAS,
                 SincronizacaoOmie.Recurso.ESTOQUE,
             ),
-            "Locais de estoque": escopos(SincronizacaoOmie.Recurso.ESTOQUE),
-            "Posicoes de estoque": escopos(SincronizacaoOmie.Recurso.ESTOQUE),
+            "Locais de estoque": escopos(
+                SincronizacaoOmie.Recurso.ESTOQUE,
+                SincronizacaoOmie.Recurso.COMPRAS,
+            ),
+            "Posicoes de estoque": escopos(
+                SincronizacaoOmie.Recurso.ESTOQUE,
+                SincronizacaoOmie.Recurso.COMPRAS,
+            ),
             "Saldos pendentes de estoque": escopos(SincronizacaoOmie.Recurso.ESTOQUE),
             "Pedidos de compra": escopos(SincronizacaoOmie.Recurso.COMPRAS),
             "Recebimentos de NF-e": escopos(SincronizacaoOmie.Recurso.COMPRAS),
