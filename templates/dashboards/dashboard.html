@@ -87,7 +87,7 @@
         {% if area_slug == "comercial" and dashboard_slug == "faturamento" or area_slug == "comercial" and dashboard_slug == "desempenho-de-vendedores" %}
             {% include "dashboards/partials/multiselect_filter.html" with nome="vendedor" titulo="Vendedores" icone="bi-person-badge" opcoes=vendedores selecionados=vendedores_selecionados vazio="Todos os vendedores" %}
         {% endif %}
-        {% if area_slug == "comercial" and dashboard_slug == "faturamento" or area_slug == "comercial" and dashboard_slug == "desempenho-de-vendedores" %}
+        {% if area_slug == "comercial" and dashboard_slug == "faturamento" %}
             {% include "dashboards/partials/multiselect_filter.html" with nome="tipo_faturamento" titulo="Tipo" icone="bi-ui-checks-grid" opcoes=tipos_faturamento selecionados=tipos_faturamento_selecionados vazio="Produtos e servicos" %}
         {% endif %}
 

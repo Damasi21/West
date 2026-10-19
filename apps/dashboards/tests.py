@@ -2147,6 +2147,17 @@ class DashboardPermissaoTests(TestCase):
             faturada=False,
             valor_total=2500,
         )
+        for codigo, vendedor, valor in (
+            (2401, ana, 12000), (2402, carlos, 7000),
+            (2403, fernanda, 3000), (2404, ana, 4000),
+        ):
+            ContaReceberOmie.objects.create(
+                empresa=self.empresa,
+                codigo_lancamento_omie=codigo,
+                data_emissao=date(ano_atual, 1, 10),
+                valor_documento=valor,
+                dados_originais={"codigo_vendedor": vendedor.codigo},
+            )
         self.client.force_login(self.usuario)
 
         response = self.client.get(
@@ -2166,21 +2177,21 @@ class DashboardPermissaoTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Faturamento total da equipe")
+        self.assertContains(response, "Valor original dos titulos da equipe")
         self.assertContains(response, "% da meta atingida")
         self.assertContains(response, "Melhor performance")
-        self.assertContains(response, "Ticket medio da equipe")
+        self.assertContains(response, "Valor medio por titulo")
         self.assertContains(response, "Meta vs. realizado")
         self.assertContains(response, "Tendencia mensal - top 3 vendedores")
         self.assertContains(response, "Pedidos em aberto por vendedor")
-        self.assertContains(response, "Produtos")
-        self.assertContains(response, "Servicos")
+        self.assertNotContains(response, 'name="tipo_faturamento"')
         self.assertContains(response, "Ana")
         self.assertContains(response, "Carlos")
         self.assertContains(response, "Fernanda")
         self.assertContains(response, "Acima da meta")
         self.assertContains(response, "data-seller-ranking-chart")
         self.assertContains(response, "data-seller-trend-chart")
+        self.assertEqual(response.context["desempenho_vendedores"]["ranking_realizado"], [16000.0, 7000.0, 3000.0])
         self.assertEqual(
             response.context["tipos_faturamento_selecionados"],
             ["produtos", "servicos"],

@@ -4,21 +4,21 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Count, Exists, Min, OuterRef, Q, Sum
+from django.db.models import Count, Min, Q, Sum
+from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
 
 from apps.dashboards.dre_services import (
     _formatar_moeda,
     _intervalo_periodo,
     _meses_do_intervalo,
-    _normalizar_filtro_composto,
     _porcentagem,
 )
-from apps.dashboards.faturamento_services import _formatar_numero, _tipos_validos
+from apps.dashboards.faturamento_services import _formatar_numero
 from apps.dashboards.visao_geral_services import _formatar_moeda_curta
 from apps.empresas.models import (
+    ContaReceberOmie,
     MetaVendedorComercial,
-    NfseOmie,
     OrdemServicoOmie,
     PedidoOmie,
     VendedorOmie,
@@ -33,8 +33,17 @@ def _formatar_percentual(valor):
     return f"{_decimal(valor):.0f}%"
 
 
-def _codigos_vendedores(valores):
-    return _normalizar_filtro_composto(valores or [])
+def _filtrar_codigos(queryset, campo, valores):
+    if not valores:
+        return queryset
+    filtro = Q()
+    for valor in valores:
+        partes = str(valor).split(":", 1)
+        if len(partes) == 2:
+            filtro |= Q(empresa_id=partes[0], **{campo: partes[1]})
+        else:
+            filtro |= Q(**{campo: partes[0]})
+    return queryset.filter(filtro)
 
 
 def _status_meta(percentual):
@@ -64,8 +73,7 @@ def _meta_por_vendedor(empresas_ids, vendedores, meses):
         empresa_id__in=empresas_ids,
         vendedor__inativo=False,
     ).select_related("vendedor")
-    if vendedores:
-        queryset = queryset.filter(vendedor__codigo__in=vendedores)
+    queryset = _filtrar_codigos(queryset, "vendedor__codigo", vendedores)
     filtros_periodo = {(item["ano"], item["mes"]) for item in meses}
     queryset = queryset.filter(
         ano__in={ano for ano, _ in filtros_periodo},
@@ -75,7 +83,7 @@ def _meta_por_vendedor(empresas_ids, vendedores, meses):
     for meta in queryset:
         if (meta.ano, meta.mes) not in filtros_periodo:
             continue
-        codigo = str(meta.vendedor.codigo)
+        codigo = (meta.empresa_id, str(meta.vendedor.codigo))
         metas[codigo] = metas.get(codigo, Decimal("0")) + _decimal(meta.valor_mensal)
     return metas
 
@@ -86,25 +94,21 @@ def _vendedores_ativos(empresas_ids, vendedores):
         ativo_omie=True,
         inativo=False,
     ).select_related("empresa")
-    if vendedores:
-        queryset = queryset.filter(codigo__in=vendedores)
+    queryset = _filtrar_codigos(queryset, "codigo", vendedores)
     return list(queryset.order_by("nome", "codigo"))
 
 
-def _pedidos_faturados(inicio, fim, empresas_ids, projetos, vendedores):
-    queryset = PedidoOmie.objects.filter(
+def _titulos_emitidos(inicio, fim, empresas_ids, projetos, vendedores):
+    queryset = ContaReceberOmie.objects.filter(
         empresa_id__in=empresas_ids,
         ativo_omie=True,
-        cancelado=False,
-        faturado=True,
-        data_faturamento__gte=inicio,
-        data_faturamento__lte=fim,
+        data_emissao__gte=inicio,
+        data_emissao__lte=fim,
+    ).exclude(status_titulo__iexact="CANCELADO").annotate(
+        vendedor_titulo=KeyTextTransform("codigo_vendedor", "dados_originais"),
     )
-    if projetos:
-        queryset = queryset.filter(codigo_projeto__in=projetos)
-    if vendedores:
-        queryset = queryset.filter(codigo_vendedor__in=vendedores)
-    return queryset
+    queryset = _filtrar_codigos(queryset, "codigo_projeto", projetos)
+    return _filtrar_codigos(queryset, "vendedor_titulo", vendedores)
 
 
 def _pedidos_abertos(inicio, fim, empresas_ids, projetos, vendedores):
@@ -118,34 +122,8 @@ def _pedidos_abertos(inicio, fim, empresas_ids, projetos, vendedores):
         data_referencia__gte=inicio,
         data_referencia__lte=fim,
     )
-    if projetos:
-        queryset = queryset.filter(codigo_projeto__in=projetos)
-    if vendedores:
-        queryset = queryset.filter(codigo_vendedor__in=vendedores)
-    return queryset
-
-
-def _ordens_faturadas(inicio, fim, empresas_ids, vendedores):
-    queryset = OrdemServicoOmie.objects.filter(
-        empresa_id__in=empresas_ids,
-        ativo_omie=True,
-        cancelada=False,
-        faturada=True,
-        data_faturamento__gte=inicio,
-        data_faturamento__lte=fim,
-    ).annotate(
-        nfse_faturada=Exists(
-            NfseOmie.objects.filter(
-                empresa_id=OuterRef("empresa_id"),
-                codigo_os=OuterRef("codigo_os"),
-                ativo_omie=True,
-                status_nfse="F",
-            )
-        )
-    ).filter(Q(nfse_faturada=True) | ~Q(numero_recibo__in=["", "0"]))
-    if vendedores:
-        queryset = queryset.filter(codigo_vendedor__in=vendedores)
-    return queryset
+    queryset = _filtrar_codigos(queryset, "codigo_projeto", projetos)
+    return _filtrar_codigos(queryset, "codigo_vendedor", vendedores)
 
 
 def _ordens_abertas(inicio, fim, empresas_ids, vendedores):
@@ -159,42 +137,7 @@ def _ordens_abertas(inicio, fim, empresas_ids, vendedores):
         data_referencia__gte=inicio,
         data_referencia__lte=fim,
     )
-    if vendedores:
-        queryset = queryset.filter(codigo_vendedor__in=vendedores)
-    return queryset
-
-
-def _totais_por_vendedor(queryset):
-    totais = defaultdict(Decimal)
-    quantidades = defaultdict(int)
-    linhas = queryset.values("codigo_vendedor").annotate(
-        total=Sum("valor_total_pedido"),
-        pedidos=Count("id"),
-    )
-    for item in linhas:
-        codigo = str(item["codigo_vendedor"] or "")
-        totais[codigo] += _decimal(item["total"])
-        quantidades[codigo] += item["pedidos"] or 0
-    return totais, quantidades
-
-
-def _totais_por_vendedor_os(queryset):
-    totais = defaultdict(Decimal)
-    quantidades = defaultdict(int)
-    linhas = queryset.values("codigo_vendedor").annotate(
-        total=Sum("valor_total"),
-        pedidos=Count("id"),
-    )
-    for item in linhas:
-        codigo = str(item["codigo_vendedor"] or "")
-        totais[codigo] += _decimal(item["total"])
-        quantidades[codigo] += item["pedidos"] or 0
-    return totais, quantidades
-
-
-def _somar_mapas(destino, origem):
-    for chave, valor in origem.items():
-        destino[chave] += valor
+    return _filtrar_codigos(queryset, "codigo_vendedor", vendedores)
 
 
 def desempenho_vendedores(
@@ -205,57 +148,35 @@ def desempenho_vendedores(
     empresas_ids=None,
     projetos_selecionados=None,
     vendedores_selecionados=None,
-    tipos_selecionados=None,
 ):
     empresas_ids = empresas_ids or [empresa.pk]
     inicio, fim = _intervalo_periodo(periodo, data_inicio, data_fim)
     meses = _meses_do_intervalo(inicio, fim)
-    projetos = _normalizar_filtro_composto(projetos_selecionados or [])
-    vendedores_filtro = _codigos_vendedores(vendedores_selecionados or [])
-    tipos = _tipos_validos(tipos_selecionados or [])
+    projetos = projetos_selecionados or []
+    vendedores_filtro = vendedores_selecionados or []
     vendedores = _vendedores_ativos(empresas_ids, vendedores_filtro)
-    vendedores_por_codigo = {str(vendedor.codigo): vendedor for vendedor in vendedores}
+    vendedores_por_codigo = {
+        (vendedor.empresa_id, str(vendedor.codigo)): vendedor for vendedor in vendedores
+    }
     metas = _meta_por_vendedor(empresas_ids, vendedores_filtro, meses)
 
-    faturados = PedidoOmie.objects.none()
-    abertos = PedidoOmie.objects.none()
-    ordens_faturadas = OrdemServicoOmie.objects.none()
-    ordens_abertas = OrdemServicoOmie.objects.none()
-    if "produtos" in tipos:
-        faturados = _pedidos_faturados(
-            inicio,
-            fim,
-            empresas_ids,
-            projetos,
-            vendedores_filtro,
-        )
-        abertos = _pedidos_abertos(
-            inicio,
-            fim,
-            empresas_ids,
-            projetos,
-            vendedores_filtro,
-        )
-    if "servicos" in tipos:
-        ordens_faturadas = _ordens_faturadas(
-            inicio,
-            fim,
-            empresas_ids,
-            vendedores_filtro,
-        )
-        ordens_abertas = _ordens_abertas(
-            inicio,
-            fim,
-            empresas_ids,
-            vendedores_filtro,
-        )
-    realizado_por_vendedor, quantidade_por_vendedor = _totais_por_vendedor(faturados)
-    realizado_os, quantidade_os = _totais_por_vendedor_os(ordens_faturadas)
-    _somar_mapas(realizado_por_vendedor, realizado_os)
-    _somar_mapas(quantidade_por_vendedor, quantidade_os)
+    titulos = _titulos_emitidos(inicio, fim, empresas_ids, projetos, vendedores_filtro)
+    abertos = _pedidos_abertos(inicio, fim, empresas_ids, projetos, vendedores_filtro)
+    ordens_abertas = _ordens_abertas(inicio, fim, empresas_ids, vendedores_filtro)
+    realizado_por_vendedor = defaultdict(Decimal)
+    quantidade_por_vendedor = defaultdict(int)
+    for item in titulos.order_by().values("empresa_id", "vendedor_titulo").annotate(
+        total=Sum("valor_documento"), quantidade=Count("id"),
+    ):
+        chave = (item["empresa_id"], item["vendedor_titulo"])
+        if chave in vendedores_por_codigo:
+            realizado_por_vendedor[chave] += _decimal(item["total"])
+            quantidade_por_vendedor[chave] += item["quantidade"]
     total_realizado = sum(realizado_por_vendedor.values(), Decimal("0"))
-    total_pedidos = sum(quantidade_por_vendedor.values())
-    total_meta = sum(metas.values(), Decimal("0"))
+    total_titulos = sum(quantidade_por_vendedor.values())
+    total_meta = sum(
+        (metas.get(chave, Decimal("0")) for chave in vendedores_por_codigo), Decimal("0"),
+    )
     percentual_meta = _porcentagem(total_realizado, total_meta)
 
     ranking_vendedores = []
@@ -285,30 +206,16 @@ def desempenho_vendedores(
     tendencia_series = []
     totais_mensais = defaultdict(Decimal)
     linhas_mensais = (
-        faturados.filter(codigo_vendedor__in=tendencia_codigos)
-        .annotate(
-            ano=ExtractYear("data_faturamento"),
-            mes=ExtractMonth("data_faturamento"),
+        titulos.order_by().annotate(
+            ano=ExtractYear("data_emissao"),
+            mes=ExtractMonth("data_emissao"),
         )
-        .values("codigo_vendedor", "ano", "mes")
-        .annotate(total=Sum("valor_total_pedido"))
+        .values("empresa_id", "vendedor_titulo", "ano", "mes")
+        .annotate(total=Sum("valor_documento"))
     )
     for item in linhas_mensais:
         totais_mensais[
-            (str(item["codigo_vendedor"]), f"{item['ano']}-{item['mes']:02d}")
-        ] += _decimal(item["total"])
-    linhas_os_mensais = (
-        ordens_faturadas.filter(codigo_vendedor__in=tendencia_codigos)
-        .annotate(
-            ano=ExtractYear("data_faturamento"),
-            mes=ExtractMonth("data_faturamento"),
-        )
-        .values("codigo_vendedor", "ano", "mes")
-        .annotate(total=Sum("valor_total"))
-    )
-    for item in linhas_os_mensais:
-        totais_mensais[
-            (str(item["codigo_vendedor"]), f"{item['ano']}-{item['mes']:02d}")
+            ((item["empresa_id"], item["vendedor_titulo"]), f"{item['ano']}-{item['mes']:02d}")
         ] += _decimal(item["total"])
     for codigo in tendencia_codigos:
         vendedor = vendedores_por_codigo.get(codigo)
@@ -322,19 +229,19 @@ def desempenho_vendedores(
         )
 
     abertos_por_vendedor = {
-        str(item["codigo_vendedor"] or ""): item
-        for item in abertos.values("codigo_vendedor").annotate(
+        (item["empresa_id"], str(item["codigo_vendedor"] or "")): item
+        for item in abertos.order_by().values("empresa_id", "codigo_vendedor").annotate(
             pedidos=Count("id"),
             valor=Sum("valor_total_pedido"),
             mais_antigo=Min("data_referencia"),
         )
     }
-    for item in ordens_abertas.values("codigo_vendedor").annotate(
+    for item in ordens_abertas.order_by().values("empresa_id", "codigo_vendedor").annotate(
         pedidos=Count("id"),
         valor=Sum("valor_total"),
         mais_antigo=Min("data_referencia"),
     ):
-        codigo = str(item["codigo_vendedor"] or "")
+        codigo = (item["empresa_id"], str(item["codigo_vendedor"] or ""))
         if codigo not in abertos_por_vendedor:
             abertos_por_vendedor[codigo] = {
                 "codigo_vendedor": item["codigo_vendedor"],
@@ -380,7 +287,7 @@ def desempenho_vendedores(
     return {
         "indicadores": [
             {
-                "titulo": "Faturamento total da equipe",
+                "titulo": "Valor original dos titulos da equipe",
                 "valor": _formatar_moeda_curta(total_realizado),
                 "valor_completo": _formatar_moeda(total_realizado),
                 "icone": "bi-cash-stack",
@@ -402,9 +309,9 @@ def desempenho_vendedores(
                 "tom": "positive",
             },
             {
-                "titulo": "Ticket medio da equipe",
-                "valor": _formatar_moeda_curta(total_realizado / Decimal(total_pedidos or 1)),
-                "valor_completo": _formatar_moeda(total_realizado / Decimal(total_pedidos or 1)),
+                "titulo": "Valor medio por titulo",
+                "valor": _formatar_moeda_curta(total_realizado / Decimal(total_titulos or 1)),
+                "valor_completo": _formatar_moeda(total_realizado / Decimal(total_titulos or 1)),
                 "icone": "bi-ticket-perforated",
                 "tom": "positive",
             },

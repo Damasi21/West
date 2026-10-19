@@ -1538,7 +1538,6 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             empresas_consulta_ids,
             projetos_consulta,
             vendedores_consulta,
-            tipos_faturamento_consulta,
         )
     if area_slug == "comercial" and dashboard_slug == "analise-de-clientes":
         contexto["analise_clientes"] = analise_clientes_comercial(
