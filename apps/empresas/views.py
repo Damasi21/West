@@ -5,8 +5,8 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -38,6 +38,7 @@ from .models import (
     SincronizacaoOmie,
     VendedorOmie,
     EmpresaUsuario,
+    PreCadastroUsuario,
 )
 from .categorias import excluir_categorias_transferencia
 from .planilhas import (
@@ -631,6 +632,7 @@ def usuarios(request, empresa_slug):
         .select_related("usuario")
         .order_by("usuario__first_name", "usuario__username")
     )
+    convites = PreCadastroUsuario.objects.filter(empresa=empresa, utilizado_em__isnull=True)
     if not (request.user.is_superuser or request.user.is_staff):
         operador = EmpresaUsuario.objects.filter(
             empresa=empresa,
@@ -639,9 +641,17 @@ def usuarios(request, empresa_slug):
         ).first()
         if operador and operador.papel == EmpresaUsuario.Papel.GESTOR:
             vinculos = vinculos.exclude(papel=EmpresaUsuario.Papel.ADMINISTRADOR)
+            convites = convites.exclude(papel=EmpresaUsuario.Papel.ADMINISTRADOR)
 
     vinculo_edicao = None
-    editar_id = request.GET.get("editar")
+    convite_edicao = None
+    editar_id = request.POST.get("vinculo_id") or request.GET.get("editar")
+    convite_id = request.POST.get("convite_id") or request.GET.get("convite")
+    if editar_id and convite_id:
+        return HttpResponse("Selecione apenas um acesso.", status=400)
+    for identificador in (editar_id, convite_id):
+        if identificador and (not identificador.isascii() or not identificador.isdigit() or len(identificador) > 18):
+            return HttpResponse("Acesso invalido.", status=400)
     if editar_id:
         vinculo_edicao = get_object_or_404(
             EmpresaUsuario.objects.select_related("usuario"),
@@ -650,6 +660,20 @@ def usuarios(request, empresa_slug):
         )
         if not usuario_pode_gerenciar_vinculo(request.user, empresa, vinculo_edicao):
             raise PermissionDenied
+    if convite_id:
+        convite_edicao = get_object_or_404(PreCadastroUsuario, pk=convite_id, empresa=empresa)
+        if not usuario_pode_gerenciar_vinculo(request.user, empresa, convite_edicao):
+            raise PermissionDenied
+        if request.method == "POST" and request.POST.get("acao") == "cancelar_pre_cadastro":
+            with transaction.atomic():
+                convite = PreCadastroUsuario.objects.select_for_update().get(pk=convite_edicao.pk)
+                if not convite.utilizado_em:
+                    convite.ativo = False
+                    convite.save(update_fields=["ativo"])
+                    messages.success(request, "Pre-cadastro cancelado.")
+                else:
+                    messages.warning(request, "O acesso ja foi vinculado. Edite o usuario na lista de acessos.")
+            return redirect("dashboards:usuarios", empresa_slug=empresa.slug)
 
     areas = areas_habilitadas()
     form = EmpresaUsuarioForm(
@@ -658,14 +682,18 @@ def usuarios(request, empresa_slug):
         operador=request.user,
         areas=areas,
         vinculo=vinculo_edicao,
+        convite=convite_edicao,
     )
     if request.method == "POST" and form.is_valid():
-        vinculo = form.save()
-        messages.success(
-            request,
-            f"Acesso de {vinculo.usuario.get_full_name() or vinculo.usuario.username} salvo com sucesso.",
-        )
-        return redirect("dashboards:usuarios", empresa_slug=empresa.slug)
+        try:
+            form.save()
+        except ValidationError as erro:
+            form.add_error(None, erro)
+        except IntegrityError:
+            form.add_error("email", "Este e-mail ja possui um pre-cadastro nesta empresa. Atualize a pagina.")
+        else:
+            messages.success(request, "Permissoes atualizadas." if vinculo_edicao else "Pre-cadastro salvo. Aguardando confirmacao do e-mail pelo usuario.")
+            return redirect("dashboards:usuarios", empresa_slug=empresa.slug)
 
     return render(
         request,
@@ -675,6 +703,8 @@ def usuarios(request, empresa_slug):
             "form": form,
             "vinculos": vinculos,
             "vinculo_edicao": vinculo_edicao,
+            "convite_edicao": convite_edicao,
+            "convites": convites,
             "areas": areas,
             "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
         },

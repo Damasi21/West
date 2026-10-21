@@ -7,16 +7,21 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.views import LoginView, LogoutView
 from django.conf import settings
 from django.core.mail import send_mail
+from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.urls import reverse
+from django.views.decorators.http import require_http_methods
 
 from .forms import (
     CadastroForm,
+    ConfirmarCadastroForm,
     LoginForm,
     PasswordResetConfirmForm,
     PasswordResetRequestForm,
 )
-from .models import PasswordResetCode
+from .models import PasswordResetCode, ConfirmacaoCadastro
+from .registration import confirmar_cadastro, enviar_codigo_cadastro, vincular_email_verificado
 
 
 class EntrarView(LoginView):
@@ -26,6 +31,18 @@ class EntrarView(LoginView):
 
     def form_valid(self, form):
         response = super().form_valid(form)
+        usuario = form.get_user()
+        vincular_email_verificado(usuario)
+        from apps.empresas.models import PreCadastroUsuario
+        if usuario.email and PreCadastroUsuario.objects.filter(email__iexact=usuario.email.strip(), ativo=True, utilizado_em__isnull=True, empresa__ativa=True).exists():
+            try:
+                registro = enviar_codigo_cadastro(usuario.email, usuario.first_name or usuario.username)
+            except ValidationError as erro:
+                messages.warning(self.request, " ".join(erro.messages))
+                registro = ConfirmacaoCadastro.objects.filter(email=usuario.email.strip().lower(), expira_em__gt=timezone.now(), consumida_em__isnull=True, tentativas__lt=5).first()
+            if registro:
+                self.request.session["cadastro_confirmacao_id"] = registro.pk
+                response = redirect("accounts:confirmar_cadastro")
         from apps.empresas.auditoria import registrar_acao
         from apps.empresas.models import AcaoUsuarioLog
 
@@ -66,21 +83,51 @@ class SairView(LogoutView):
         return super().dispatch(request, *args, **kwargs)
 
 
+@require_http_methods(["GET", "POST"])
 def cadastrar(request):
-    if request.user.is_authenticated:
-        return redirect("empresas:lista")
-
     form = CadastroForm(request.POST or None)
+    if request.user.is_authenticated:
+        if not request.user.email:
+            messages.error(request, "Solicite ao administrador a regularizacao do e-mail da sua conta.")
+            return redirect("empresas:lista")
+        form.fields["email"].disabled = True
+        form.initial.update(email=request.user.email, first_name=request.user.first_name)
     if request.method == "POST" and form.is_valid():
-        usuario = form.save()
-        login(request, usuario)
-        messages.success(
-            request,
-            "Conta criada com sucesso. Solicite ao administrador o acesso à sua empresa.",
-        )
-        return redirect("empresas:lista")
+        try:
+            registro = enviar_codigo_cadastro(form.cleaned_data["email"], form.cleaned_data["first_name"])
+        except ValidationError as erro:
+            form.add_error(None, erro)
+        else:
+            request.session["cadastro_confirmacao_id"] = registro.pk
+            return redirect("accounts:confirmar_cadastro")
 
     return render(request, "accounts/cadastro.html", {"form": form})
+
+
+@require_http_methods(["GET", "POST"])
+def confirmar_email_cadastro(request):
+    registro = ConfirmacaoCadastro.objects.filter(pk=request.session.get("cadastro_confirmacao_id")).first()
+    if not registro:
+        return redirect("accounts:cadastro")
+    existentes = list(get_user_model().objects.filter(email__iexact=registro.email)[:2])
+    precisa_login = bool(existentes and (not request.user.is_authenticated or len(existentes) != 1 or request.user.pk != existentes[0].pk))
+    form = ConfirmarCadastroForm(request.POST or None, registro=registro, existente=bool(existentes))
+    if request.method == "POST" and not precisa_login and form.is_valid():
+        usuario, erro = confirmar_cadastro(registro.pk, form.cleaned_data["code"], form.cleaned_data.get("password1"), request.user)
+        if erro:
+            form.add_error("code", erro)
+        else:
+            request.session.pop("cadastro_confirmacao_id", None)
+            login(request, usuario)
+            messages.success(request, "E-mail confirmado. Os acessos autorizados para voce foram vinculados.")
+            return redirect("empresas:lista")
+    response = render(request, "accounts/cadastro.html", {
+        "form": form, "etapa_confirmacao": True, "email_destino": registro.email,
+        "precisa_login": precisa_login, "conta_existente": bool(existentes),
+        "login_confirmacao": reverse("accounts:login") + "?next=" + reverse("accounts:confirmar_cadastro"),
+    })
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 def solicitar_redefinicao_senha(request):

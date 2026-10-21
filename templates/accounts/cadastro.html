@@ -31,11 +31,15 @@
                 <span>{{ app_brand_navbar_text }}</span>
             </a>
             <div class="mt-4 mb-4">
-                <span class="eyebrow text-primary">NOVA CONTA</span>
-                <h2>Cadastre-se</h2>
-                <p class="text-secondary">Preencha seus dados para comecar.</p>
+                <span class="eyebrow text-primary">{% if etapa_confirmacao %}CONFIRMACAO DE E-MAIL{% else %}CADASTRO{% endif %}</span>
+                <h2>{% if etapa_confirmacao %}Confirme seu <span class="text-nowrap">e-mail</span>{% else %}Cadastre-se{% endif %}</h2>
+                <p class="text-secondary">{% if etapa_confirmacao %}{{ email_destino }}{% else %}Nome e e-mail{% endif %}</p>
             </div>
-
+            {% for message in messages %}<div class="alert alert-{{ message.tags }} py-2">{{ message }}</div>{% endfor %}
+            {% if precisa_login %}
+                <p>Este e-mail ja possui uma conta. Entre com sua senha atual para confirmar o acesso, sem criar outra conta.</p>
+                <a class="btn btn-primary w-100" href="{{ login_confirmacao }}">Entrar na minha conta <i class="bi bi-arrow-right ms-2"></i></a>
+            {% else %}
             <form method="post" novalidate>
                 {% csrf_token %}
 
@@ -57,10 +61,11 @@
                 {% endfor %}
 
                 <button class="btn btn-primary btn-lg w-100 mt-2" type="submit">
-                    Criar minha conta <i class="bi bi-arrow-right ms-2"></i>
+                    {% if etapa_confirmacao %}{% if conta_existente %}Confirmar acesso{% else %}Criar minha conta{% endif %}{% else %}Enviar codigo{% endif %} <i class="bi bi-arrow-right ms-2"></i>
                 </button>
             </form>
-
+            {% endif %}
+            {% if etapa_confirmacao %}<p class="auth-switch"><a href="{% url 'accounts:cadastro' %}">Solicitar outro codigo</a></p>{% endif %}
             <p class="auth-switch">
                 Ja possui uma conta?
                 <a href="{% url 'accounts:login' %}">Entrar no sistema</a>

@@ -169,6 +169,30 @@ class EmpresaUsuario(models.Model):
         return f"{self.usuario} - {self.empresa} ({self.get_papel_display()})"
 
 
+class PreCadastroUsuario(models.Model):
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name="pre_cadastros_usuarios")
+    email = models.EmailField(max_length=254)
+    nome = models.CharField(max_length=150)
+    papel = models.CharField(max_length=10, choices=EmpresaUsuario.Papel.choices, default=EmpresaUsuario.Papel.VISUALIZADOR)
+    areas_permitidas = models.JSONField(default=list, blank=True)
+    dashboards_permitidos = models.JSONField(default=list, blank=True)
+    ativo = models.BooleanField(default=True)
+    criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="pre_cadastros_criados")
+    utilizado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="pre_cadastros_utilizados")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    utilizado_em = models.DateTimeField(null=True)
+
+    class Meta:
+        ordering = ["nome", "email"]
+        constraints = [models.UniqueConstraint(
+            models.functions.Lower("email"), models.F("empresa"), name="pre_cadastro_empresa_email_unico",
+        )]
+
+    def save(self, *args, **kwargs):
+        self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+
+
 class AcaoUsuarioLog(models.Model):
     class Tipo(models.TextChoices):
         LOGIN = "login", "Login"

@@ -9,6 +9,7 @@ from .models import (
     ContaDRE,
     Empresa,
     EmpresaUsuario,
+    PreCadastroUsuario,
     IntegracaoOmie,
     SincronizacaoOmie,
 )
@@ -395,38 +396,23 @@ class AgendamentoSincronizacaoOmieForm(forms.ModelForm):
 
 class EmpresaUsuarioForm(forms.Form):
     vinculo_id = forms.IntegerField(required=False, widget=forms.HiddenInput)
-    username = forms.CharField(
-        label="Usuário",
-        max_length=150,
-        widget=forms.TextInput(attrs={"class": "form-control"}),
-    )
+    convite_id = forms.IntegerField(required=False, widget=forms.HiddenInput)
     first_name = forms.CharField(
         label="Nome",
         max_length=150,
-        required=False,
-        widget=forms.TextInput(attrs={"class": "form-control"}),
-    )
-    last_name = forms.CharField(
-        label="Sobrenome",
-        max_length=150,
-        required=False,
+        required=True,
         widget=forms.TextInput(attrs={"class": "form-control"}),
     )
     email = forms.EmailField(
         label="Email",
-        required=False,
+        required=True,
         widget=forms.EmailInput(attrs={"class": "form-control"}),
-    )
-    password = forms.CharField(
-        label="Senha inicial",
-        required=False,
-        widget=forms.PasswordInput(
-            attrs={"class": "form-control", "autocomplete": "new-password"}
-        ),
     )
     papel = forms.ChoiceField(
         label="Perfil",
         choices=EmpresaUsuario.Papel.choices,
+        required=False,
+        initial=EmpresaUsuario.Papel.VISUALIZADOR,
         widget=forms.Select(attrs={"class": "form-select"}),
     )
     areas_permitidas = forms.MultipleChoiceField(
@@ -446,11 +432,12 @@ class EmpresaUsuarioForm(forms.Form):
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
     )
 
-    def __init__(self, *args, empresa, operador, areas, vinculo=None, **kwargs):
+    def __init__(self, *args, empresa, operador, areas, vinculo=None, convite=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.empresa = empresa
         self.operador = operador
         self.vinculo = vinculo
+        self.convite = convite
         self.fields["areas_permitidas"].choices = [
             (slug, area["titulo"]) for slug, area in areas.items()
         ]
@@ -459,14 +446,14 @@ class EmpresaUsuarioForm(forms.Form):
             for area_slug, area in areas.items()
             for dashboard in area["dashboards"]
         ]
-        if vinculo and not self.is_bound:
+        if not vinculo and not convite:
+            self.fields.pop("ativo")
+        if vinculo:
             usuario = vinculo.usuario
             self.initial.update(
                 {
                     "vinculo_id": vinculo.pk,
-                    "username": usuario.username,
-                    "first_name": usuario.first_name,
-                    "last_name": usuario.last_name,
+                    "first_name": usuario.get_full_name() or usuario.username,
                     "email": usuario.email,
                     "papel": vinculo.papel,
                     "areas_permitidas": vinculo.areas_permitidas,
@@ -474,7 +461,13 @@ class EmpresaUsuarioForm(forms.Form):
                     "ativo": vinculo.ativo,
                 }
             )
-            self.fields["password"].help_text = "Deixe em branco para manter a senha."
+            self.fields["first_name"].disabled = True
+            self.fields["email"].disabled = True
+            self.fields["email"].required = False
+        if convite:
+            self.initial.update({"convite_id": convite.pk, "first_name": convite.nome, "email": convite.email,
+                                 "papel": convite.papel, "areas_permitidas": convite.areas_permitidas,
+                                 "dashboards_permitidos": convite.dashboards_permitidos, "ativo": convite.ativo})
 
         if not operador.is_superuser and not operador.is_staff:
             operador_vinculo = EmpresaUsuario.objects.filter(
@@ -489,25 +482,16 @@ class EmpresaUsuarioForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        vinculo = self.vinculo
-        vinculo_id = cleaned.get("vinculo_id")
-        if vinculo_id and not vinculo:
-            vinculo = EmpresaUsuario.objects.filter(
-                pk=vinculo_id,
-                empresa=self.empresa,
-            ).select_related("usuario").first()
-            if not vinculo:
-                raise forms.ValidationError("Acesso não encontrado.")
-            self.vinculo = vinculo
-
-        if vinculo and not usuario_pode_gerenciar_vinculo(
+        alvo = self.vinculo or self.convite
+        if alvo and not usuario_pode_gerenciar_vinculo(
             self.operador,
             self.empresa,
-            vinculo,
+            alvo,
         ):
             raise forms.ValidationError("Você não pode alterar este usuário.")
 
-        papel = cleaned.get("papel")
+        papel = cleaned.get("papel") or EmpresaUsuario.Papel.VISUALIZADOR
+        cleaned["papel"] = papel
         if not self.operador.is_superuser and not self.operador.is_staff:
             operador_vinculo = EmpresaUsuario.objects.filter(
                 empresa=self.empresa,
@@ -518,43 +502,38 @@ class EmpresaUsuarioForm(forms.Form):
                 if papel != EmpresaUsuario.Papel.VISUALIZADOR:
                     raise forms.ValidationError("Gerentes só podem cadastrar usuários.")
 
-        username = (cleaned.get("username") or "").strip()
-        if not username:
-            return cleaned
-        usuario_existente = get_user_model().objects.filter(username=username).first()
-        if usuario_existente and (
-            not self.vinculo or usuario_existente != self.vinculo.usuario
-        ):
-            if EmpresaUsuario.objects.filter(
-                empresa=self.empresa,
-                usuario=usuario_existente,
-            ).exists():
-                raise forms.ValidationError("Este usuário já está vinculado à empresa.")
-        if not self.vinculo and not cleaned.get("password") and not usuario_existente:
-            self.add_error("password", "Informe uma senha inicial para novo usuário.")
+        email = (cleaned.get("email") or "").strip().lower()
+        cleaned["email"] = email
+        if not self.vinculo and email:
+            if EmpresaUsuario.objects.filter(empresa=self.empresa, usuario__email__iexact=email).exists():
+                self.add_error("email", "Ja existe um usuario vinculado com este e-mail. Edite o acesso existente.")
+            qs = PreCadastroUsuario.objects.filter(empresa=self.empresa, email__iexact=email)
+            if self.convite:
+                qs = qs.exclude(pk=self.convite.pk)
+            if qs.exists():
+                self.add_error("email", "Este e-mail ja possui um pre-cadastro nesta empresa.")
         return cleaned
 
     def save(self):
-        User = get_user_model()
-        username = self.cleaned_data["username"].strip()
-        usuario = self.vinculo.usuario if self.vinculo else User.objects.filter(username=username).first()
-        if usuario is None:
-            usuario = User(username=username)
-        usuario.username = username
-        usuario.first_name = self.cleaned_data.get("first_name", "").strip()
-        usuario.last_name = self.cleaned_data.get("last_name", "").strip()
-        usuario.email = self.cleaned_data.get("email", "").strip()
-        if self.cleaned_data.get("password"):
-            usuario.set_password(self.cleaned_data["password"])
-        usuario.save()
-
-        vinculo = self.vinculo or EmpresaUsuario(empresa=self.empresa, usuario=usuario)
-        vinculo.papel = self.cleaned_data["papel"]
-        vinculo.areas_permitidas = self.cleaned_data.get("areas_permitidas", [])
-        vinculo.dashboards_permitidos = self.cleaned_data.get("dashboards_permitidos", [])
-        vinculo.ativo = self.cleaned_data.get("ativo", False)
-        vinculo.save()
-        return vinculo
+        from django.db import transaction
+        with transaction.atomic():
+            if self.vinculo:
+                alvo = EmpresaUsuario.objects.select_for_update().get(pk=self.vinculo.pk, empresa=self.empresa)
+            elif self.convite:
+                alvo = PreCadastroUsuario.objects.select_for_update().get(pk=self.convite.pk, empresa=self.empresa)
+                if alvo.utilizado_em:
+                    raise forms.ValidationError("Este pre-cadastro ja foi utilizado. Edite o usuario vinculado.")
+            else:
+                alvo = PreCadastroUsuario(empresa=self.empresa, criado_por=self.operador)
+            if not self.vinculo:
+                alvo.email = self.cleaned_data["email"]
+                alvo.nome = self.cleaned_data["first_name"].strip()
+            alvo.papel = self.cleaned_data["papel"]
+            alvo.areas_permitidas = self.cleaned_data.get("areas_permitidas", [])
+            alvo.dashboards_permitidos = self.cleaned_data.get("dashboards_permitidos", [])
+            alvo.ativo = self.cleaned_data.get("ativo", True)
+            alvo.save()
+            return alvo
 
 
 class ContaDREForm(forms.ModelForm):

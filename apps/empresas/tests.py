@@ -212,11 +212,13 @@ class UsuariosEmpresaTests(TestCase):
             response,
             reverse("dashboards:usuarios", kwargs={"empresa_slug": self.empresa.slug}),
         )
-        vinculo = EmpresaUsuario.objects.get(usuario__username="analista_financeiro")
+        from apps.empresas.models import PreCadastroUsuario
+        vinculo = PreCadastroUsuario.objects.get(email="ana@empresa.com.br")
         self.assertEqual(vinculo.empresa, self.empresa)
         self.assertEqual(vinculo.papel, EmpresaUsuario.Papel.VISUALIZADOR)
         self.assertEqual(vinculo.areas_permitidas, ["financeiro"])
         self.assertEqual(vinculo.dashboards_permitidos, ["financeiro:visao-geral"])
+        self.assertFalse(get_user_model().objects.filter(email="ana@empresa.com.br").exists())
 
     def test_gerente_nao_edita_administrador(self):
         vinculo_admin = EmpresaUsuario.objects.get(usuario=self.admin_cliente)

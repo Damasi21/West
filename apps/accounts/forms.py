@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
@@ -41,7 +41,7 @@ class LoginForm(AuthenticationForm):
         return super().clean()
 
 
-class CadastroForm(UserCreationForm):
+class CadastroForm(forms.Form):
     email = forms.EmailField(
         label="E-mail",
         widget=forms.EmailInput(
@@ -65,45 +65,34 @@ class CadastroForm(UserCreationForm):
         ),
     )
 
-    class Meta(UserCreationForm.Meta):
-        model = get_user_model()
-        fields = ("email", "first_name", "password1", "password2")
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        placeholders = {
-            "password1": "Crie uma senha segura",
-            "password2": "Digite a senha novamente",
-        }
-        for field_name, placeholder in placeholders.items():
-            self.fields[field_name].widget.attrs.update(
-                {"class": "form-control", "placeholder": placeholder}
-            )
-
     def clean_email(self):
-        email = self.cleaned_data["email"].strip().lower()
-        if get_user_model().objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError("Ja existe uma conta com este e-mail.")
-        return email
+        return self.cleaned_data["email"].strip().lower()
 
-    def _username_from_email(self, email):
-        User = get_user_model()
-        base = email[:150]
-        username = base
-        contador = 2
-        while User.objects.filter(username__iexact=username).exists():
-            sufixo = f"-{contador}"
-            username = f"{base[:150 - len(sufixo)]}{sufixo}"
-            contador += 1
-        return username
 
-    def save(self, commit=True):
-        usuario = super().save(commit=False)
-        usuario.email = self.cleaned_data["email"]
-        usuario.username = self._username_from_email(usuario.email)
-        if commit:
-            usuario.save()
-        return usuario
+class ConfirmarCadastroForm(forms.Form):
+    code = forms.RegexField(r"^[0-9]{8}$", label="Codigo recebido por e-mail", max_length=8,
+                           widget=forms.TextInput(attrs={"class": "form-control", "autocomplete": "one-time-code", "inputmode": "numeric"}))
+    password1 = forms.CharField(label="Crie sua senha", strip=False, widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "new-password"}))
+    password2 = forms.CharField(label="Confirme sua senha", strip=False, widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "new-password"}))
+
+    def __init__(self, *args, registro, existente=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.registro = registro
+        if existente:
+            self.fields.pop("password1")
+            self.fields.pop("password2")
+
+    def clean(self):
+        dados = super().clean()
+        if dados.get("password1"):
+            if dados.get("password1") != dados.get("password2"):
+                self.add_error("password2", "As senhas nao conferem.")
+            usuario = get_user_model()(email=self.registro.email, username=self.registro.email[:150], first_name=self.registro.nome)
+            try:
+                validate_password(dados["password1"], usuario)
+            except ValidationError as erro:
+                self.add_error("password1", erro)
+        return dados
 
 
 class PasswordResetRequestForm(forms.Form):

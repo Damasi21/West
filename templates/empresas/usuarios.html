@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Usuários | {{ empresa.nome_fantasia }}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/usuarios.css' %}?v={{ static_asset_version }}">{% endblock %}
 
 {% block content %}
 <div class="page-heading">
@@ -18,12 +20,13 @@
     <form method="post" class="users-admin-card" novalidate>
         {% csrf_token %}
         {{ form.vinculo_id }}
+        {{ form.convite_id }}
         <div class="users-admin-header">
             <div>
-                <span class="eyebrow">{% if vinculo_edicao %}EDITAR ACESSO{% else %}NOVO ACESSO{% endif %}</span>
-                <h2>{% if vinculo_edicao %}{{ vinculo_edicao.usuario.get_full_name|default:vinculo_edicao.usuario.username }}{% else %}Cadastrar usuário{% endif %}</h2>
+                <span class="eyebrow">{% if vinculo_edicao or convite_edicao %}EDITAR ACESSO{% else %}NOVO ACESSO{% endif %}</span>
+                <h2>{% if vinculo_edicao %}{{ vinculo_edicao.usuario.get_full_name|default:vinculo_edicao.usuario.username }}{% elif convite_edicao %}{{ convite_edicao.nome }}{% else %}Pre-cadastrar usuario{% endif %}</h2>
             </div>
-            {% if vinculo_edicao %}
+            {% if vinculo_edicao or convite_edicao %}
                 <a class="btn btn-white btn-sm" href="{% url 'dashboards:usuarios' empresa.slug %}">Novo</a>
             {% endif %}
         </div>
@@ -34,11 +37,6 @@
 
         <div class="row g-3">
             <div class="col-md-6">
-                <label class="form-label" for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
-                {{ form.username }}
-                {% for error in form.username.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-md-6">
                 <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
                 {{ form.email }}
                 {% for error in form.email.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
@@ -46,23 +44,16 @@
             <div class="col-md-6">
                 <label class="form-label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
                 {{ form.first_name }}
+                {% for error in form.first_name.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
             </div>
-            <div class="col-md-6">
-                <label class="form-label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
-                {{ form.last_name }}
-            </div>
-            <div class="col-md-6">
-                <label class="form-label" for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
-                {{ form.password }}
-                {% if form.password.help_text %}<div class="form-text">{{ form.password.help_text }}</div>{% endif %}
-                {% for error in form.password.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-md-6">
+        </div>
+        <details class="mt-4" {% if vinculo_edicao or convite_edicao or form.errors %}open{% endif %}>
+            <summary class="mb-3">Perfil e permissoes</summary>
+            <div>
                 <label class="form-label" for="{{ form.papel.id_for_label }}">{{ form.papel.label }}</label>
                 {{ form.papel }}
                 {% for error in form.papel.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
             </div>
-        </div>
 
         <div class="users-permission-grid">
             <div>
@@ -80,19 +71,24 @@
                 </div>
             </div>
         </div>
+        </details>
 
         <div class="users-admin-actions">
-            <label class="form-check">
+            {% if form.ativo %}<label class="form-check">
                 {{ form.ativo }}
                 <span class="form-check-label">{{ form.ativo.label }}</span>
-            </label>
+            </label>{% endif %}
             <button class="btn btn-primary" type="submit">
-                <i class="bi bi-check2-circle me-2"></i>Salvar usuário
+                <i class="bi bi-check2-circle me-2"></i>{% if vinculo_edicao or convite_edicao %}Salvar acesso{% else %}Salvar pre-cadastro{% endif %}
             </button>
         </div>
     </form>
 
     <article class="users-admin-card">
+        <div class="users-admin-header"><div><span class="eyebrow">PRE-CADASTROS</span><h2>Aguardando primeiro acesso</h2></div><strong>{{ convites|length }}</strong></div>
+        <div class="users-table mb-4">
+            {% for convite in convites %}<div class="users-row"><div><strong>{{ convite.nome }}</strong><small>{{ convite.email }}</small></div><span>{{ convite.get_papel_display }}</span><span>{% if convite.ativo %}Pendente{% else %}Cancelado{% endif %}</span><div class="d-flex gap-2"><a class="btn btn-sm btn-outline-secondary" title="Editar pre-cadastro" aria-label="Editar pre-cadastro de {{ convite.nome }}" href="{% url 'dashboards:usuarios' empresa.slug %}?convite={{ convite.pk }}"><i class="bi bi-pencil"></i></a>{% if convite.ativo %}<form method="post">{% csrf_token %}<input type="hidden" name="convite_id" value="{{ convite.pk }}"><input type="hidden" name="acao" value="cancelar_pre_cadastro"><button class="btn btn-sm btn-outline-danger" title="Cancelar pre-cadastro" aria-label="Cancelar pre-cadastro de {{ convite.nome }}"><i class="bi bi-x-circle"></i></button></form>{% endif %}</div></div>{% empty %}<div class="users-empty"><i class="bi bi-person-plus"></i><strong>Nenhum pre-cadastro pendente</strong></div>{% endfor %}
+        </div>
         <div class="users-admin-header">
             <div>
                 <span class="eyebrow">ACESSOS</span>

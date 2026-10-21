@@ -28,6 +28,12 @@ class CadastroTests(TestCase):
             },
         )
 
+        self.assertRedirects(response, reverse("accounts:confirmar_cadastro"))
+        self.assertFalse(get_user_model().objects.filter(email="maria@empresa.com.br").exists())
+        codigo = re.search(r"\b(\d{8})\b", mail.outbox[-1].body).group(1)
+        response = self.client.post(reverse("accounts:confirmar_cadastro"), {
+            "code": codigo, "password1": "UmaSenhaSegura2026!", "password2": "UmaSenhaSegura2026!",
+        })
         self.assertRedirects(response, reverse("empresas:lista"))
         usuario = get_user_model().objects.get(email="maria@empresa.com.br")
         self.assertEqual(usuario.username, "maria@empresa.com.br")
@@ -68,8 +74,9 @@ class CadastroTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Ja existe uma conta com este e-mail.")
+        self.assertRedirects(response, reverse("accounts:confirmar_cadastro"))
+        self.assertContains(self.client.get(reverse("accounts:confirmar_cadastro")), "Entre com sua senha atual")
+        self.assertEqual(get_user_model().objects.filter(email__iexact="cliente@empresa.com.br").count(), 1)
         self.assertFalse(get_user_model().objects.filter(username="outro").exists())
 
     def test_recuperacao_de_senha_envia_codigo_e_redefine_senha(self):
