@@ -81,6 +81,45 @@ def vincular_email_verificado(usuario):
         return _vincular_pre_cadastros(usuario)
 
 
+def vincular_pre_cadastros_sistema(usuario):
+    email = usuario.email.strip().lower()
+    if not email:
+        return 0
+    with transaction.atomic():
+        usuarios = list(get_user_model().objects.filter(email__iexact=email)[:2])
+        if len(usuarios) != 1 or usuarios[0].pk != usuario.pk or not usuarios[0].is_active:
+            return 0
+        return _vincular_pre_cadastros(usuarios[0])
+
+
+def cadastrar_pelo_sistema(email, nome, senha):
+    email = email.strip().lower()
+    with transaction.atomic():
+        # Serialize signups for the same email without recording it as verified.
+        registro, _ = ConfirmacaoCadastro.objects.get_or_create(email=email, defaults={"nome": nome})
+        ConfirmacaoCadastro.objects.select_for_update().get(pk=registro.pk)
+        User = get_user_model()
+        if User.objects.filter(email__iexact=email).exists():
+            raise ValidationError("Este e-mail ja possui conta. Entre com sua senha atual.")
+        convites = list(PreCadastroUsuario.objects.select_for_update().filter(
+            email__iexact=email, ativo=True, utilizado_em__isnull=True, empresa__ativa=True,
+        ).order_by("pk"))
+        if not convites:
+            raise ValidationError("Cadastro indisponivel para este e-mail. Contate o administrador.")
+        from django.contrib.auth.password_validation import validate_password
+        validate_password(senha, User(email=email, first_name=nome, username=email[:150]))
+        base = email if len(email) <= 150 else "email-" + hashlib.sha256(email.encode()).hexdigest()
+        username = base
+        numero = 2
+        while User.objects.filter(username__iexact=username).exists():
+            sufixo = f"-{numero}"
+            username = base[:150 - len(sufixo)] + sufixo
+            numero += 1
+        usuario = User.objects.create_user(username=username, email=email, first_name=nome, password=senha)
+        _vincular_pre_cadastros(usuario)
+        return usuario
+
+
 def confirmar_cadastro(registro_id, codigo, senha, usuario_logado=None):
     with transaction.atomic():
         registro = ConfirmacaoCadastro.objects.select_for_update().get(pk=registro_id)

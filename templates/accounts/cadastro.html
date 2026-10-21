@@ -33,7 +33,7 @@
             <div class="mt-4 mb-4">
                 <span class="eyebrow text-primary">{% if etapa_confirmacao %}CONFIRMACAO DE E-MAIL{% else %}CADASTRO{% endif %}</span>
                 <h2>{% if etapa_confirmacao %}Confirme seu <span class="text-nowrap">e-mail</span>{% else %}Cadastre-se{% endif %}</h2>
-                <p class="text-secondary">{% if etapa_confirmacao %}{{ email_destino }}{% else %}Nome e e-mail{% endif %}</p>
+                <p class="text-secondary">{% if etapa_confirmacao %}{{ email_destino }}{% elif cadastro_sistema %}Nome, e-mail e senha{% else %}Nome e e-mail{% endif %}</p>
             </div>
             {% for message in messages %}<div class="alert alert-{{ message.tags }} py-2">{{ message }}</div>{% endfor %}
             {% if precisa_login %}
@@ -61,7 +61,7 @@
                 {% endfor %}
 
                 <button class="btn btn-primary btn-lg w-100 mt-2" type="submit">
-                    {% if etapa_confirmacao %}{% if conta_existente %}Confirmar acesso{% else %}Criar minha conta{% endif %}{% else %}Enviar codigo{% endif %} <i class="bi bi-arrow-right ms-2"></i>
+                    {% if cadastro_sistema %}Criar minha conta{% elif etapa_confirmacao %}{% if conta_existente %}Confirmar acesso{% else %}Criar minha conta{% endif %}{% else %}Enviar codigo{% endif %} <i class="bi bi-arrow-right ms-2"></i>
                 </button>
             </form>
             {% endif %}

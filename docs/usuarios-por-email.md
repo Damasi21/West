@@ -1,6 +1,25 @@
 # Pre-cadastro de acessos por e-mail
 
-## Fluxo
+## Fluxo atual: validacao interna
+
+Por decisao do produto, `CADASTRO_EXIGIR_CONFIRMACAO_EMAIL=False` e o padrao.
+O gestor pre-cadastra nome e e-mail em Configuracoes > Usuarios. No cadastro publico,
+o usuario informa nome, esse e-mail e uma senha com confirmacao. O sistema exige um
+pre-cadastro ativo em empresa ativa e vincula somente os acessos autorizados.
+Sem pre-cadastro, nenhuma conta e criada. Nao ha envio de codigo nem dependencia SMTP.
+
+Contas existentes entram com sua senha atual; novos convites sao vinculados no login.
+Nome e senha existentes, acessos revogados e permissoes existentes nao sao substituidos.
+E-mails duplicados em contas legadas nao recebem vinculos automaticos.
+
+Esta modalidade valida a autorizacao no banco, NAO a posse da caixa de e-mail. Alguem
+que conheca um endereco pre-autorizado ainda nao utilizado pode reivindicar o cadastro.
+Nao e registrada verificacao de e-mail nesse fluxo. A verificacao por codigo permanece
+disponivel para uma futura ativacao, depois de configurar e validar o SMTP.
+
+## Fluxo opcional com confirmacao por e-mail
+
+Exige `CADASTRO_EXIGIR_CONFIRMACAO_EMAIL=True` no ambiente e a configuracao SMTP abaixo.
 
 1. Em Configuracoes > Usuarios, o gestor informa nome e e-mail. Perfil e permissoes
    sao opcionais; o padrao e Visualizador, com os modulos/dashboards permitidos pelo
@@ -36,10 +55,13 @@ Aplicar as migracoes `accounts.0002` e `empresas.0053`. Nao ha migracao automati
 existentes para pre-cadastros. As alteracoes do Auditor ainda pendentes devem ser revisadas
 separadamente antes de qualquer publicacao.
 
-O container `app` agora recebe a configuracao SMTP do arquivo de ambiente de producao:
+O container `app` recebe a configuracao SMTP do arquivo de ambiente de producao.
+Ela nao e necessaria para o cadastro com validacao interna. A recuperacao de senha
+por e-mail continua dependendo de SMTP, como antes. Para ativar a confirmacao futura:
 
 ```dotenv
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+CADASTRO_EXIGIR_CONFIRMACAO_EMAIL=True
 EMAIL_HOST=SEU_SERVIDOR_SMTP
 EMAIL_PORT=587
 EMAIL_HOST_USER=SEU_USUARIO_SMTP

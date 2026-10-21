@@ -211,6 +211,7 @@ EMAIL_BACKEND = os.getenv(
 )
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
+CADASTRO_EXIGIR_CONFIRMACAO_EMAIL = os.getenv("CADASTRO_EXIGIR_CONFIRMACAO_EMAIL", "False").lower() == "true"
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")

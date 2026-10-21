@@ -69,6 +69,29 @@ class CadastroForm(forms.Form):
         return self.cleaned_data["email"].strip().lower()
 
 
+class CadastroSistemaForm(CadastroForm):
+    password1 = forms.CharField(label="Crie sua senha", strip=False, widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "new-password"}))
+    password2 = forms.CharField(label="Confirme sua senha", strip=False, widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "new-password"}))
+
+    def clean(self):
+        dados = super().clean()
+        email = dados.get("email")
+        from apps.empresas.models import PreCadastroUsuario
+        if email and (get_user_model().objects.filter(email__iexact=email).exists() or not PreCadastroUsuario.objects.filter(
+            email__iexact=email, ativo=True, utilizado_em__isnull=True, empresa__ativa=True,
+        ).exists()):
+            self.add_error("email", "Cadastro indisponivel para este e-mail. Se ja possui conta, entre com sua senha atual; caso contrario, contate o administrador.")
+        if dados.get("password1"):
+            if dados.get("password1") != dados.get("password2"):
+                self.add_error("password2", "As senhas nao conferem.")
+            usuario = get_user_model()(email=email or "", username=(email or "")[:150], first_name=dados.get("first_name", ""))
+            try:
+                validate_password(dados["password1"], usuario)
+            except ValidationError as erro:
+                self.add_error("password1", erro)
+        return dados
+
+
 class ConfirmarCadastroForm(forms.Form):
     code = forms.RegexField(r"^[0-9]{8}$", label="Codigo recebido por e-mail", max_length=8,
                            widget=forms.TextInput(attrs={"class": "form-control", "autocomplete": "one-time-code", "inputmode": "numeric"}))

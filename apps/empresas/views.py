@@ -692,7 +692,7 @@ def usuarios(request, empresa_slug):
         except IntegrityError:
             form.add_error("email", "Este e-mail ja possui um pre-cadastro nesta empresa. Atualize a pagina.")
         else:
-            messages.success(request, "Permissoes atualizadas." if vinculo_edicao else "Pre-cadastro salvo. Aguardando confirmacao do e-mail pelo usuario.")
+            messages.success(request, "Permissoes atualizadas." if vinculo_edicao else "Pre-cadastro salvo. Aguardando cadastro ou login do usuario.")
             return redirect("dashboards:usuarios", empresa_slug=empresa.slug)
 
     return render(

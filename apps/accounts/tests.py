@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", CADASTRO_EXIGIR_CONFIRMACAO_EMAIL=True)
 class CadastroTests(TestCase):
     def test_tela_de_login_exibe_link_de_cadastro_e_recuperacao(self):
         response = self.client.get(reverse("accounts:login"))

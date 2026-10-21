@@ -15,7 +15,7 @@ from .models import ConfirmacaoCadastro
 from .registration import confirmar_cadastro, enviar_codigo_cadastro, vincular_email_verificado
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", CADASTRO_EXIGIR_CONFIRMACAO_EMAIL=True)
 class PreCadastroTests(TestCase):
     senha = "SenhaForteConfirmada2026!"
 

@@ -15,6 +15,7 @@ from django.views.decorators.http import require_http_methods
 
 from .forms import (
     CadastroForm,
+    CadastroSistemaForm,
     ConfirmarCadastroForm,
     LoginForm,
     PasswordResetConfirmForm,
@@ -22,6 +23,7 @@ from .forms import (
 )
 from .models import PasswordResetCode, ConfirmacaoCadastro
 from .registration import confirmar_cadastro, enviar_codigo_cadastro, vincular_email_verificado
+from .registration import cadastrar_pelo_sistema, vincular_pre_cadastros_sistema
 
 
 class EntrarView(LoginView):
@@ -32,9 +34,12 @@ class EntrarView(LoginView):
     def form_valid(self, form):
         response = super().form_valid(form)
         usuario = form.get_user()
-        vincular_email_verificado(usuario)
+        if not settings.CADASTRO_EXIGIR_CONFIRMACAO_EMAIL:
+            vincular_pre_cadastros_sistema(usuario)
+        else:
+            vincular_email_verificado(usuario)
         from apps.empresas.models import PreCadastroUsuario
-        if usuario.email and PreCadastroUsuario.objects.filter(email__iexact=usuario.email.strip(), ativo=True, utilizado_em__isnull=True, empresa__ativa=True).exists():
+        if settings.CADASTRO_EXIGIR_CONFIRMACAO_EMAIL and usuario.email and PreCadastroUsuario.objects.filter(email__iexact=usuario.email.strip(), ativo=True, utilizado_em__isnull=True, empresa__ativa=True).exists():
             try:
                 registro = enviar_codigo_cadastro(usuario.email, usuario.first_name or usuario.username)
             except ValidationError as erro:
@@ -85,6 +90,20 @@ class SairView(LogoutView):
 
 @require_http_methods(["GET", "POST"])
 def cadastrar(request):
+    if not settings.CADASTRO_EXIGIR_CONFIRMACAO_EMAIL:
+        if request.user.is_authenticated:
+            return redirect("empresas:lista")
+        form = CadastroSistemaForm(request.POST or None)
+        if request.method == "POST" and form.is_valid():
+            try:
+                usuario = cadastrar_pelo_sistema(form.cleaned_data["email"], form.cleaned_data["first_name"], form.cleaned_data["password1"])
+            except ValidationError as erro:
+                form.add_error(None, erro)
+            else:
+                login(request, usuario)
+                messages.success(request, "Conta criada. Seus acessos autorizados foram vinculados.")
+                return redirect("empresas:lista")
+        return render(request, "accounts/cadastro.html", {"form": form, "cadastro_sistema": True})
     form = CadastroForm(request.POST or None)
     if request.user.is_authenticated:
         if not request.user.email:
@@ -106,6 +125,8 @@ def cadastrar(request):
 
 @require_http_methods(["GET", "POST"])
 def confirmar_email_cadastro(request):
+    if not settings.CADASTRO_EXIGIR_CONFIRMACAO_EMAIL:
+        return redirect("accounts:cadastro")
     registro = ConfirmacaoCadastro.objects.filter(pk=request.session.get("cadastro_confirmacao_id")).first()
     if not registro:
         return redirect("accounts:cadastro")
