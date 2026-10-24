@@ -1788,6 +1788,18 @@ class RecebimentoNfeOmie(models.Model):
         return self.numero_nfe or str(self.codigo_recebimento)
 
 
+class RecebimentoNfeTituloOmie(models.Model):
+    recebimento = models.ForeignKey(
+        RecebimentoNfeOmie, on_delete=models.CASCADE, related_name="titulos_financeiros",
+    )
+    codigo_lancamento_omie = models.BigIntegerField(db_index=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=["recebimento", "codigo_lancamento_omie"], name="receb_nfe_titulo_unico",
+        )]
+
+
 class RecebimentoNfeItemOmie(models.Model):
     empresa = models.ForeignKey(
         Empresa,

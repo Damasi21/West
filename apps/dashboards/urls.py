@@ -4,11 +4,17 @@ from apps.compras import views as compras_views
 from apps.empresas import views as empresas_views
 
 from . import views
+from .pagamento_nfe_views import nota_pagamento
 
 
 app_name = "dashboards"
 
 urlpatterns = [
+    path(
+        "financeiro/aprovacao-de-pagamentos/<int:conta_id>/nota/",
+        nota_pagamento,
+        name="nota_pagamento",
+    ),
     path("", views.home, name="home"),
     path("parametros/", empresas_views.parametros, name="parametros"),
     path("parametros/classificacoes/", empresas_views.classificacoes, name="classificacoes"),

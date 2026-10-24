@@ -19,6 +19,7 @@ from apps.dashboards.fluxo_caixa_services import (
     STATUS_FECHADOS_RECEBER,
 )
 from apps.dashboards.models import AprovacaoPagamento
+from apps.dashboards.pagamento_nfe_services import dados_link_nota, notas_das_contas
 from apps.empresas.omie import (
     OmieAPIError,
     alterar_conta_pagar,
@@ -147,11 +148,13 @@ def _contas_receber_do_periodo(inicio, fim, empresas_ids, projetos, categorias):
 
 def _linhas_pagamentos(contas):
     linhas = []
-    for conta in contas.select_related("aprovacao_pagamento").order_by(
+    contas = list(contas.select_related("aprovacao_pagamento").order_by(
         "data_previsao",
         "data_vencimento",
         "codigo_lancamento_omie",
-    ):
+    ))
+    notas = notas_das_contas(contas)
+    for conta in contas:
         valor = abs(_decimal(conta.valor_a_pagar or conta.valor_documento))
         previsao = conta.data_previsao
         vencimento = conta.data_vencimento
@@ -173,6 +176,7 @@ def _linhas_pagamentos(contas):
         linhas.append(
             {
                 "id": conta.pk,
+                **dados_link_nota(conta, notas.get(conta.pk)),
                 "codigo_lancamento_omie": conta.codigo_lancamento_omie,
                 "empresa": conta.empresa.nome_fantasia,
                 "nome": _nome_fornecedor(conta),

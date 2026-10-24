@@ -16,6 +16,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .cfops import nota_tem_cfop_venda
+from .recebimentos_nfe import atualizar_titulos_recebimento
 
 from .models import (
     CadastroOmie,
@@ -1323,6 +1324,11 @@ def consultar_recebimentos_nfe(
 
     if "faultstring" in dados:
         raise OmieAPIError(dados["faultstring"])
+    # The receipt API names totals differently from other OMIE listing APIs.
+    if "nTotalPaginas" in dados:
+        dados["nTotPaginas"] = dados["nTotalPaginas"]
+    if "nTotalRegistros" in dados:
+        dados["nTotRegistros"] = dados["nTotalRegistros"]
     recebimentos = dados.get("recebimentos") or []
     recebimentos_detalhados = []
     for recebimento in recebimentos:
@@ -1333,7 +1339,7 @@ def consultar_recebimentos_nfe(
             continue
         detalhe = consultar_recebimento_nfe(integracao, codigo_recebimento)
         if detalhe:
-            detalhe.setdefault("cabec", cabec)
+            detalhe["cabec"] = {**cabec, **(detalhe.get("cabec") or {})}
             detalhe.setdefault("infoAdicionais", recebimento.get("infoAdicionais") or {})
             detalhe.setdefault("parcelas", recebimento.get("parcelas") or {})
             detalhe.setdefault("totais", recebimento.get("totais") or {})
@@ -4372,6 +4378,7 @@ def _salvar_recebimentos_nfe(empresa, itens):
                 **_presenca_omie(agora),
             },
         )
+        atualizar_titulos_recebimento(recebimento_obj)
         numero_pedido = str(
             _primeiro_valor(
                 recebimento.get("nNumPedCompra"),
@@ -4768,7 +4775,10 @@ def executar_sincronizacao_omie(sincronizacao_id):
             ),
             "Saldos pendentes de estoque": escopos(SincronizacaoOmie.Recurso.ESTOQUE),
             "Pedidos de compra": escopos(SincronizacaoOmie.Recurso.COMPRAS),
-            "Recebimentos de NF-e": escopos(SincronizacaoOmie.Recurso.COMPRAS),
+            "Recebimentos de NF-e": escopos(
+                SincronizacaoOmie.Recurso.COMPRAS,
+                SincronizacaoOmie.Recurso.FINANCEIRO,
+            ),
             "Categorias": escopos(
                 SincronizacaoOmie.Recurso.FINANCEIRO,
                 SincronizacaoOmie.Recurso.COMERCIAL,

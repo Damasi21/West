@@ -2772,10 +2772,10 @@
 }
 .payment-row {
     display: grid;
-    grid-template-columns: 32px minmax(100px, .72fr) minmax(170px, 1.25fr) 120px 120px 155px minmax(225px, 1.15fr) 40px;
+    grid-template-columns: 28px minmax(90px, .7fr) minmax(170px, 1.4fr) 85px 105px 105px 100px 180px 32px;
     gap: .9rem;
     align-items: center;
-    min-width: 980px;
+    min-width: 1100px;
     padding: .72rem 1.25rem;
     color: #182230;
     border-bottom: 1px solid #edf1f6;
@@ -2784,6 +2784,17 @@
 .payment-history-row {
     grid-template-columns: minmax(110px, .78fr) minmax(210px, 1.45fr) 125px 130px 130px;
     min-width: 760px;
+}
+[data-payment-modal] .payment-row {
+    column-gap: .5rem;
+}
+.payment-invoice a {
+    color: #075985;
+    text-decoration: underline;
+    overflow-wrap: anywhere;
+}
+.payment-invoice i {
+    font-size: .65rem;
 }
 .payment-row:not(.payment-head):nth-child(even) {
     background: #f8fafc;

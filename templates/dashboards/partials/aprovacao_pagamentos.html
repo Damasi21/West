@@ -139,6 +139,7 @@
                     <label><input type="checkbox" data-payment-check-all></label>
                     <span>Empresa</span>
                     <span>Fornecedor / categoria</span>
+                    <span>NF</span>
                     <span>Previsao</span>
                     <span>Valor</span>
                     <span>Status</span>
@@ -183,6 +184,13 @@
                             <span>
                                 <strong>{{ pagamento.nome }}</strong>
                                 <small>{{ pagamento.categoria }}</small>
+                            </span>
+                            <span class="payment-invoice">
+                                {% if pagamento.url_nf %}
+                                    <a href="{{ pagamento.url_nf }}" target="_blank" rel="noopener noreferrer" title="Visualizar NF {{ pagamento.numero_nf }} em nova aba">{{ pagamento.numero_nf }} <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
+                                {% else %}
+                                    <span title="NF sem recebimento vinculado na base local">{{ pagamento.numero_nf }}</span>
+                                {% endif %}
                             </span>
                             <span data-payment-due-label>
                                 <b data-payment-due-date>{{ pagamento.previsao_fmt }}</b>
