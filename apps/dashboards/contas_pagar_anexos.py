@@ -35,25 +35,35 @@ def dados_anexo(anexo):
         info.compress_type = zipfile.ZIP_DEFLATED
         pacote.writestr(info, conteudo)
     compactado = buffer.getvalue()
+    arquivo_base64 = base64.b64encode(compactado).decode("ascii")
     return {"cCodIntAnexo": anexo.codigo_integracao, "cTabela": "conta-pagar",
             "nId": anexo.conta.codigo_lancamento_omie, "cNomeArquivo": nome,
-            "cTipoArquivo": extensao, "cArquivo": base64.b64encode(compactado).decode("ascii"),
-            "cMd5": hashlib.md5(compactado, usedforsecurity=False).hexdigest()}
+            "cTipoArquivo": extensao, "cArquivo": arquivo_base64,
+            # OMIE validates the text in cArquivo, not the raw ZIP bytes.
+            "cMd5": hashlib.md5(arquivo_base64.encode("ascii"), usedforsecurity=False).hexdigest()}
 
 
 def _confirmar(anexo, resposta):
     try:
         codigo = int(resposta.get("nIdAnexo") or 0)
-        if codigo <= 0 or resposta.get("cCodIntAnexo", anexo.codigo_integracao) != anexo.codigo_integracao:
-            return False
-        if str(resposta.get("cTabela", "conta-pagar")) != "conta-pagar" or int(resposta.get("nId", anexo.conta.codigo_lancamento_omie)) != anexo.conta.codigo_lancamento_omie:
-            return False
+        if "nCodTitulo" in resposta:
+            # Finance-specific API does not return nIdAnexo. Its receipt is the
+            # exact integration key bound to a positive title and file name.
+            if (int(resposta["nCodTitulo"]) != anexo.conta.codigo_lancamento_omie
+                    or resposta.get("cCodIntAnexo") != anexo.codigo_integracao
+                    or not isinstance(resposta.get("cNomeArq"), str) or not resposta["cNomeArq"].strip()):
+                return False
+        else:
+            if codigo <= 0 or resposta.get("cCodIntAnexo", anexo.codigo_integracao) != anexo.codigo_integracao:
+                return False
+            if str(resposta.get("cTabela", "conta-pagar")) != "conta-pagar" or int(resposta.get("nId", anexo.conta.codigo_lancamento_omie)) != anexo.conta.codigo_lancamento_omie:
+                return False
         if "cCodStatus" in resposta and int(str(resposta["cCodStatus"])) != 0:
             return False
     except (TypeError, ValueError):
         return False
     AnexoContaPagarLocal.objects.filter(pk=anexo.pk).exclude(status_omie="enviado").update(
-        status_omie="enviado", codigo_anexo_omie=codigo, enviado_em=timezone.now(), erro_omie="")
+        status_omie="enviado", codigo_anexo_omie=codigo or None, enviado_em=timezone.now(), erro_omie="")
     return True
 
 

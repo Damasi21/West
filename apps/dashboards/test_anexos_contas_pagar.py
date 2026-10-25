@@ -50,7 +50,8 @@ class AnexosContasPagarTests(TestCase):
         self.assertEqual(dados["cTipoArquivo"], "pdf")
         self.assertEqual(dados["cNomeArquivo"], "nota_fiscal.pdf")
         compactado = base64.b64decode(dados["cArquivo"], validate=True)
-        self.assertEqual(dados["cMd5"], hashlib.md5(compactado).hexdigest())
+        self.assertEqual(dados["cMd5"], hashlib.md5(dados["cArquivo"].encode("ascii")).hexdigest())
+        self.assertNotEqual(dados["cMd5"], hashlib.md5(compactado).hexdigest())
         with zipfile.ZipFile(io.BytesIO(compactado)) as pacote:
             self.assertEqual(pacote.namelist(), ["nota_fiscal.pdf"])
             self.assertEqual(pacote.read("nota_fiscal.pdf"), self.conteudo)
@@ -175,12 +176,54 @@ class AnexosContasPagarTests(TestCase):
             incluir_anexo(self.integracao, dados_anexo(self.anexo))
             request = http.call_args.args[0]
             self.assertEqual(request.full_url, ANEXOS_URL)
-            self.assertEqual(json.loads(request.data)["call"], "IncluirAnexo")
+            payload = json.loads(request.data)
+            self.assertEqual(payload["call"], "lcpIncluirAnexo")
+            self.assertEqual(payload["param"][0]["nCodTitulo"], 3001)
+            self.assertEqual(payload["param"][0]["cNomeArq"], "nota_fiscal.pdf")
+            self.assertNotIn("cTabela", payload["param"][0])
             http.reset_mock()
             consultar_anexo(self.integracao, self.anexo.codigo_integracao, 3001)
-            self.assertEqual(json.loads(http.call_args.args[0].data)["call"], "ConsultarAnexo")
+            self.assertEqual(json.loads(http.call_args.args[0].data)["call"], "lcpConsultarAnexo")
             http.reset_mock()
             http.side_effect = TimeoutError()
             with self.assertRaises(ResultadoOmieIncerto):
                 incluir_anexo(self.integracao, dados_anexo(self.anexo))
             http.assert_called_once()
+
+    def test_resposta_financeira_real_sem_id_anexo_confirma_titulo_e_chave(self):
+        resposta={"nCodTitulo":3001,"cCodIntAnexo":self.anexo.codigo_integracao,
+                  "cNomeArq":"nota_fiscal.pdf","cCodStatus":"0","cDesStatus":"Sucesso"}
+        with patch("apps.dashboards.contas_pagar_anexos.incluir_anexo", return_value=resposta) as incluir:
+            processar_anexos(self.titulo, self.integracao)
+            processar_anexos(self.titulo, self.integracao)
+        incluir.assert_called_once()
+        self.anexo.refresh_from_db()
+        self.assertEqual(self.anexo.status_omie,"enviado")
+        self.assertIsNone(self.anexo.codigo_anexo_omie)
+
+    def test_resposta_vazia_da_api_geral_nao_e_sucesso(self):
+        resposta={"nId":0,"nIdAnexo":0,"cCodIntAnexo":"","cNomeArquivo":"","cCodStatus":""}
+        with patch("apps.dashboards.contas_pagar_anexos.incluir_anexo",return_value=resposta):
+            processar_anexos(self.titulo,self.integracao)
+        self.anexo.refresh_from_db()
+        self.assertEqual(self.anexo.status_omie,"incerto")
+
+    def test_consulta_financeira_sem_status_confirma_chave_e_titulo(self):
+        self.anexo.status_omie="incerto"
+        self.anexo.save()
+        resposta={"nCodTitulo":3001,"cCodIntAnexo":self.anexo.codigo_integracao,"cNomeArq":"nota_fiscal.pdf"}
+        with patch("apps.dashboards.contas_pagar_anexos.consultar_anexo",return_value=resposta), patch("apps.dashboards.contas_pagar_anexos.incluir_anexo") as incluir:
+            processar_anexos(self.titulo,self.integracao)
+        incluir.assert_not_called()
+        self.anexo.refresh_from_db()
+        self.assertEqual(self.anexo.status_omie,"enviado")
+
+    def test_resposta_financeira_exige_identidade_completa(self):
+        for extra in [{"nCodTitulo":999},{"cCodIntAnexo":"outra-chave"},{"cNomeArq":""},{"cCodStatus":"5"}]:
+            self.anexo.status_omie="pendente"
+            self.anexo.save()
+            resposta={"nCodTitulo":3001,"cCodIntAnexo":self.anexo.codigo_integracao,"cNomeArq":"nota.pdf","cCodStatus":"0",**extra}
+            with patch("apps.dashboards.contas_pagar_anexos.incluir_anexo",return_value=resposta):
+                processar_anexos(self.titulo,self.integracao)
+            self.anexo.refresh_from_db()
+            self.assertNotEqual(self.anexo.status_omie,"enviado")

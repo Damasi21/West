@@ -13,7 +13,7 @@ class ResultadoOmieIncerto(Exception):
     pass
 
 
-ANEXOS_URL = "https://app.omie.com.br/api/v1/geral/anexo/"
+ANEXOS_URL = "https://app.omie.com.br/api/v1/financas/contapagaranexos/"
 
 
 def chamada_conta_pagar(integracao, metodo, parametros, *, url=CONTAS_PAGAR_URL):
@@ -45,10 +45,14 @@ def consultar_conta_por_integracao(integracao, codigo):
 
 
 def incluir_anexo(integracao, dados):
-    return chamada_conta_pagar(integracao, "IncluirAnexo", dados, url=ANEXOS_URL)
+    # The general attachment service returns empty envelopes for this title.
+    # Use the finance contract, which identifies attachments by integration key.
+    parametros = {"nCodTitulo": dados["nId"], "cCodIntAnexo": dados["cCodIntAnexo"],
+                  "cNomeArq": dados["cNomeArquivo"], "cArquivo": dados["cArquivo"], "cMd5": dados["cMd5"]}
+    return chamada_conta_pagar(integracao, "lcpIncluirAnexo", parametros, url=ANEXOS_URL)
 
 
 def consultar_anexo(integracao, codigo, titulo_id):
-    return chamada_conta_pagar(integracao, "ConsultarAnexo", {
-        "cCodIntAnexo": codigo, "cTabela": "conta-pagar", "nId": titulo_id,
+    return chamada_conta_pagar(integracao, "lcpConsultarAnexo", {
+        "cCodIntAnexo": codigo, "nCodTitulo": titulo_id,
     }, url=ANEXOS_URL)

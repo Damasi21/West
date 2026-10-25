@@ -57,10 +57,14 @@ a reserva transacional impede sua execucao duplicada. Respostas ambiguas ou time
 nao provocam nova inclusao automatica. Recusa explicita permite corrigir o rascunho.
 
 Conta corrente, fornecedor e demais referencias sao revalidados antes do envio.
-Depois da confirmacao do titulo, os anexos sao enviados separadamente por IncluirAnexo,
-no endpoint geral/anexo/, com cTabela=conta-pagar e nId=codigo_lancamento_omie.
+Depois da confirmacao do titulo, os anexos sao enviados separadamente por lcpIncluirAnexo,
+no endpoint financas/contapagaranexos/, com nCodTitulo=codigo_lancamento_omie e cNomeArq.
+O servico geral/anexo retornou envelopes vazios em producao, sem confirmar a inclusao.
+O servico financeiro confirma pela chave de integracao do anexo vinculada ao titulo e
+ao nome do arquivo; nao retorna nIdAnexo. Consultas posteriores usam lcpConsultarAnexo.
 Cada arquivo tem chave de integracao permanente de ate 20 caracteres, conteudo ZIP em
-Base64 e MD5 dos bytes do ZIP. O nome enviado e limitado a 100 caracteres, sem caminhos
+Base64 e MD5 do texto Base64 enviado em cArquivo (validado pelo retorno real da OMIE).
+O nome enviado e limitado a 100 caracteres, sem caminhos
 ou pontos extras, preservando o nome original no BI. O conteudo nao e persistido em JSON
 nem em logs. Cada anexo registra seu status, codigo OMIE, data e erro independente.
 
@@ -69,7 +73,7 @@ verificar anexos envia os pendentes e consulta pela chave os resultados ambiguos
 repetir inclusoes incertas. Recusa explicita ou arquivo local indisponivel permite tentar
 novamente apenas o anexo. A copia privada no BI e preservada. Cada IncluirAnexo ou
 ConsultarAnexo consome uma requisicao adicional, alem das requisicoes do titulo.
-Referencia: https://app.omie.com.br/api/v1/geral/anexo/
+Referencia: https://api.omie.com.br/docs/apis/financas/contapagaranexos
 Os indicadores passam a considerar o titulo quando a sincronizacao normal o importar
 da OMIE, sem somar o rascunho local em duplicidade.
 
