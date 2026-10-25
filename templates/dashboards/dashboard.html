@@ -136,16 +136,7 @@
             </label>
         {% endif %}
 
-        <button
-            class="btn btn-white share-filter-button{% if periodo_compartilhado %} is-active{% endif %}"
-            type="submit"
-            name="compartilhar_periodo"
-            value="1"
-            title="Usar este período em todos os dashboards de {{ area_atual.titulo }}"
-        >
-            <i class="bi bi-link-45deg"></i>
-            <span>Usar no módulo</span>
-        </button>
+        {% include "dashboards/partials/module_share_filter.html" %}
         <button class="btn btn-filter-clear" type="submit" name="limpar_filtros" value="1">
             <i class="bi bi-eraser me-2"></i>Limpar filtros
         </button>
@@ -154,6 +145,7 @@
         </button>
         {% elif area_slug == "financeiro" %}
             {% include "dashboards/partials/category_tree_filter.html" with categorias=categorias_arvore selecionados=categorias_selecionadas categorias_total=categorias_total %}
+            {% include "dashboards/partials/module_share_filter.html" %}
             <button class="btn btn-primary" type="submit">
                 <i class="bi bi-arrow-repeat me-2"></i>Atualizar
             </button>
@@ -164,7 +156,7 @@
 {% if periodo_foi_compartilhado %}
     <div class="filter-feedback" role="status">
         <i class="bi bi-check-circle-fill"></i>
-        Período aplicado aos dashboards do módulo {{ area_atual.titulo }}.
+        Filtros aplicados aos dashboards compatíveis do módulo {{ area_atual.titulo }}.{% if area_slug == "financeiro" %} O regime de caixa/competência permanece individual por dashboard.{% endif %}
     </div>
 {% endif %}
 

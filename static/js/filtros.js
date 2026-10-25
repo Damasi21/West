@@ -2,6 +2,17 @@ window.OesteBI = window.OesteBI || {};
 
 document.addEventListener("DOMContentLoaded", () => {
     const filters = document.querySelectorAll("[data-filter-dropdown]");
+    document.querySelectorAll("[data-dashboard-filters]").forEach(form => {
+        const toggle = form.querySelector("[data-module-share-toggle]");
+        const value = form.querySelector("[data-module-share-value]");
+        toggle?.addEventListener("click", () => {
+            const active = value.value !== "1";
+            value.value = active ? "1" : "0";
+            toggle.classList.toggle("is-active", active);
+            toggle.setAttribute("aria-pressed", String(active));
+            toggle.title = active ? "Compartilhamento ativado. Clique em Atualizar para aplicar ao modulo." : "Compartilhamento desligado. Clique em Atualizar para aplicar apenas neste dashboard.";
+        });
+    });
 
     const closeFilters = (except = null) => {
         filters.forEach((filter) => {

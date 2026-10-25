@@ -55,6 +55,7 @@ from apps.dashboards.ruptura_estoque_services import ruptura_estoque
 from apps.dashboards.score_fornecedores_services import score_fornecedores_compras
 from apps.dashboards.visao_geral_services import visao_geral_financeira
 from apps.dashboards.titulos_financeiros_services import carteira_financeira
+from apps.dashboards.filtros_modulo import campos_compartilhados, compartilhamento_ativo, herdar_filtros
 from apps.dashboards.contas_pagar_local_views import pode_cadastrar_conta_local
 from apps.dashboards.contas_pagar_permissions import contas_locais_visiveis
 from apps.empresas.models import IntegracaoOmie, SincronizacaoOmie
@@ -437,8 +438,8 @@ def _categorias_em_arvore(categorias):
     return grupos
 
 
-def _regime_financeiro_valido(valor):
-    return valor if valor in REGIMES_FINANCEIROS else "caixa"
+def _regime_financeiro_valido(valor, padrao="caixa"):
+    return valor if valor in REGIMES_FINANCEIROS else padrao
 
 
 def _periodo_aprovacao_pagamentos(request):
@@ -1128,7 +1129,14 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
     chave_modulo = f"filtros_modulo:{empresa.pk}:{area_slug}"
     estado = request.session.get(chave_dashboard, {})
     estado_modulo = request.session.get(chave_modulo, {})
-    periodo_compartilhado = estado_modulo.get("periodo")
+    filtros_modulo_ativos = compartilhamento_ativo(estado_modulo)
+    estado = herdar_filtros(estado, estado_modulo, area_slug, dashboard_slug)
+    periodo_compartilhado = estado_modulo.get("periodo") if filtros_modulo_ativos else None
+    regime_padrao = "competencia" if area_slug == "financeiro" and dashboard_slug == "dre-gerencial" else "caixa"
+    # Older sessions saved an implicit cash default on any filter submission.
+    # Only a deliberate regime selection after this change overrides the DRE default.
+    regime_salvo = estado.get("regime_financeiro", "") if estado.get("regime_financeiro_definido") or regime_padrao == "caixa" else ""
+    regime_definido = bool(estado.get("regime_financeiro_definido"))
 
     empresas_selecionadas = _empresas_inicio_selecionadas(
         request,
@@ -1250,11 +1258,13 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         curva_abc_tipo = TIPO_CURVA_ESTOQUE
         curva_abc_limites = limites_curva_abc_validos()
         periodo_selecionado = f"ano-{date.today().year}"
-        regime_financeiro = _regime_financeiro_valido("")
+        regime_financeiro = regime_padrao
+        regime_definido = False
         data_inicio, data_fim = "", ""
         estado = {
             "periodo": periodo_selecionado,
             "regime_financeiro": regime_financeiro,
+            "regime_financeiro_definido": regime_definido,
             "data_inicio": data_inicio,
             "data_fim": data_fim,
             "projetos": projetos_selecionados,
@@ -1304,8 +1314,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             request.GET.get("periodo", "")
         )
         regime_financeiro = _regime_financeiro_valido(
-            request.GET.get("regime_financeiro", "")
+            request.GET.get("regime_financeiro", regime_salvo), regime_padrao,
         )
+        regime_definido = regime_definido or request.GET.get("regime_financeiro") in REGIMES_FINANCEIROS
         data_inicio, data_fim = _datas_periodo_especifico(
             periodo_selecionado,
             request.GET.get("data_inicio"),
@@ -1316,6 +1327,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         estado = {
             "periodo": periodo_selecionado,
             "regime_financeiro": regime_financeiro,
+            "regime_financeiro_definido": regime_definido,
             "data_inicio": data_inicio,
             "data_fim": data_fim,
             "projetos": projetos_selecionados,
@@ -1366,12 +1378,12 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             estado.get("curva_abc_classe_a"),
             estado.get("curva_abc_classe_b"),
         )
-        fonte_periodo = estado if estado.get("periodo") else estado_modulo
+        fonte_periodo = estado if estado.get("periodo") else (estado_modulo if filtros_modulo_ativos else {})
         periodo_selecionado = _valor_periodo_valido(
             fonte_periodo.get("periodo") or periodo_compartilhado or ""
         )
         regime_financeiro = _regime_financeiro_valido(
-            estado.get("regime_financeiro", "")
+            regime_salvo, regime_padrao,
         )
         data_inicio, data_fim = _datas_periodo_especifico(
             periodo_selecionado,
@@ -1407,21 +1419,28 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
         )
     )
 
-    periodo_foi_compartilhado = "compartilhar_periodo" in request.GET
-    if periodo_foi_compartilhado:
-        request.session[chave_modulo] = {
-            "periodo": periodo_selecionado,
-            "data_inicio": data_inicio,
-            "data_fim": data_fim,
-        }
-        prefixo = f"filtros_dashboard:{empresa.pk}:{area_slug}:"
-        for chave in list(request.session.keys()):
-            if chave.startswith(prefixo):
-                filtros_dashboard = request.session.get(chave, {})
-                filtros_dashboard["periodo"] = periodo_selecionado
-                filtros_dashboard["data_inicio"] = data_inicio
-                filtros_dashboard["data_fim"] = data_fim
-                request.session[chave] = filtros_dashboard
+    aplicar_filtros = any(k in request.GET for k in ("_filtrar", "limpar_filtros", "compartilhar_periodo"))
+    if aplicar_filtros:
+        if request.GET.get("usar_modulo") in {"0", "1"}:
+            filtros_modulo_ativos = request.GET["usar_modulo"] == "1"
+        if "compartilhar_periodo" in request.GET:
+            filtros_modulo_ativos = True
+        estado_modulo = {**estado_modulo, "ativo": filtros_modulo_ativos}
+        if filtros_modulo_ativos:
+            campos_origem = campos_compartilhados(area_slug, dashboard_slug)
+            valores_origem = {**estado, "periodo": periodo_selecionado, "data_inicio": data_inicio, "data_fim": data_fim}
+            estado_modulo.update({k: valores_origem[k] for k in campos_origem if k in valores_origem})
+            for destino in area_atual["dashboards"]:
+                slug_destino = destino["slug"]
+                if not usuario_pode_acessar_dashboard(request.user, empresa, area_slug, slug_destino):
+                    continue
+                chave_destino = f"filtros_dashboard:{empresa.pk}:{area_slug}:{slug_destino}"
+                filtros_destino = dict(request.session.get(chave_destino, {}))
+                campos_destino = campos_compartilhados(area_slug, slug_destino)
+                filtros_destino.update({k: estado_modulo[k] for k in campos_destino if k in estado_modulo})
+                request.session[chave_destino] = filtros_destino
+        request.session[chave_modulo] = estado_modulo
+    periodo_foi_compartilhado = aplicar_filtros and filtros_modulo_ativos
 
     contexto.update(
         {
@@ -1442,8 +1461,9 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "regime_financeiro_rotulo": REGIMES_FINANCEIROS[regime_financeiro],
             "regimes_financeiros": REGIMES_FINANCEIROS,
             "periodo_foi_compartilhado": periodo_foi_compartilhado,
+            "filtros_modulo_ativos": filtros_modulo_ativos,
             "periodo_compartilhado": (
-                request.session.get(chave_modulo, {}).get("periodo")
+                filtros_modulo_ativos and request.session.get(chave_modulo, {}).get("periodo")
                 == periodo_selecionado
                 and (
                     periodo_selecionado != "personalizado"
