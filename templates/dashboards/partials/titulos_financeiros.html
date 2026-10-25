@@ -33,22 +33,23 @@
     </div>
     <div class="titles-reference"><span>Vencimentos de {{ dados.inicio|date:"d/m/Y" }} a {{ dados.fim|date:"d/m/Y" }}</span><span>Posicao em {{ dados.hoje|date:"d/m/Y" }}{% if dados.rateado %} &middot; Saldo rateado por departamento{% endif %}</span></div>
     <div class="titles-chart-grid">
-        <section class="titles-chart-section">
-            <header><h2>{{ dados.fluxo_titulo }}</h2><span>Por {{ dados.fluxo.granularidade }}</span></header>
-            {% if dados.fluxo.tem_dados %}<div class="titles-canvas"><canvas data-titles-flow aria-label="{{ dados.fluxo_titulo }} no periodo selecionado" role="img"></canvas></div>{% else %}<div class="titles-empty-chart"><i class="bi bi-bar-chart" aria-hidden="true"></i><p>Sem vencimentos em aberto no periodo.</p></div>{% endif %}
+        <section class="titles-chart-section" data-chart-zoom-card>
+            <header data-chart-zoom-header><h2>{{ dados.fluxo_titulo }}</h2><span data-titles-flow-period>Por {{ dados.fluxo.granularidade }} &middot; Vencimento</span>{% if dados.tipo == 'pagar' %}<button type="button" class="btn btn-white btn-sm titles-flow-toggle" data-titles-flow-toggle aria-pressed="false" title="Mostrar valores pagos pela data do pagamento">Contas pagas</button>{% endif %}</header>
+            <div class="titles-canvas" data-titles-flow-region{% if not dados.fluxo.tem_dados %} hidden{% endif %}><canvas data-titles-flow aria-label="{{ dados.fluxo_titulo }} no periodo selecionado" role="img"></canvas></div><div class="titles-empty-chart" data-titles-flow-empty{% if dados.fluxo.tem_dados %} hidden{% endif %}><i class="bi bi-bar-chart" aria-hidden="true"></i><p>Sem vencimentos em aberto no periodo.</p></div>
         </section>
-        <section class="titles-chart-section">
-            <header><h2>Composicao por categoria</h2><span>Saldo em aberto</span></header>
+        <section class="titles-chart-section" data-chart-zoom-card>
+            <header data-chart-zoom-header><h2>Composicao por categoria</h2><span>Saldo em aberto</span></header>
             {% if dados.composicao %}
             <div class="titles-category-content"><div class="titles-donut"><canvas data-titles-categories aria-label="Saldo em aberto por categoria" role="img"></canvas><div class="titles-donut-total"><small>Total</small><strong title="{{ dados.total_fmt }}">{{ dados.total_fmt }}</strong></div></div>
             <ul class="titles-legend">{% for categoria in dados.composicao %}<li><span class="titles-swatch" style="background: {{ categoria.cor }}" aria-hidden="true"></span><div><span>{{ categoria.nome }}</span><strong>{{ categoria.valor_fmt }}</strong></div><small>{{ categoria.percentual }}</small></li>{% endfor %}</ul></div>
             {% else %}<div class="titles-empty-chart"><i class="bi bi-pie-chart" aria-hidden="true"></i><p>Sem valores por categoria no periodo.</p></div>{% endif %}
         </section>
     </div>
-    <section class="titles-ranking">
-        <header><h2>{{ dados.ranking_titulo }}</h2><span>5 maiores saldos em aberto</span></header>
+    <section class="titles-ranking" data-chart-zoom-card>
+        <header data-chart-zoom-header><h2>{{ dados.ranking_titulo }}</h2><span>5 maiores saldos em aberto</span></header>
         {% for item in dados.ranking %}<div class="titles-ranking-row"><div><strong>{{ item.nome }}</strong><small>{{ item.empresa }}</small></div><meter min="0" max="100" value="{{ item.largura|unlocalize }}" aria-label="Participacao relativa de {{ item.nome }}"></meter><strong>{{ item.valor_fmt }}</strong></div>{% empty %}<p class="titles-empty">Sem {{ dados.pessoa_rotulo|lower }} com saldo em aberto no periodo.</p>{% endfor %}
     </section>
     {{ dados.fluxo|json_script:"titles-flow-data" }}
+    {% if dados.tipo == 'pagar' %}{{ dados.fluxo_pagos|json_script:"titles-paid-flow-data" }}{% endif %}
     {{ dados.composicao_chart|json_script:"titles-categories-data" }}
 </section>

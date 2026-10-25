@@ -64,12 +64,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const setupChartZoom = () => {
         if (!document.fullscreenEnabled) return;
-        document.querySelectorAll(".dre-chart-card, .chart-card").forEach((card) => {
-            if (!card.querySelector("canvas") || card.querySelector("[data-chart-zoom]")) return;
+        document.querySelectorAll(".dre-chart-card, .chart-card, [data-chart-zoom-card]").forEach((card) => {
+            if ((!card.querySelector("canvas") && !card.hasAttribute("data-chart-zoom-card")) || card.querySelector("[data-chart-zoom]")) return;
             card.querySelectorAll("canvas").forEach((canvas) => {
                 canvas.parentElement?.classList.add("chart-zoom-canvas-region");
             });
-            const header = card.querySelector(".dre-chart-header, .chart-header");
+            const header = card.querySelector(".dre-chart-header, .chart-header, [data-chart-zoom-header]");
             if (!header) return;
             const button = document.createElement("button");
             button.type = "button";
@@ -77,6 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
             button.dataset.chartZoom = "true";
             button.title = "Abrir grafico em tela cheia";
             button.setAttribute("aria-label", "Abrir grafico em tela cheia");
+            button.setAttribute("aria-pressed", "false");
             button.innerHTML = '<i class="bi bi-arrows-fullscreen"></i>';
             button.addEventListener("click", () => {
                 if (document.fullscreenElement === card) {
@@ -96,7 +97,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? document.fullscreenElement
                 : null;
             document.querySelectorAll(".chart-card-fullscreen").forEach((card) => {
+                const button = card.querySelector("[data-chart-zoom]");
                 const buttonIcon = card.querySelector("[data-chart-zoom] i");
+                if (button) {
+                    button.title = card === activeCard ? "Sair da tela cheia" : "Abrir grafico em tela cheia";
+                    button.setAttribute("aria-label", button.title);
+                    button.setAttribute("aria-pressed", String(card === activeCard));
+                }
                 if (card !== activeCard) {
                     card.classList.remove("chart-card-fullscreen");
                     if (buttonIcon) buttonIcon.className = "bi bi-arrows-fullscreen";

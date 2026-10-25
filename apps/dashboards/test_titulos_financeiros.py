@@ -8,7 +8,7 @@ from django.urls import reverse
 
 from apps.empresas.models import (
     CadastroOmie, CategoriaOmie, ContaCorrenteOmie, ContaPagarOmie, ContaReceberOmie,
-    DepartamentoOmie, Empresa, EmpresaUsuario, ProjetoOmie,
+    DepartamentoOmie, Empresa, EmpresaUsuario, ProjetoOmie, MovimentoFinanceiroOmie,
 )
 from .titulos_financeiros_services import carteira_financeira
 
@@ -151,8 +151,65 @@ class TitulosFinanceirosTests(TestCase):
         self.assertEqual(dados["composicao"], [])
 
     def test_lote_sem_n_mais_um(self, relogio):
-        with self.assertNumQueries(1):
+        with self.assertNumQueries(2):
             self.dados()
+
+    def pagamento(self, codigo, **extra):
+        dados=dict(empresa=self.empresa,codigo_titulo=codigo,natureza="P",status="PAGO",
+                   data_pagamento=date(2026,10,24),data_vencimento=date(2026,1,5),
+                   valor_pago=50,valor_titulo=200,codigo_projeto=10,codigo_categoria="2.01")
+        dados.update(extra)
+        return MovimentoFinanceiroOmie.objects.create(**dados)
+
+    def test_pagos_por_pagamento_sem_usar_vencimento(self, relogio):
+        self.pagamento(1)
+        self.pagamento(2,data_pagamento=date(2026,11,1),data_vencimento=date(2026,10,24))
+        self.pagamento(3,data_pagamento=None,data_vencimento=date(2026,10,24))
+        dados=self.dados()
+        self.assertEqual(sum(dados["fluxo_pagos"]["valores"]),50)
+        self.assertEqual(dados["fluxo_pagos"]["valores"][23],50)
+        self.assertEqual(dados["total_fmt"],"R$ 240,00")
+        self.assertEqual(sum(dados["fluxo"]["valores"]),240)
+
+    def test_pagos_valor_efetivo_parcial_sem_fallback_e_sem_cancelados(self, relogio):
+        self.pagamento(1,status="ABERTO",valor_pago=30,valor_aberto=170)
+        for codigo,extra in enumerate([{"valor_pago":0},{"valor_pago":-10},{"status":" cancelado "},
+                                       {"status":"ESTORNADO"},{"ativo_omie":False},{"natureza":"R"},{"empresa":self.outra}],2):
+            self.pagamento(codigo,**extra)
+        self.assertEqual(sum(self.dados()["fluxo_pagos"]["valores"]),30)
+
+    def test_pagos_filtros_compostos_nao_cruzam_empresas(self, relogio):
+        self.pagamento(1)
+        self.pagamento(2,codigo_projeto=20)
+        self.pagamento(3,codigo_categoria="3.01")
+        self.pagamento(1,empresa=self.outra)
+        dados=self.dados(empresas_ids=[self.empresa.pk,self.outra.pk],
+                         projetos=[f"{self.empresa.pk}:10"],categorias=[f"{self.empresa.pk}:2.01"])
+        self.assertEqual(sum(dados["fluxo_pagos"]["valores"]),50)
+
+    def test_pagos_rateio_por_departamento_com_chave_empresa_titulo(self, relogio):
+        conta=ContaPagarOmie.objects.get(empresa=self.empresa,codigo_lancamento_omie=1)
+        conta.distribuicao=[{"cCodDep":"DEP1","nPerDep":40}]
+        conta.save()
+        self.criar("pagar",1,empresa=self.outra,distribuicao=[{"cCodDep":"DEP1","nPerDep":80}])
+        self.pagamento(1)
+        self.pagamento(1,empresa=self.outra)
+        self.pagamento(999)
+        dados=self.dados(empresas_ids=[self.empresa.pk,self.outra.pk],departamentos=[f"{self.empresa.pk}:DEP1"])
+        self.assertEqual(sum(dados["fluxo_pagos"]["valores"]),20)
+
+    def test_pagos_excluem_conta_bancaria_oculta(self, relogio):
+        banco=ContaCorrenteOmie.objects.create(empresa=self.empresa,codigo_omie=77,nao_fluxo=True,nao_resumo=True)
+        self.pagamento(1,codigo_conta_corrente=banco.codigo_omie)
+        self.pagamento(2)
+        self.assertEqual(sum(self.dados()["fluxo_pagos"]["valores"]),50)
+
+    def test_pagos_ano_mensal_e_receber_sem_alternancia(self, relogio):
+        self.pagamento(1)
+        dados=carteira_financeira(self.empresa,"pagar","ano-2026")
+        self.assertEqual(len(dados["fluxo_pagos"]["valores"]),12)
+        self.assertEqual(dados["fluxo_pagos"]["valores"][9],50)
+        self.assertIsNone(self.dados("receber")["fluxo_pagos"])
 
     def test_telas_navegacao_e_filtros(self, relogio):
         self.client.force_login(self.usuario)

@@ -4,11 +4,11 @@ from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from django.db.models import Q
+from django.db.models import Q, Subquery
 from django.db.models.functions import Trim, Upper
 from django.utils import timezone
 
-from apps.empresas.models import ContaPagarOmie, ContaReceberOmie
+from apps.empresas.models import ContaPagarOmie, ContaReceberOmie, MovimentoFinanceiroOmie
 from .dre_services import NOMES_MESES, _formatar_moeda, _intervalo_periodo
 from .finance_filters import registros_com_conta_visivel_financeiro
 from .fluxo_caixa_services import STATUS_FECHADOS_PAGAR, STATUS_FECHADOS_RECEBER
@@ -86,6 +86,37 @@ def _fluxo(inicio, fim, por_data, periodo):
     return {"labels": labels, "valores": valores, "granularidade": granularidade, "tem_dados": any(valores)}
 
 
+def _fluxo_pagamentos_realizados(empresa_ids, inicio, fim, periodo, projetos, departamentos, categorias):
+    # Only actual positive payments with a payment date; never infer them from
+    # the original title value or substitute the due date for a missing payment.
+    movimentos = MovimentoFinanceiroOmie.objects.filter(
+        empresa_id__in=empresa_ids, empresa__ativa=True, ativo_omie=True, natureza="P",
+        data_pagamento__range=(inicio, fim), valor_pago__gt=0,
+    ).annotate(status_normalizado=Upper(Trim("status"))).exclude(
+        status_normalizado__in=["CANCELADO", "ESTORNADO", "EXCLUIDO"],
+    )
+    movimentos = _filtrar_codigos(movimentos, "codigo_projeto", projetos)
+    movimentos = _filtrar_codigos(movimentos, "codigo_categoria", categorias)
+    movimentos = registros_com_conta_visivel_financeiro(movimentos, "codigo_conta_corrente")
+    departamentos = {str(v) for v in departamentos or []}
+    contas = {}
+    if departamentos:
+        contas = {(c.empresa_id, c.codigo_lancamento_omie): c for c in ContaPagarOmie.objects.filter(
+            empresa_id__in=empresa_ids, ativo_omie=True,
+            codigo_lancamento_omie__in=Subquery(movimentos.values("codigo_titulo")),
+        ).only("empresa_id", "codigo_lancamento_omie", "distribuicao", "valor_documento")}
+    por_data = defaultdict(Decimal)
+    for movimento in movimentos.iterator(chunk_size=1000):
+        fracao = Decimal("1")
+        if departamentos:
+            conta = contas.get((movimento.empresa_id, movimento.codigo_titulo))
+            fracao = _fracao_departamentos(conta, departamentos) if conta else Decimal("0")
+        valor = (_decimal(movimento.valor_pago) * fracao).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if valor > 0:
+            por_data[movimento.data_pagamento] += valor
+    return _fluxo(inicio, fim, por_data, periodo)
+
+
 def carteira_financeira(empresa, tipo, periodo, data_inicio="", data_fim="", empresas_ids=None,
                         projetos=None, departamentos=None, categorias=None, hoje=None):
     if tipo not in {"pagar", "receber"}:
@@ -146,6 +177,10 @@ def carteira_financeira(empresa, tipo, periodo, data_inicio="", data_fim="", emp
         "serie_rotulo": "Valor a pagar" if tipo == "pagar" else "Valor a receber",
         "inicio": inicio, "fim": fim, "hoje": hoje, "total_fmt": _formatar_moeda(total),
         "fluxo": _fluxo(inicio, fim, por_data, periodo), "composicao": composicao,
+        "fluxo_pagos": _fluxo_pagamentos_realizados(
+            empresas_ids if empresas_ids is not None else [empresa.pk], inicio, fim, periodo,
+            projetos, departamentos, categorias,
+        ) if tipo == "pagar" else None,
         "composicao_chart": {"labels": [i["nome"] for i in composicao], "valores": [i["valor"] for i in composicao], "cores": [i["cor"] for i in composicao]},
         "rateado": bool(selecionados_dep),
     }
