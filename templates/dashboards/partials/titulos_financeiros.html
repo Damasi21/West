@@ -1,0 +1,54 @@
+{% load l10n %}
+<section class="titles-dashboard" data-titles-dashboard data-titles-series="{{ dados.serie_rotulo }}">
+    {% if pode_cadastrar_conta_local %}
+    <div class="local-payable-actions" data-local-payable data-form-url="{% url 'dashboards:cadastrar_conta_pagar_local' empresa.slug %}" data-list-url="{% url 'dashboards:listar_contas_pagar_locais' empresa.slug %}" data-send-url="{% url 'dashboards:enviar_contas_pagar_locais' empresa.slug %}">
+        <button type="button" class="btn btn-white" data-local-list><i class="bi bi-folder2-open me-2"></i>Cadastros locais (<span data-local-count>{{ contas_locais_quantidade }}</span>)</button>
+        <button type="button" class="btn btn-primary" data-local-create><i class="bi bi-plus-lg me-2"></i>Nova conta a pagar</button>
+        <dialog class="local-payable-dialog" aria-labelledby="local-payable-title" data-local-dialog>
+            <header><div><h2 id="local-payable-title">Nova conta a pagar</h2><small>{{ empresa.nome_fantasia|default:empresa.nome }}</small></div><button type="button" class="local-close" data-local-close aria-label="Fechar" title="Fechar"><i class="bi bi-x-lg"></i></button></header>
+            <div class="local-payable-content" data-local-content></div>
+            <p class="local-payable-feedback" data-local-feedback role="status" aria-live="polite"></p>
+        </dialog>
+        <dialog class="local-payable-dialog local-send-dialog" data-local-send-dialog aria-labelledby="local-send-title">
+            <header><div><h2 id="local-send-title">Enviar para a OMIE</h2><small>{{ empresa.nome_fantasia|default:empresa.nome }}</small></div><button type="button" class="local-close" data-local-send-close aria-label="Fechar confirmacao" title="Fechar confirmacao"><i class="bi bi-x-lg"></i></button></header>
+            <div class="local-payable-content"><p>O envio cadastra os titulos na OMIE. Depois de confirmados, nao poderao ser editados ou desfeitos pelo BI. Alteracoes deverao ser feitas na OMIE.</p><p class="local-draft-status">Esta operacao nao realiza pagamentos. Os anexos serao enviados apos a confirmacao de cada titulo; uma copia permanece no BI.</p><ul class="local-send-summary" data-local-send-summary></ul><p class="local-form-error" data-local-send-feedback role="alert"></p></div>
+            <footer class="local-supplier-footer"><span data-local-send-count></span><div><button type="button" class="btn btn-white" data-local-send-cancel>Cancelar</button><button type="button" class="btn btn-primary" data-local-send-confirm><i class="bi bi-cloud-upload me-2"></i>Confirmar envio</button></div></footer>
+        </dialog>
+        <dialog id="local-supplier-dialog" class="local-payable-dialog local-supplier-dialog" aria-labelledby="local-supplier-title" data-local-supplier-dialog>
+            <header><div><h2 id="local-supplier-title">Buscar fornecedor</h2><small>{{ empresa.nome_fantasia|default:empresa.nome }}</small></div><button type="button" class="local-close" data-local-supplier-close aria-label="Fechar busca de fornecedor" title="Fechar busca de fornecedor"><i class="bi bi-x-lg"></i></button></header>
+            <label class="local-supplier-search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" placeholder="Nome, razao social ou CNPJ" aria-label="Buscar fornecedor" data-local-supplier-search autocomplete="off"></label>
+            <div class="local-supplier-results" data-local-supplier-results aria-label="Fornecedores disponiveis"></div>
+            <footer class="local-supplier-footer"><span data-local-supplier-count role="status" aria-live="polite"></span><div><button type="button" class="btn btn-white" data-local-supplier-cancel>Cancelar</button><button type="button" class="btn btn-primary" data-local-supplier-confirm disabled><i class="bi bi-check2 me-2"></i>Selecionar fornecedor</button></div></footer>
+        </dialog>
+    </div>
+    {% endif %}
+    <div class="titles-kpis">
+        {% for indicador in dados.indicadores %}
+        <article class="titles-kpi titles-kpi-{{ indicador.tom }}">
+            <div class="titles-kpi-heading"><i class="bi {{ indicador.icone }}" aria-hidden="true"></i><h2>{{ indicador.titulo }}</h2></div>
+            <strong title="{{ indicador.valor }}">{{ indicador.valor }}</strong>
+            <small>{{ indicador.quantidade }} titulo{{ indicador.quantidade|pluralize:"s" }} no periodo</small>
+        </article>
+        {% endfor %}
+    </div>
+    <div class="titles-reference"><span>Vencimentos de {{ dados.inicio|date:"d/m/Y" }} a {{ dados.fim|date:"d/m/Y" }}</span><span>Posicao em {{ dados.hoje|date:"d/m/Y" }}{% if dados.rateado %} &middot; Saldo rateado por departamento{% endif %}</span></div>
+    <div class="titles-chart-grid">
+        <section class="titles-chart-section">
+            <header><h2>{{ dados.fluxo_titulo }}</h2><span>Por {{ dados.fluxo.granularidade }}</span></header>
+            {% if dados.fluxo.tem_dados %}<div class="titles-canvas"><canvas data-titles-flow aria-label="{{ dados.fluxo_titulo }} no periodo selecionado" role="img"></canvas></div>{% else %}<div class="titles-empty-chart"><i class="bi bi-bar-chart" aria-hidden="true"></i><p>Sem vencimentos em aberto no periodo.</p></div>{% endif %}
+        </section>
+        <section class="titles-chart-section">
+            <header><h2>Composicao por categoria</h2><span>Saldo em aberto</span></header>
+            {% if dados.composicao %}
+            <div class="titles-category-content"><div class="titles-donut"><canvas data-titles-categories aria-label="Saldo em aberto por categoria" role="img"></canvas><div class="titles-donut-total"><small>Total</small><strong title="{{ dados.total_fmt }}">{{ dados.total_fmt }}</strong></div></div>
+            <ul class="titles-legend">{% for categoria in dados.composicao %}<li><span class="titles-swatch" style="background: {{ categoria.cor }}" aria-hidden="true"></span><div><span>{{ categoria.nome }}</span><strong>{{ categoria.valor_fmt }}</strong></div><small>{{ categoria.percentual }}</small></li>{% endfor %}</ul></div>
+            {% else %}<div class="titles-empty-chart"><i class="bi bi-pie-chart" aria-hidden="true"></i><p>Sem valores por categoria no periodo.</p></div>{% endif %}
+        </section>
+    </div>
+    <section class="titles-ranking">
+        <header><h2>{{ dados.ranking_titulo }}</h2><span>5 maiores saldos em aberto</span></header>
+        {% for item in dados.ranking %}<div class="titles-ranking-row"><div><strong>{{ item.nome }}</strong><small>{{ item.empresa }}</small></div><meter min="0" max="100" value="{{ item.largura|unlocalize }}" aria-label="Participacao relativa de {{ item.nome }}"></meter><strong>{{ item.valor_fmt }}</strong></div>{% empty %}<p class="titles-empty">Sem {{ dados.pessoa_rotulo|lower }} com saldo em aberto no periodo.</p>{% endfor %}
+    </section>
+    {{ dados.fluxo|json_script:"titles-flow-data" }}
+    {{ dados.composicao_chart|json_script:"titles-categories-data" }}
+</section>

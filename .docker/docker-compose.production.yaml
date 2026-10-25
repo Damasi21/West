@@ -61,6 +61,7 @@ services:
     volumes:
       - static_data:/app/staticfiles
       - media_data:/app/media
+      - private_data:/app/private_uploads
     ports:
       - "${APP_HOST_PORT:-127.0.0.1:8000}:8000"
     expose:
@@ -137,6 +138,7 @@ services:
     image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
+      RUN_DJANGO_SETUP: "False"
       DEBUG: "False"
       SECRET_KEY: ${SECRET_KEY}
       OMIE_CREDENTIALS_ENCRYPTION_KEY: ${OMIE_CREDENTIALS_ENCRYPTION_KEY}
@@ -166,6 +168,7 @@ services:
     image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
+      RUN_DJANGO_SETUP: "False"
       DEBUG: "False"
       SECRET_KEY: ${SECRET_KEY}
       OMIE_CREDENTIALS_ENCRYPTION_KEY: ${OMIE_CREDENTIALS_ENCRYPTION_KEY}
@@ -195,6 +198,7 @@ services:
     image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
+      RUN_DJANGO_SETUP: "False"
       DEBUG: "False"
       SECRET_KEY: ${SECRET_KEY}
       OMIE_CREDENTIALS_ENCRYPTION_KEY: ${OMIE_CREDENTIALS_ENCRYPTION_KEY}
@@ -222,8 +226,11 @@ services:
 
   omie_worker_manual:
     image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
+    volumes:
+      - private_data:/app/private_uploads:ro
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
+      RUN_DJANGO_SETUP: "False"
       DEBUG: "False"
       SECRET_KEY: ${SECRET_KEY}
       OMIE_CREDENTIALS_ENCRYPTION_KEY: ${OMIE_CREDENTIALS_ENCRYPTION_KEY}
@@ -241,6 +248,34 @@ services:
     command: ["celery", "-A", "core", "worker", "-Q", "omie_manual", "--concurrency", "${OMIE_MANUAL_CONCURRENCY:-1}", "--loglevel", "INFO", "--hostname", "omie-manual@%h"]
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_network
+    logging: *default-logging
+
+  auditor_worker:
+    image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings
+      RUN_DJANGO_SETUP: "False"
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY}
+      OMIE_CREDENTIALS_ENCRYPTION_KEY: ${OMIE_CREDENTIALS_ENCRYPTION_KEY}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["celery", "-A", "core", "worker", "-Q", "auditor", "--concurrency", "1", "--loglevel", "INFO", "--hostname", "auditor@%h"]
+    depends_on:
+      app:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -328,6 +363,8 @@ volumes:
     name: ${STATIC_VOLUME_NAME:-WEST_STATIC}
   media_data:
     name: ${MEDIA_VOLUME_NAME:-WEST_MEDIA}
+  private_data:
+    name: ${PRIVATE_VOLUME_NAME:-WEST_PRIVATE}
   redis_data:
     name: ${REDIS_VOLUME_NAME:-WEST_REDIS_DATA}
   certbot_www:

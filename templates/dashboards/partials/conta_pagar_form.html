@@ -1,0 +1,27 @@
+<form method="post" enctype="multipart/form-data" data-local-form>
+    {% csrf_token %}
+    {% if form.instance.pk %}<input type="hidden" name="conta_id" value="{{ form.instance.pk }}">{% endif %}
+    {% for hidden in form.hidden_fields %}{{ hidden }}{% for error in hidden.errors %}<p class="local-form-error">{{ error }}</p>{% endfor %}{% endfor %}
+    {% for error in form.non_field_errors %}<p class="local-form-error" role="alert">{{ error }}</p>{% endfor %}
+    <p class="local-draft-status"><i class="bi bi-pencil-square" aria-hidden="true"></i>Rascunho local &middot; Sem envio ao OMIE</p>
+    <div class="local-payable-fields">
+        {% for field in form.visible_fields %}
+        <div class="local-payable-field local-field-{{ field.name }}">
+            <label for="{% if field.name == 'fornecedor' %}local-supplier-picker{% else %}{{ field.id_for_label }}{% endif %}">{{ field.label }}{% if field.field.required %}<span class="local-required" aria-label="obrigatorio"> *</span>{% endif %}</label>
+            {% if field.name == 'fornecedor' %}<button type="button" id="local-supplier-picker" class="local-supplier-picker" data-local-supplier-open aria-haspopup="dialog" aria-controls="local-supplier-dialog"{% if field.errors %} aria-invalid="true"{% endif %}><i class="bi bi-search" aria-hidden="true"></i><span data-local-supplier-label>Selecionar fornecedor</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>{% endif %}
+            {{ field }}
+            {% if field.help_text %}<small class="text-muted">{{ field.help_text }}</small>{% endif %}
+            {% for error in field.errors %}<p class="local-form-error" role="alert">{{ error }}</p>{% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    <div class="local-dropzone" data-local-dropzone>
+        <i class="bi bi-cloud-arrow-up" aria-hidden="true"></i>
+        <label for="local-payable-files">Arraste e solte arquivos aqui<br><span>ou clique para selecionar</span></label>
+        <input id="local-payable-files" type="file" multiple accept=".pdf,.png,.jpg,.jpeg" data-local-files>
+        <small>PDF, PNG, JPG &middot; Ate 10 MB por arquivo &middot; 5 arquivos / 25 MB no total</small>
+    </div>
+    <div class="local-attachments-heading"><strong>Arquivos anexados (<span data-local-file-count>0</span>)</strong><button type="button" data-local-clear-files>Limpar tudo</button></div>
+    <ul class="local-attachments" data-local-attachments></ul>
+    <footer><button type="button" class="btn btn-white" data-local-cancel>Cancelar</button><button type="submit" class="btn btn-primary" data-local-save><i class="bi bi-save me-2"></i>Salvar conta</button></footer>
+</form>

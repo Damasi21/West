@@ -1,0 +1,6 @@
+{% extends "auditor/base.html" %}
+{% block auditor_content %}
+<div class="audit-section-heading"><h2>Regras e politicas</h2><span class="audit-muted">Politicas desta empresa · Versao do motor 1</span></div>
+{% for linha in linhas %}<section class="audit-rule"><div><h2>{{ linha.regra.titulo }}</h2><p>{{ linha.regra.descricao }}</p></div><form method="post">{% csrf_token %}<input type="hidden" name="codigo" value="{{ linha.politica.codigo }}"><fieldset {% if not pode_tratar %}disabled{% endif %}><div class="audit-rule-fields">{% for field in linha.form %}<div class="audit-field {% if field.name == 'ativa' %}audit-toggle{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}</div>{% if pode_tratar %}<button class="btn btn-outline-primary"><i class="bi bi-check2 me-2"></i>Salvar politica</button>{% endif %}</fieldset></form></section>{% endfor %}
+<section class="audit-section"><h2>Alteracoes de politicas</h2>{% for evento in eventos %}<details class="audit-evidence"><summary>{{ evento.acao }} · {{ evento.criada_em|date:"d/m/Y H:i" }} · {{ evento.autor|default:"Sistema" }}</summary><pre>{{ evento.descricao }}</pre></details>{% empty %}<p class="audit-muted">Nenhuma alteracao registrada.</p>{% endfor %}</section>
+{% endblock %}

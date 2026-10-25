@@ -5,11 +5,16 @@ from apps.empresas import views as empresas_views
 
 from . import views
 from .pagamento_nfe_views import nota_pagamento
+from .contas_pagar_local_views import cadastrar_conta_pagar_local, listar_contas_pagar_locais, baixar_anexo_conta_local, enviar_contas_pagar_locais
 
 
 app_name = "dashboards"
 
 urlpatterns = [
+    path("financeiro/contas-a-pagar/locais/enviar/", enviar_contas_pagar_locais, name="enviar_contas_pagar_locais"),
+    path("financeiro/contas-a-pagar/cadastrar/", cadastrar_conta_pagar_local, name="cadastrar_conta_pagar_local"),
+    path("financeiro/contas-a-pagar/locais/", listar_contas_pagar_locais, name="listar_contas_pagar_locais"),
+    path("financeiro/contas-a-pagar/anexos/<int:anexo_id>/", baixar_anexo_conta_local, name="baixar_anexo_conta_local"),
     path(
         "financeiro/aprovacao-de-pagamentos/<int:conta_id>/nota/",
         nota_pagamento,

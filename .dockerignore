@@ -21,6 +21,7 @@ backup_sqlite_*.json
 db.sqlite3.backup-*
 media/clientes/*
 staticfiles
+private_uploads
 tmp
 sqlite_recovery_backup_*
 *.log

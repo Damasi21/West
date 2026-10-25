@@ -1,0 +1,34 @@
+{% extends "auditor/base.html" %}
+{% block auditor_content %}
+<div class="audit-section-heading"><h2>Visao geral</h2><span class="audit-muted">PostgreSQL · Analise consultiva</span></div>
+<div class="audit-kpis">
+    <a href="{% url 'auditor:alertas' empresa.slug %}?status=novo"><span>Novos casos</span><strong>{{ novos }}</strong></a>
+    <a href="{% url 'auditor:alertas' empresa.slug %}?status=analise"><span>Em analise</span><strong>{{ em_analise }}</strong></a>
+    <a href="{% url 'auditor:alertas' empresa.slug %}?severidade=critico"><span>Criticos nao encerrados</span><strong>{{ criticos }}</strong></a>
+    <div><span>Justificados ou resolvidos</span><strong>{{ encerrados }}</strong></div>
+</div>
+{% if execucao_ativa %}<div class="audit-notice" role="status"><i class="bi bi-hourglass-split"></i> Execucao #{{ execucao_ativa.pk }} · {{ execucao_ativa.get_status_display }} · {{ execucao_ativa.criada_em|date:"d/m/Y H:i" }}</div>{% endif %}
+{% if espera_expirada and pode_tratar %}<form method="post" action="{% url 'auditor:encerrar_espera' empresa.slug execucao_ativa.pk %}">{% csrf_token %}<button class="btn btn-outline-danger"><i class="bi bi-x-circle me-2"></i>Encerrar espera expirada</button></form>{% endif %}
+<section class="audit-section">
+    <div class="audit-section-heading"><h2>Fontes locais</h2><span class="audit-muted">Ultima atualizacao observada dos registros</span></div>
+    <div class="audit-table-wrap"><table class="audit-table"><thead><tr><th>Fonte</th><th>Registros ativos</th><th>Atualizacao</th><th>Disponibilidade</th></tr></thead><tbody>
+    {% for fonte in fontes %}<tr><td>{{ fonte.nome }}</td><td>{{ fonte.registros }}</td><td>{{ fonte.atualizacao_label }}</td><td><span class="audit-badge {% if fonte.situacao != 'Disponivel' %}audit-atencao{% endif %}">{{ fonte.situacao }}</span></td></tr>{% endfor %}
+    </tbody></table></div>
+</section>
+<section class="audit-section">
+    <div class="audit-section-heading"><h2>Ultima analise concluida</h2>{% if ultima_execucao %}<span>#{{ ultima_execucao.pk }} · {{ ultima_execucao.finalizada_em|date:"d/m/Y H:i" }}</span>{% endif %}</div>
+    {% if ultima_execucao %}
+        <div class="audit-run-summary"><strong>{{ ultima_execucao.resumo.sinais }} sinais encontrados</strong><span>{{ ultima_execucao.resumo.novos }} novos casos</span></div>
+        {% if ultima_execucao.resumo.sincronizacao_em_andamento %}<div class="audit-notice">Sincronizacao em andamento durante a analise. Validacao incompleta.</div>{% endif %}
+        <div class="audit-table-wrap"><table class="audit-table"><thead><tr><th>Regra</th><th>Avaliados</th><th>Sem base suficiente</th></tr></thead><tbody>{% for cobertura in cobertura_linhas %}<tr><td>{{ cobertura.regra }}</td><td>{{ cobertura.avaliados }}</td><td>{{ cobertura.sem_base }}</td></tr>{% empty %}<tr><td colspan="3">Nenhuma regra avaliavel nesta execucao.</td></tr>{% endfor %}</tbody></table></div>
+        <ul class="audit-limits">{% for limite in ultima_execucao.resumo.limites %}<li>{{ limite }}</li>{% endfor %}</ul>
+    {% else %}<div class="audit-empty"><i class="bi bi-clipboard2-check"></i><strong>Nenhuma auditoria concluida</strong><span>Sem resultado de validacao para esta empresa.</span></div>{% endif %}
+</section>
+<section class="audit-section">
+    <div class="audit-section-heading"><h2>Execucoes</h2></div>
+    <div class="audit-table-wrap"><table class="audit-table"><thead><tr><th>Execucao</th><th>Solicitada em</th><th>Status</th><th>Resultado</th></tr></thead><tbody>
+    {% for execucao in execucoes %}<tr><td>#{{ execucao.pk }}</td><td>{{ execucao.criada_em|date:"d/m/Y H:i" }}</td><td>{{ execucao.get_status_display }}</td><td>{% if execucao.erro %}<span class="audit-error">{{ execucao.erro }}</span>{% elif execucao.status == 'concluida' %}{{ execucao.resumo.sinais }} sinais · {{ execucao.resumo.novos }} novos{% else %}Aguardando conclusao{% endif %}</td></tr>{% empty %}<tr><td colspan="4">Nenhuma execucao registrada.</td></tr>{% endfor %}
+    </tbody></table></div>
+</section>
+{% endblock %}
+{% block extra_js %}{% if execucao_ativa %}<script>setTimeout(function(){window.location.reload();},15000);</script>{% endif %}{% endblock %}

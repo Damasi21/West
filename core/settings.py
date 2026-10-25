@@ -128,6 +128,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.empresas",
     "apps.dashboards",
+    "apps.auditor",
     "apps.comercial",
     "apps.financeiro",
     "apps.compras",
@@ -196,10 +197,11 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATIC_ASSET_VERSION = os.getenv("STATIC_ASSET_VERSION", "20261024-nf-1")
+STATIC_ASSET_VERSION = os.getenv("STATIC_ASSET_VERSION", "20261024-financeiro-auditor-1")
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+PRIVATE_FILES_ROOT = BASE_DIR / "private_uploads"
 
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "empresas:lista"

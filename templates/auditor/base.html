@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Auditor - {{ empresa.nome_fantasia|default:empresa.nome }}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/auditor.css' %}?v={{ static_asset_version }}">{% endblock %}
+{% block content %}
+<div class="audit-workspace">
+    <header class="audit-heading">
+        <div class="audit-brand"><img src="/media/auditor.png" alt="" width="42" height="42"><div><span class="eyebrow">{{ empresa.nome_fantasia|default:empresa.nome }}</span><h1>Auditor</h1></div></div>
+        {% if pode_tratar and pode_visao_geral %}<form method="post" action="{% url 'auditor:executar' empresa.slug %}">{% csrf_token %}<button class="btn btn-primary" {% if execucao_ativa %}disabled{% endif %}><i class="bi bi-play-circle me-2" aria-hidden="true"></i>Executar auditoria</button></form>{% endif %}
+    </header>
+    <nav class="audit-tabs" aria-label="Auditor">
+        {% if pode_visao_geral %}<a {% if tela == 'visao-geral' %}aria-current="page"{% endif %} href="{% url 'auditor:visao_geral' empresa.slug %}"><i class="bi bi-shield-check"></i>Visao geral</a>{% endif %}
+        {% if pode_alertas %}<a {% if tela == 'alertas' %}aria-current="page"{% endif %} href="{% url 'auditor:alertas' empresa.slug %}"><i class="bi bi-exclamation-triangle"></i>Central de alertas</a>{% endif %}
+        {% if pode_regras %}<a {% if tela == 'regras' %}aria-current="page"{% endif %} href="{% url 'auditor:regras' empresa.slug %}"><i class="bi bi-sliders"></i>Regras e politicas</a>{% endif %}
+    </nav>
+    {% block auditor_content %}{% endblock %}
+</div>
+{% endblock %}

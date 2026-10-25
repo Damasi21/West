@@ -17,7 +17,7 @@ COPY . .
 
 RUN cp -a /app/media /app/media_seed \
     && chmod +x .docker/scripts/django-entrypoint.sh \
-    && mkdir -p /app/staticfiles /app/media \
+    && mkdir -p /app/staticfiles /app/media /app/private_uploads \
     && chown -R django:django /app
 
 USER django

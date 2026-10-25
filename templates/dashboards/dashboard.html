@@ -3,6 +3,16 @@
 
 {% block title %}{{ dashboard_atual.titulo }} - {{ empresa.nome_fantasia }}{% endblock %}
 
+{% block extra_css %}
+{% if titulos_financeiros %}<link href="{% static 'css/titulos_financeiros.css' %}?v={{ static_asset_version }}" rel="stylesheet">{% endif %}
+{% if pode_cadastrar_conta_local %}<link href="{% static 'css/conta_pagar_local.css' %}?v={{ static_asset_version }}" rel="stylesheet">{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if titulos_financeiros %}<script src="{% static 'js/titulos_financeiros.js' %}?v={{ static_asset_version }}"></script>{% endif %}
+{% if pode_cadastrar_conta_local %}<script src="{% static 'js/conta_pagar_local.js' %}?v={{ static_asset_version }}"></script>{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="dashboard-page dashboard-area-{{ area_slug }}">
 <div class="page-heading">
@@ -168,6 +178,8 @@
     {% include "dashboards/partials/analise_clientes.html" with dados=analise_clientes %}
 {% elif margem_rentabilidade %}
     {% include "dashboards/partials/margem_rentabilidade.html" with dados=margem_rentabilidade %}
+{% elif titulos_financeiros %}
+    {% include "dashboards/partials/titulos_financeiros.html" with dados=titulos_financeiros %}
 {% elif visao_geral %}
     {% include "dashboards/partials/visao_geral.html" with visao=visao_geral %}
 {% elif fluxo_caixa %}

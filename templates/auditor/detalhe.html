@@ -1,0 +1,18 @@
+{% extends "auditor/base.html" %}
+{% block auditor_content %}
+<a class="audit-back" href="{% url 'auditor:alertas' empresa.slug %}"><i class="bi bi-arrow-left"></i> Central de alertas</a>
+<header class="audit-case-heading"><div><span class="audit-muted">Caso #{{ caso.pk }} · {{ regra.titulo }}</span><h2>{{ caso.titulo }}</h2></div><span class="audit-badge audit-{{ caso.severidade }}">{{ caso.get_severidade_display }}</span></header>
+<dl class="audit-facts"><div><dt>Tratamento</dt><dd>{{ caso.get_status_display }}</dd></div><div><dt>Responsavel</dt><dd>{{ caso.responsavel|default:"Nao atribuido" }}</dd></div><div><dt>Primeira deteccao</dt><dd>{{ caso.criada_em|date:"d/m/Y H:i" }}</dd></div><div><dt>Ultima deteccao</dt><dd>{{ caso.ultima_deteccao|date:"d/m/Y H:i" }}</dd></div></dl>
+<section class="audit-section"><h2>Recomendacao</h2><p>{{ caso.recomendacao }}</p><span class="audit-muted">Sinal para analise. Nao constitui acusacao de fraude nem bloqueia operacoes.</span></section>
+<div class="audit-case-grid">
+    <section class="audit-section"><h2>Evidencias por execucao</h2>{% for evidencia in evidencias %}<details class="audit-evidence" {% if forloop.first %}open{% endif %}><summary>Execucao #{{ evidencia.execucao_id }} · {{ evidencia.criada_em|date:"d/m/Y H:i" }}</summary>
+    <dl class="audit-facts">{% for rotulo, valor in evidencia.campos %}<div><dt>{{ rotulo }}</dt><dd>{{ valor }}</dd></div>{% endfor %}</dl>
+    {% if evidencia.referencia %}<p class="audit-muted">Base historica: {{ evidencia.referencia.amostras }} titulos · Janela de {{ evidencia.referencia.janela_dias }} dias</p>{% endif %}
+    {% if evidencia.itens %}<div class="audit-table-wrap"><table class="audit-table"><thead><tr><th>Titulo / parceiro</th><th>Valor original</th><th>Emissao</th><th>Vencimento</th><th>Parcela</th></tr></thead><tbody>{% for item in evidencia.itens %}<tr><td><strong>#{{ item.codigo }} · {{ item.documento|default:"Sem documento" }}</strong><small>{{ item.nome_parceiro|default:item.parceiro }} · {{ item.origem }}</small></td><td>{{ item.valor_formatado }}</td><td>{{ item.emissao|default:"-" }}</td><td>{{ item.vencimento|default:"-" }}</td><td>{{ item.parcela|default:"-" }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    <details class="audit-evidence"><summary>Registro tecnico da evidencia</summary><pre>{{ evidencia.texto }}</pre></details></details>{% endfor %}
+    {% if evidencias.has_other_pages %}<nav class="audit-pagination">{% if evidencias.has_previous %}<a href="?page={{ evidencias.previous_page_number }}" aria-label="Evidencias anteriores"><i class="bi bi-chevron-left"></i></a>{% endif %}<span>{{ evidencias.number }} / {{ evidencias.paginator.num_pages }}</span>{% if evidencias.has_next %}<a href="?page={{ evidencias.next_page_number }}" aria-label="Proximas evidencias"><i class="bi bi-chevron-right"></i></a>{% endif %}</nav>{% endif %}
+    </section>
+    <section class="audit-section"><h2>Tratamento</h2>{% if pode_tratar %}<form method="post">{% csrf_token %}{{ form.non_field_errors }}{% for field in form %}<div class="audit-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}<button class="btn btn-primary"><i class="bi bi-check2-circle me-2"></i>Registrar analise</button></form>{% else %}<p class="audit-muted">Somente leitura.</p>{% endif %}</section>
+</div>
+<section class="audit-section"><h2>Linha do tempo do tratamento</h2>{% for evento in eventos %}<div class="audit-event"><strong>{{ evento.acao }}</strong><small>{{ evento.criada_em|date:"d/m/Y H:i" }} · {{ evento.autor|default:"Sistema" }}</small><p>{{ evento.descricao|linebreaksbr }}</p></div>{% empty %}<p class="audit-muted">Sem tratamento registrado.</p>{% endfor %}</section>
+{% endblock %}

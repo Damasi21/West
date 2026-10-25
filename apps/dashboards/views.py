@@ -54,6 +54,9 @@ from apps.dashboards.margem_rentabilidade_services import (
 from apps.dashboards.ruptura_estoque_services import ruptura_estoque
 from apps.dashboards.score_fornecedores_services import score_fornecedores_compras
 from apps.dashboards.visao_geral_services import visao_geral_financeira
+from apps.dashboards.titulos_financeiros_services import carteira_financeira
+from apps.dashboards.contas_pagar_local_views import pode_cadastrar_conta_local
+from apps.dashboards.contas_pagar_permissions import contas_locais_visiveis
 from apps.empresas.models import IntegracaoOmie, SincronizacaoOmie
 from apps.empresas.omie import OmieAPIError, incluir_pedido_compra_ruptura
 from apps.empresas.services import (
@@ -139,6 +142,18 @@ AREAS = {
                 "descricao": "Aprove, reagende e acompanhe os pagamentos do dia.",
                 "icone": "bi-check2-square",
             },
+            {
+                "slug": "contas-a-pagar",
+                "titulo": "Contas a pagar",
+                "descricao": "Saldos em aberto, vencimentos, fornecedores e categorias.",
+                "icone": "bi-wallet2",
+            },
+            {
+                "slug": "contas-a-receber",
+                "titulo": "Contas a receber",
+                "descricao": "Saldos em aberto, vencimentos, clientes e categorias.",
+                "icone": "bi-cash-stack",
+            },
         ],
     },
     "compras": {
@@ -207,7 +222,11 @@ AREAS = {
         "icone": "bi-shield-check",
         "imagem": "auditor.png",
         "cor": "danger",
-        "dashboards": [],
+        "dashboards": [
+            {"slug": "visao-geral", "titulo": "Visao geral", "icone": "bi-shield-check", "descricao": "Execucoes, cobertura e acompanhamento."},
+            {"slug": "alertas", "titulo": "Central de alertas", "icone": "bi-exclamation-triangle", "descricao": "Casos, evidencias e tratamento."},
+            {"slug": "regras", "titulo": "Regras e politicas", "icone": "bi-sliders", "descricao": "Criterios e parametros da empresa."},
+        ],
     },
 }
 
@@ -1558,6 +1577,18 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             projetos_consulta,
             familias_selecionadas=familias_produtos_consulta,
         )
+    if area_slug == "financeiro" and dashboard_slug in {"contas-a-pagar", "contas-a-receber"}:
+        dados = carteira_financeira(
+            empresa, "pagar" if dashboard_slug == "contas-a-pagar" else "receber",
+            periodo_selecionado, data_inicio, data_fim, empresas_consulta_ids,
+            projetos=projetos_consulta,
+            departamentos=_valores_para_consulta(departamentos_selecionados, departamentos_opcoes),
+            categorias=_valores_para_consulta(categorias_selecionadas, categorias_opcoes),
+        )
+        contexto["titulos_financeiros"] = dados
+        if dashboard_slug == "contas-a-pagar" and pode_cadastrar_conta_local(request.user, empresa):
+            contexto["pode_cadastrar_conta_local"] = True
+            contexto["contas_locais_quantidade"] = contas_locais_visiveis(request.user, empresa).count()
     if area_slug == "financeiro" and dashboard_slug == "dre-gerencial":
         contexto["dre_gerencial"] = dre_gerencial(
             empresa,
