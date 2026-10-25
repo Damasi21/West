@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
             closeFilters(filter);
             filter.classList.toggle("is-open", willOpen);
             trigger.setAttribute("aria-expanded", String(willOpen));
+            if (willOpen) filter.querySelector("[data-category-search]")?.focus();
         });
 
         filter.addEventListener("click", (event) => event.stopPropagation());
@@ -42,6 +43,53 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         if (filter.matches("[data-category-filter]")) {
+            const search = filter.querySelector("[data-category-search]");
+            const clearSearch = filter.querySelector("[data-category-search-clear]");
+            const searchStatus = filter.querySelector("[data-category-search-status]");
+            const normalize = value => (value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+            const groups = [...filter.querySelectorAll(".category-group")].map(group => ({
+                element: group, text: normalize(group.dataset.categorySearchText),
+                children: [...group.querySelectorAll(".category-child")].map(label => ({ element: label, text: normalize(label.dataset.categorySearchText) })),
+                openBeforeSearch: group.open,
+            }));
+            let searching = false;
+            const searchCategories = () => {
+                const terms = normalize(search?.value).trim().split(/\s+/).filter(Boolean);
+                const active = terms.length > 0;
+                if (active && !searching) groups.forEach(group => { group.openBeforeSearch = group.element.open; });
+                const matches = text => terms.every(term => text.includes(term));
+                let visible = 0;
+                groups.forEach(group => {
+                    const parentMatches = active && matches(group.text);
+                    let childrenVisible = 0;
+                    group.children.forEach(child => {
+                        child.element.hidden = active && !parentMatches && !matches(child.text);
+                        if (!child.element.hidden) childrenVisible++;
+                    });
+                    group.element.hidden = active && !parentMatches && childrenVisible === 0;
+                    if (active && !group.element.hidden) group.element.open = true;
+                    else if (!active && searching) group.element.open = group.openBeforeSearch;
+                    if (!group.element.hidden) visible += childrenVisible + (group.element.querySelector("[data-category-parent]") ? 1 : 0);
+                });
+                filter.querySelectorAll(".category-tree > .filter-empty").forEach(empty => { empty.hidden = active; });
+                if (clearSearch) clearSearch.hidden = !search?.value;
+                if (searchStatus) {
+                    searchStatus.hidden = !active;
+                    searchStatus.textContent = visible ? `${visible} categoria${visible === 1 ? " exibida" : "s exibidas"}.` : "Nenhuma categoria encontrada.";
+                }
+                searching = active;
+            };
+            search?.addEventListener("input", searchCategories);
+            clearSearch?.addEventListener("click", () => { search.value = ""; searchCategories(); search.focus(); });
+            search?.addEventListener("keydown", event => {
+                if (event.key === "Enter") event.preventDefault();
+                if (event.key === "Escape" && search.value) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    search.value = "";
+                    searchCategories();
+                }
+            });
             const updateParents = () => {
                 filter.querySelectorAll(".category-group").forEach((group) => {
                     const parent = group.querySelector("[data-category-parent]");

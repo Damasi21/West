@@ -13,9 +13,15 @@
     <div class="filter-popover category-filter-popover">
         <strong class="filter-title">Categorias</strong>
         <p class="filter-hint">Desmarque um grupo para remover todos os filhos do dashboard.</p>
+        <label class="category-search">
+            <i class="bi bi-search" aria-hidden="true"></i>
+            <input type="search" data-category-search placeholder="Buscar por nome ou codigo" aria-label="Buscar categoria por nome ou codigo" autocomplete="off">
+            <button type="button" data-category-search-clear title="Limpar busca" aria-label="Limpar busca de categorias" hidden><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+        </label>
+        <p class="filter-empty category-search-status" data-category-search-status role="status" aria-live="polite" hidden></p>
         <div class="category-tree">
             {% for grupo in categorias %}
-                <details class="category-group">
+                <details class="category-group" data-category-search-text="{{ grupo.nome }} {{ grupo.codigo }} {{ grupo.empresa }}">
                     <summary>
                         {% if grupo.valor %}
                             <label class="filter-option category-parent">
@@ -28,6 +34,7 @@
                                 >
                                 <span>
                                     {{ grupo.nome }}
+                                    {% if grupo.codigo %}<small>{{ grupo.codigo }}</small>{% endif %}
                                     {% if empresas_filtro|length > 1 %}<small>{{ grupo.empresa }}</small>{% endif %}
                                 </span>
                             </label>
@@ -37,7 +44,7 @@
                     </summary>
                     <div class="category-children">
                         {% for categoria in grupo.filhos %}
-                            <label class="filter-option category-child">
+                            <label class="filter-option category-child" data-category-search-text="{{ categoria.nome }} {{ categoria.codigo }} {{ categoria.empresa }}">
                                 <input
                                     type="checkbox"
                                     name="categoria"
@@ -47,6 +54,7 @@
                                 >
                                 <span>
                                     {{ categoria.nome }}
+                                    <small>{{ categoria.codigo }}</small>
                                     {% if empresas_filtro|length > 1 %}<small>{{ categoria.empresa }}</small>{% endif %}
                                 </span>
                             </label>
