@@ -86,11 +86,11 @@ def _fluxo(inicio, fim, por_data, periodo):
     return {"labels": labels, "valores": valores, "granularidade": granularidade, "tem_dados": any(valores)}
 
 
-def _fluxo_pagamentos_realizados(empresa_ids, inicio, fim, periodo, projetos, departamentos, categorias):
+def _fluxo_pagamentos_realizados(empresa_ids, inicio, fim, periodo, projetos, departamentos, categorias, tipo="pagar"):
     # Only actual positive payments with a payment date; never infer them from
     # the original title value or substitute the due date for a missing payment.
     movimentos = MovimentoFinanceiroOmie.objects.filter(
-        empresa_id__in=empresa_ids, empresa__ativa=True, ativo_omie=True, natureza="P",
+        empresa_id__in=empresa_ids, empresa__ativa=True, ativo_omie=True, natureza="P" if tipo == "pagar" else "R",
         data_pagamento__range=(inicio, fim), valor_pago__gt=0,
     ).annotate(status_normalizado=Upper(Trim("status"))).exclude(
         status_normalizado__in=["CANCELADO", "ESTORNADO", "EXCLUIDO"],
@@ -101,7 +101,8 @@ def _fluxo_pagamentos_realizados(empresa_ids, inicio, fim, periodo, projetos, de
     departamentos = {str(v) for v in departamentos or []}
     contas = {}
     if departamentos:
-        contas = {(c.empresa_id, c.codigo_lancamento_omie): c for c in ContaPagarOmie.objects.filter(
+        modelo = ContaPagarOmie if tipo == "pagar" else ContaReceberOmie
+        contas = {(c.empresa_id, c.codigo_lancamento_omie): c for c in modelo.objects.filter(
             empresa_id__in=empresa_ids, ativo_omie=True,
             codigo_lancamento_omie__in=Subquery(movimentos.values("codigo_titulo")),
         ).only("empresa_id", "codigo_lancamento_omie", "distribuicao", "valor_documento")}
@@ -179,8 +180,8 @@ def carteira_financeira(empresa, tipo, periodo, data_inicio="", data_fim="", emp
         "fluxo": _fluxo(inicio, fim, por_data, periodo), "composicao": composicao,
         "fluxo_pagos": _fluxo_pagamentos_realizados(
             empresas_ids if empresas_ids is not None else [empresa.pk], inicio, fim, periodo,
-            projetos, departamentos, categorias,
-        ) if tipo == "pagar" else None,
+            projetos, departamentos, categorias, tipo=tipo,
+        ),
         "composicao_chart": {"labels": [i["nome"] for i in composicao], "valores": [i["valor"] for i in composicao], "cores": [i["cor"] for i in composicao]},
         "rateado": bool(selecionados_dep),
     }

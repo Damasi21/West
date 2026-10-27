@@ -53,6 +53,13 @@ correspondente, nao inclui o movimento quando existe filtro de departamento.
 A fonte local guarda uma posicao por titulo: o grafico nao reconstrui datas de baixas
 parciais anteriores que nao tenham sido preservadas na sincronizacao.
 
+No fluxo de recebimentos, Contas recebidas alterna para os recebimentos realizados;
+Contas a receber retorna aos saldos em aberto. Aplica as mesmas regras acima, usando
+movimentos de natureza R e a DATA DO RECEBIMENTO (data_pagamento na base local), com
+valor_pago positivo, inclusive baixas parciais. O rateio usa a conta a receber
+vinculada, mantendo os filtros e o agrupamento do periodo. Apenas o fluxo alterna;
+indicadores, categorias e ranking permanecem na posicao em aberto.
+
 ## Publicacao
 
 Nao requer migracao de banco, chamada extra a OMIE ou alteracao de workers. Atualizar

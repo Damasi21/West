@@ -17,23 +17,28 @@
     }) : null;
     const toggle = root.querySelector("[data-titles-flow-toggle]");
     if (toggle && flowChart) {
+        const receiving = root.dataset.titlesType === "receber";
+        const settledLabel = receiving ? "Contas recebidas" : "Contas pagas";
+        const openLabel = receiving ? "Contas a receber" : "Contas a pagar";
+        const settledTitle = receiving ? "Mostrar valores recebidos pela data do recebimento" : "Mostrar valores pagos pela data do pagamento";
+        const settledDate = receiving ? "Recebimento" : "Pagamento";
         const paid = JSON.parse(document.getElementById("titles-paid-flow-data").textContent);
         let showPaid = false;
         toggle.addEventListener("click", () => {
             showPaid = !showPaid;
             const selected = showPaid ? paid : flow;
-            toggle.textContent = showPaid ? "Contas a pagar" : "Contas pagas";
+            toggle.textContent = showPaid ? openLabel : settledLabel;
             toggle.setAttribute("aria-pressed", String(showPaid));
-            toggle.title = showPaid ? "Mostrar saldos em aberto pela data do vencimento" : "Mostrar valores pagos pela data do pagamento";
-            root.querySelector("[data-titles-flow-period]").textContent = `Por ${selected.granularidade} · ${showPaid ? "Pagamento" : "Vencimento"}`;
+            toggle.title = showPaid ? "Mostrar saldos em aberto pela data do vencimento" : settledTitle;
+            root.querySelector("[data-titles-flow-period]").textContent = `Por ${selected.granularidade} · ${showPaid ? settledDate : "Vencimento"}`;
             root.querySelector("[data-titles-flow-region]").hidden = !selected.tem_dados;
             const empty = root.querySelector("[data-titles-flow-empty]");
             empty.hidden = selected.tem_dados;
-            empty.querySelector("p").textContent = showPaid ? "Sem pagamentos com data e valor confirmados no periodo." : "Sem vencimentos em aberto no periodo.";
-            flowCanvas.setAttribute("aria-label", showPaid ? "Valores pagos pela data do pagamento no periodo selecionado" : "Valores a pagar por vencimento no periodo selecionado");
+            empty.querySelector("p").textContent = showPaid ? (receiving ? "Sem recebimentos com data e valor confirmados no periodo." : "Sem pagamentos com data e valor confirmados no periodo.") : "Sem vencimentos em aberto no periodo.";
+            flowCanvas.setAttribute("aria-label", showPaid ? `${settledTitle} no periodo selecionado` : `${root.dataset.titlesSeries} por vencimento no periodo selecionado`);
             flowChart.stop();
             flowChart.data.labels = selected.labels;
-            Object.assign(flowChart.data.datasets[0], { label: showPaid ? "Valor pago" : root.dataset.titlesSeries,
+            Object.assign(flowChart.data.datasets[0], { label: showPaid ? (receiving ? "Valor recebido" : "Valor pago") : root.dataset.titlesSeries,
                 data: selected.valores, backgroundColor: showPaid ? "#0f9488" : "#4c8ff2", hoverBackgroundColor: showPaid ? "#087c71" : "#2563eb" });
             flowChart.resize();
             flowChart.update("none");

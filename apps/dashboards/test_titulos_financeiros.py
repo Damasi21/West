@@ -204,12 +204,59 @@ class TitulosFinanceirosTests(TestCase):
         self.pagamento(2)
         self.assertEqual(sum(self.dados()["fluxo_pagos"]["valores"]),50)
 
-    def test_pagos_ano_mensal_e_receber_sem_alternancia(self, relogio):
+    def test_pagos_ano_mensal(self, relogio):
         self.pagamento(1)
         dados=carteira_financeira(self.empresa,"pagar","ano-2026")
         self.assertEqual(len(dados["fluxo_pagos"]["valores"]),12)
         self.assertEqual(dados["fluxo_pagos"]["valores"][9],50)
-        self.assertIsNone(self.dados("receber")["fluxo_pagos"])
+
+    def test_recebidos_por_baixa_valor_parcial_e_exclusoes(self, relogio):
+        self.pagamento(101, natureza="R", status="ABERTO", valor_pago=30)
+        for codigo, extra in enumerate([
+            {"data_pagamento": None}, {"data_pagamento": date(2026, 11, 1)},
+            {"valor_pago": 0}, {"valor_pago": -10}, {"status": " cancelado "},
+            {"status": "ESTORNADO"}, {"ativo_omie": False}, {"empresa": self.outra},
+        ], 102):
+            self.pagamento(codigo, natureza="R", **extra)
+        self.pagamento(201)  # A payment must not enter the receipts series.
+        dados = self.dados("receber")
+        self.assertEqual(sum(dados["fluxo_pagos"]["valores"]), 30)
+        self.assertEqual(dados["fluxo_pagos"]["valores"][23], 30)
+        self.assertEqual(dados["total_fmt"], "R$ 240,00")
+        ano = carteira_financeira(self.empresa, "receber", "ano-2026")
+        self.assertEqual(len(ano["fluxo_pagos"]["valores"]), 12)
+        self.assertEqual(ano["fluxo_pagos"]["valores"][9], 30)
+
+    def test_recebidos_filtros_banco_e_rateio_da_conta_receber(self, relogio):
+        conta = ContaReceberOmie.objects.get(empresa=self.empresa, codigo_lancamento_omie=1)
+        conta.distribuicao = [{"cCodDep": "DEP1", "nPerDep": 40}]
+        conta.save()
+        pagar = ContaPagarOmie.objects.get(empresa=self.empresa, codigo_lancamento_omie=1)
+        pagar.distribuicao = [{"cCodDep": "DEP1", "nPerDep": 90}]
+        pagar.save()
+        self.pagamento(1, natureza="R")
+        self.pagamento(1, natureza="R", empresa=self.outra)
+        self.pagamento(2, natureza="R", codigo_projeto=20)
+        self.pagamento(3, natureza="R", codigo_categoria="3.01")
+        banco = ContaCorrenteOmie.objects.create(empresa=self.empresa, codigo_omie=77, nao_fluxo=True, nao_resumo=True)
+        self.pagamento(4, natureza="R", codigo_conta_corrente=banco.codigo_omie)
+        filtros = dict(empresas_ids=[self.empresa.pk, self.outra.pk],
+                       projetos=[f"{self.empresa.pk}:10"], categorias=[f"{self.empresa.pk}:2.01"])
+        self.assertEqual(sum(self.dados("receber", **filtros)["fluxo_pagos"]["valores"]), 50)
+        filtros["departamentos"] = [f"{self.empresa.pk}:DEP1"]
+        self.assertEqual(sum(self.dados("receber", **filtros)["fluxo_pagos"]["valores"]), 20)
+
+    def test_receber_vazio_em_aberto_ainda_disponibiliza_recebidas(self, relogio):
+        ContaReceberOmie.objects.filter(empresa=self.empresa).update(valor_a_receber=0)
+        self.pagamento(1, natureza="R", status="RECEBIDO")
+        self.client.force_login(self.usuario)
+        response = self.client.get(self.url("receber"), {"periodo": "mes-2026-10", "_filtrar": "1"})
+        self.assertContains(response, "Contas recebidas")
+        self.assertContains(response, 'data-titles-type="receber"')
+        self.assertContains(response, 'id="titles-paid-flow-data"')
+        dados = response.context["titulos_financeiros"]
+        self.assertFalse(dados["fluxo"]["tem_dados"])
+        self.assertEqual(sum(dados["fluxo_pagos"]["valores"]), 50)
 
     def test_telas_navegacao_e_filtros(self, relogio):
         self.client.force_login(self.usuario)

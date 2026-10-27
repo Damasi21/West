@@ -1,5 +1,5 @@
 {% load l10n %}
-<section class="titles-dashboard" data-titles-dashboard data-titles-series="{{ dados.serie_rotulo }}">
+<section class="titles-dashboard" data-titles-dashboard data-titles-type="{{ dados.tipo }}" data-titles-series="{{ dados.serie_rotulo }}">
     {% if pode_cadastrar_conta_local %}
     <div class="local-payable-actions" data-local-payable data-form-url="{% url 'dashboards:cadastrar_conta_pagar_local' empresa.slug %}" data-list-url="{% url 'dashboards:listar_contas_pagar_locais' empresa.slug %}" data-send-url="{% url 'dashboards:enviar_contas_pagar_locais' empresa.slug %}">
         <button type="button" class="btn btn-white" data-local-list><i class="bi bi-folder2-open me-2"></i>Cadastros locais (<span data-local-count>{{ contas_locais_quantidade }}</span>)</button>
@@ -34,7 +34,7 @@
     <div class="titles-reference"><span>Vencimentos de {{ dados.inicio|date:"d/m/Y" }} a {{ dados.fim|date:"d/m/Y" }}</span><span>Posicao em {{ dados.hoje|date:"d/m/Y" }}{% if dados.rateado %} &middot; Saldo rateado por departamento{% endif %}</span></div>
     <div class="titles-chart-grid">
         <section class="titles-chart-section" data-chart-zoom-card>
-            <header data-chart-zoom-header><h2>{{ dados.fluxo_titulo }}</h2><span data-titles-flow-period>Por {{ dados.fluxo.granularidade }} &middot; Vencimento</span>{% if dados.tipo == 'pagar' %}<button type="button" class="btn btn-white btn-sm titles-flow-toggle" data-titles-flow-toggle aria-pressed="false" title="Mostrar valores pagos pela data do pagamento">Contas pagas</button>{% endif %}</header>
+            <header data-chart-zoom-header><h2>{{ dados.fluxo_titulo }}</h2><span data-titles-flow-period>Por {{ dados.fluxo.granularidade }} &middot; Vencimento</span><button type="button" class="btn btn-white btn-sm titles-flow-toggle" data-titles-flow-toggle aria-pressed="false" title="{% if dados.tipo == 'pagar' %}Mostrar valores pagos pela data do pagamento{% else %}Mostrar valores recebidos pela data do recebimento{% endif %}">{% if dados.tipo == 'pagar' %}Contas pagas{% else %}Contas recebidas{% endif %}</button></header>
             <div class="titles-canvas" data-titles-flow-region{% if not dados.fluxo.tem_dados %} hidden{% endif %}><canvas data-titles-flow aria-label="{{ dados.fluxo_titulo }} no periodo selecionado" role="img"></canvas></div><div class="titles-empty-chart" data-titles-flow-empty{% if dados.fluxo.tem_dados %} hidden{% endif %}><i class="bi bi-bar-chart" aria-hidden="true"></i><p>Sem vencimentos em aberto no periodo.</p></div>
         </section>
         <section class="titles-chart-section" data-chart-zoom-card>
@@ -50,6 +50,6 @@
         {% for item in dados.ranking %}<div class="titles-ranking-row"><div><strong>{{ item.nome }}</strong><small>{{ item.empresa }}</small></div><meter min="0" max="100" value="{{ item.largura|unlocalize }}" aria-label="Participacao relativa de {{ item.nome }}"></meter><strong>{{ item.valor_fmt }}</strong></div>{% empty %}<p class="titles-empty">Sem {{ dados.pessoa_rotulo|lower }} com saldo em aberto no periodo.</p>{% endfor %}
     </section>
     {{ dados.fluxo|json_script:"titles-flow-data" }}
-    {% if dados.tipo == 'pagar' %}{{ dados.fluxo_pagos|json_script:"titles-paid-flow-data" }}{% endif %}
+    {{ dados.fluxo_pagos|json_script:"titles-paid-flow-data" }}
     {{ dados.composicao_chart|json_script:"titles-categories-data" }}
 </section>
