@@ -10,6 +10,8 @@ urlpatterns = [
     path("configuracoes/white-label/", white_label_views.lista, name="white_label"),
     path("configuracoes/white-label/novo/", white_label_views.cadastro, name="white_label_novo"),
     path("configuracoes/white-label/<slug:slug>/", white_label_views.cadastro, name="white_label_editar"),
+    path("configuracoes/white-label/<slug:slug>/identidade/", white_label_views.identidade, name="white_label_identidade"),
+    path("configuracoes/white-label/<slug:slug>/previa-login/", white_label_views.previa_login, name="white_label_previa_login"),
     path("configuracoes/white-label/<slug:slug>/cnpjs/novo/", white_label_views.cadastrar_cnpj, name="white_label_cnpj_novo"),
     path("trial/", views.trial_cadastro, name="trial"),
     path(

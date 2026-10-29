@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Identidade visual | {{ ambiente.nome }}{% endblock %}
+{% block extra_css %}<link href="{% static 'css/white_label.css' %}?v={{ static_asset_version }}" rel="stylesheet"><link href="{% static 'css/white_label_identity.css' %}?v={{ static_asset_version }}" rel="stylesheet">{% endblock %}
+{% block public_content %}
+<section class="settings-heading"><div class="container py-4 py-lg-5"><nav aria-label="breadcrumb"><ol class="breadcrumb small"><li class="breadcrumb-item"><a href="{% url 'empresas:white_label' %}">White Label</a></li><li class="breadcrumb-item"><a href="{% url 'empresas:white_label_editar' ambiente.slug %}">{{ ambiente.nome }}</a></li><li class="breadcrumb-item active">Identidade visual</li></ol></nav><div class="wl-heading"><div><span class="eyebrow">{{ ambiente.nome }}</span><h1>Uma plataforma com a sua marca</h1><p class="text-secondary mb-0">Escolha o layout, a paleta e os logos do login e do sistema.</p></div><a class="btn btn-white" href="{% url 'empresas:white_label_editar' ambiente.slug %}">Voltar à marca</a></div></div></section>
+<section class="container pb-5" data-identity-editor>
+<div class="wl-identity-grid">
+    <form method="post" enctype="multipart/form-data" class="company-form-card wl-identity-form" novalidate>
+        {% csrf_token %}{% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+        <div class="wl-section-heading"><span class="wl-step">1</span><div><h2>Escolha o layout</h2><p>Mesma plataforma, duas formas de apresentar sua marca.</p></div></div>
+        <div class="wl-layouts">{% for radio in form.layout_login %}<label class="wl-layout-choice">{{ radio.tag }}<span class="wl-layout-sample sample-{{ radio.data.value }}" aria-hidden="true"><span class="sample-visual"><i></i><i></i><i></i></span><span class="sample-form"><i></i><i></i><i></i></span></span><strong>{{ radio.choice_label }}</strong><small>{% if radio.data.value == 'classico' %}O login atual, com visual leve e duas colunas.{% else %}Painel de destaque e formulário em um cartão acolhedor.{% endif %}</small></label>{% endfor %}</div>
+        {% for error in form.layout_login.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+        <div class="wl-section-heading"><span class="wl-step">2</span><div><h2>Paleta da marca</h2><p data-palette-description>Clássico usa três cores. Aurora permite escolher também o fundo.</p></div></div>
+        <div class="wl-colors">{% for field in form %}{% if field.name != 'layout_login' and field.name != 'logo_login' and field.name != 'logo_navbar' %}<div class="wl-color-field" data-color-field="{{ field.name }}"><label for="{{ field.id_for_label }}">{{ field.label }}</label><div>{{ field }}<output for="{{ field.id_for_label }}" data-color-output>{{ field.value|default:'' }}</output></div>{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endif %}{% endfor %}</div>
+        <p class="form-text mt-3">As cores serão usadas no login e na identidade do sistema. Avisos, erros e indicadores de situação preservam suas cores de significado.</p>
+        <div class="wl-section-heading"><span class="wl-step">3</span><div><h2>Logos</h2><p>Use imagens diferentes para o login e para o cabeçalho, se preferir.</p></div></div>
+        <div class="wl-logo-fields">
+            <div><label class="form-label" for="{{ form.logo_login.id_for_label }}">Logo da tela de login</label><div class="wl-logo-current"><img data-logo-current="logo_login" {% if ambiente.logo_login %}src="{{ ambiente.logo_login.url }}"{% else %}hidden{% endif %} alt="Logo do login"></div>{{ form.logo_login }}{% for error in form.logo_login.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+            <div><label class="form-label" for="{{ form.logo_navbar.id_for_label }}">Logo da navbar do sistema</label><div class="wl-logo-current"><img data-logo-current="logo_navbar" {% if ambiente.logo_navbar %}src="{{ ambiente.logo_navbar.url }}"{% else %}hidden{% endif %} alt="Logo da navbar"></div>{{ form.logo_navbar }}{% for error in form.logo_navbar.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+        </div><p class="form-text mt-3">PNG, JPG ou WebP, até 3 MB e 4096 × 4096 pixels. Para logos sem fundo, prefira PNG transparente. Sem imagem, será exibido o nome da marca.</p>
+        <p class="wl-upload-feedback text-danger" data-upload-feedback role="status" aria-live="polite"></p>
+        <div class="form-actions"><button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-2"></i>Salvar identidade visual</button></div>
+    </form>
+    <aside class="wl-preview-panel">
+        <div class="wl-preview-heading"><div><span class="eyebrow">PRÉVIA EM TEMPO REAL</span><h2>Sua marca em ação</h2></div><span class="wl-preview-badge" data-preview-layout>Clássico</span></div>
+        <p>Confira as escolhas aqui. Elas só serão aplicadas depois de salvar.</p>
+        <div class="wl-navbar-preview" data-navbar-preview><img data-navbar-logo {% if ambiente.logo_navbar %}src="{{ ambiente.logo_navbar.url }}"{% else %}hidden{% endif %} alt="Logo da navbar"><strong data-preview-brand-name>{{ ambiente.nome }}</strong><span><i class="bi bi-grid"></i> Painéis</span><i class="bi bi-person-circle" aria-hidden="true"></i></div>
+        <div class="wl-frame-viewport" data-frame-viewport><iframe title="Prévia do login da marca" src="{% url 'empresas:white_label_previa_login' ambiente.slug %}" sandbox="allow-same-origin" data-login-preview></iframe></div>
+        <div class="wl-preview-note"><i class="bi bi-info-circle"></i><span>O botão de entrada está desativado nesta prévia.</span></div>
+        <div class="wl-login-link"><label for="wl-login-link">Link de login da marca</label><input id="wl-login-link" class="form-control" value="{{ login_marca_url }}" readonly><a class="btn btn-outline-primary btn-sm mt-2" href="{% url 'empresas:white_label_previa_login' ambiente.slug %}" target="_blank" rel="noopener">Ampliar prévia salva <i class="bi bi-box-arrow-up-right ms-1"></i></a><small class="d-block mt-2">O link usa o endereço atual da plataforma. O subdomínio será vinculado separadamente.</small></div>
+    </aside>
+</div>
+</section>
+{% endblock %}
+{% block extra_js %}<script src="{% static 'js/white_label_identity.js' %}?v={{ static_asset_version }}"></script>{% endblock %}

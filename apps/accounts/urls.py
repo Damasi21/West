@@ -13,6 +13,7 @@ from .views import (
 app_name = "accounts"
 
 urlpatterns = [
+    path("marca/<slug:marca_slug>/entrar/", EntrarView.as_view(), name="login_marca"),
     path("entrar/", EntrarView.as_view(), name="login"),
     path("cadastro/", cadastrar, name="cadastro"),
     path("confirmar-cadastro/", confirmar_email_cadastro, name="confirmar_cadastro"),

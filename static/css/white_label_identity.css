@@ -1,0 +1,43 @@
+.wl-identity-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; gap: 1.5rem; }
+.wl-identity-form { min-width: 0; padding: 1.5rem; }
+.wl-layouts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .8rem; }
+.wl-layout-choice { padding: .9rem; border: 1px solid #dce5f1; border-radius: 14px; cursor: pointer; min-width: 0; }
+.wl-layout-choice:has(input:checked) { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue-light); }
+.wl-layout-choice strong, .wl-layout-choice small { display: block; margin-top: .6rem; }
+.wl-layout-choice strong { font-size: .9rem; }
+.wl-layout-choice small { color: #64748b; font-size: .78rem; }
+.wl-layout-sample { display: grid; grid-template-columns: 1fr 1fr; gap: 12%; height: 95px; margin-top: .8rem; padding: 15px; border-radius: 9px; background: #edf6fd; }
+.wl-layout-sample > span { display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 0; }
+.wl-layout-sample i { display: block; height: 5px; background: #81accf; border-radius: 3px; }
+.wl-layout-sample i:last-child { background: #319ead; height: 12px; }
+.sample-aurora { background: #e8edf4; padding: 9px; gap: 9px; }
+.sample-aurora .sample-visual { background: #214fac; border-radius: 9px; padding: 8px; }
+.sample-aurora .sample-form { background: white; border-radius: 9px; padding: 8px; }
+.sample-aurora .sample-visual i { background: #b8ccff; }
+.wl-colors { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.wl-color-field > label { display: block; font-size: .82rem; font-weight: 600; margin-bottom: .5rem; }
+.wl-color-field > div { display: flex; align-items: center; gap: .6rem; }
+.wl-color-picker { width: 52px; height: 43px; padding: 3px; border: 1px solid #dce5f1; border-radius: 9px; background: #fff; cursor: pointer; }
+.wl-color-field output { font-size: .8rem; color: #64748b; font-family: ui-monospace, monospace; }
+.wl-color-field[hidden] { display: none; }
+.wl-logo-fields { display: grid; gap: 1.5rem; }
+.wl-logo-fields > div { min-width: 0; overflow-wrap: anywhere; font-size: .85rem; }
+.wl-logo-current { min-height: 80px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: .75rem; margin-bottom: .75rem; display: grid; place-items: center; }
+.wl-logo-current img { max-height: 70px; max-width: 100%; object-fit: contain; }
+.wl-preview-panel { position: sticky; top: 90px; padding: 1.5rem; background: #fff; border: 1px solid #dce5f1; border-radius: 16px; min-width: 0; }
+.wl-preview-heading { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.wl-preview-heading h2 { font-size: 1.2rem; margin: 0; }
+.wl-preview-panel p { color: #64748b; font-size: .85rem; margin: 1rem 0; }
+.wl-preview-badge { background: #f1f5f9; color: #475569; border-radius: 30px; padding: .4rem .7rem; font-size: .75rem; }
+.wl-navbar-preview { display: flex; align-items: center; gap: .7rem; padding: .9rem; background: #217ed4; color: white; border-radius: 10px 10px 0 0; font-size: .8rem; min-height: 57px; }
+.wl-navbar-preview img { width: 110px; height: 35px; object-fit: contain; background: white; border-radius: 5px; padding: 3px; }
+.wl-navbar-preview strong { min-width: 0; overflow-wrap: anywhere; }
+.wl-navbar-preview span { margin-left: auto; white-space: nowrap; }
+.wl-frame-viewport { position: relative; overflow: hidden; border: 1px solid #dce5f1; border-top: 0; border-radius: 0 0 10px 10px; height: 340px; }
+.wl-frame-viewport iframe { position: absolute; top: 0; left: 0; width: 1200px; height: 780px; border: 0; transform-origin: top left; }
+.wl-preview-note { display: flex; gap: .5rem; color: #64748b; font-size: .75rem; margin: 1rem 0; }
+.wl-login-link { border-top: 1px solid #e5eaf2; margin-top: 1.25rem; padding-top: 1.25rem; }
+.wl-login-link label { font-size: .85rem; font-weight: 600; margin-bottom: .6rem; }
+.wl-login-link small { color: #64748b; font-size: .75rem; }
+@media (max-width: 991px) { .wl-identity-grid { grid-template-columns: minmax(0,1fr); } .wl-preview-panel { position: static; } }
+@media (max-width: 480px) { .wl-identity-form, .wl-preview-panel { padding: 1.1rem; } .wl-layout-sample { height: 80px; padding: 10px; gap: 8px; } .wl-navbar-preview span { display: none; } }

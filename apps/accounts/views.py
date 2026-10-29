@@ -8,7 +8,7 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.conf import settings
 from django.core.mail import send_mail
 from django.core.exceptions import ValidationError
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
@@ -30,6 +30,16 @@ class EntrarView(LoginView):
     template_name = "accounts/login.html"
     authentication_form = LoginForm
     redirect_authenticated_user = True
+
+    def dispatch(self, request, *args, **kwargs):
+        if kwargs.get("marca_slug"):
+            from apps.empresas.models import AmbienteWhiteLabel
+            from apps.empresas.white_label_branding import SESSION_MARCA
+            marca = get_object_or_404(AmbienteWhiteLabel, slug=kwargs["marca_slug"], ativa=True)
+            request.session[SESSION_MARCA] = marca.pk
+            request._white_label_marca = marca
+            request._white_label_forcar_tema = True
+        return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
         response = super().form_valid(form)
@@ -75,6 +85,10 @@ class EntrarView(LoginView):
 
 class SairView(LogoutView):
     def dispatch(self, request, *args, **kwargs):
+        from apps.empresas.white_label_branding import SESSION_MARCA
+        from apps.empresas.models import AmbienteWhiteLabel
+        marca_id = request.session.get(SESSION_MARCA)
+        self.marca_logout = AmbienteWhiteLabel.objects.filter(pk=marca_id, ativa=True).first() if isinstance(marca_id, int) else None
         if request.user.is_authenticated:
             from apps.empresas.auditoria import registrar_acao
             from apps.empresas.models import AcaoUsuarioLog
@@ -86,6 +100,11 @@ class SairView(LogoutView):
                 request=request,
             )
         return super().dispatch(request, *args, **kwargs)
+
+    def get_default_redirect_url(self):
+        if getattr(self, "marca_logout", None):
+            return reverse("accounts:login_marca", args=[self.marca_logout.slug])
+        return super().get_default_redirect_url()
 
 
 @require_http_methods(["GET", "POST"])

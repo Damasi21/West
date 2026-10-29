@@ -11,8 +11,9 @@
     <link href="{% static 'css/style.css' %}?v={{ static_asset_version }}" rel="stylesheet">
     <link href="{% static 'css/dashboard.css' %}?v={{ static_asset_version }}" rel="stylesheet">
     {% block extra_css %}{% endblock %}
+    {% include "partials/white_label_theme.html" %}
 </head>
-<body>
+<body{% if white_label_tema %} class="white-label-themed wl-layout-{{ white_label_layout }}" data-white-label-theme{% endif %}>
     {% include "partials/navbar.html" %}
 
     {% if empresa %}
@@ -33,6 +34,7 @@
     {% include "partials/footer.html" %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    {% if white_label_tema %}<script src="{% static 'js/white_label_theme.js' %}?v={{ static_asset_version }}"></script>{% endif %}
     <script src="{% static 'js/main.js' %}?v={{ static_asset_version }}"></script>
     <script src="{% static 'js/charts.js' %}?v={{ static_asset_version }}"></script>
     <script src="{% static 'js/dashboard.js' %}?v={{ static_asset_version }}"></script>

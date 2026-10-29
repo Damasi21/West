@@ -113,6 +113,10 @@ DRE_PADRAO = (
 @login_required
 def lista_empresas(request):
     empresas = empresas_permitidas(request.user)
+    from .white_label_branding import SESSION_MARCA
+    marca_id = request.session.get(SESSION_MARCA)
+    if isinstance(marca_id, int):
+        empresas = empresas.filter(ambientes_white_label__pk=marca_id, ambientes_white_label__ativa=True)
     return render(
         request,
         "empresas/lista_empresas.html",

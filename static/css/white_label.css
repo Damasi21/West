@@ -25,6 +25,9 @@
 .wl-linked { padding: 1.5rem; }
 .wl-linked h2 { margin-bottom: 1rem; }
 .wl-linked .table-responsive { position: relative; max-width: 100%; }
+.wl-identity-entry { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 1.5rem; }
+.wl-identity-entry h2 { font-size: 1.1rem; margin-bottom: .35rem; }
+.wl-identity-entry p { color: #64748b; margin: 0; }
 @media (max-width: 575px) {
     .wl-search { flex-wrap: wrap; }
     .wl-search input { flex: 1; }

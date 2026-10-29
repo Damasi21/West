@@ -8,6 +8,7 @@
     <div class="wl-heading"><div><span class="eyebrow">AMBIENTE WHITE LABEL</span><h1>{% if ambiente %}{{ ambiente.nome }}{% else %}Cadastrar marca{% endif %}</h1><p class="text-secondary mb-0">Uma marca pode reunir vários CNPJs, mantendo os dados de cada empresa.</p></div><a href="{% url 'empresas:white_label' %}" class="btn btn-white"><i class="bi bi-arrow-left me-2"></i>Voltar</a></div>
 </div></section>
 <section class="container pb-5">
+    {% if ambiente %}<div class="settings-card wl-identity-entry mb-4"><div><h2>Identidade visual</h2><p>Escolha o layout, as cores e os logos do login e do sistema.</p></div><a href="{% url 'empresas:white_label_identidade' ambiente.slug %}" class="btn btn-outline-primary"><i class="bi bi-palette me-2"></i>Layout, cores e logos</a></div>{% endif %}
     <form method="post" class="company-form-card wl-form" novalidate>
         {% csrf_token %}
         {% for error in form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endfor %}

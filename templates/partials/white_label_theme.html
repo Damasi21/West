@@ -1,0 +1,5 @@
+{% load static %}
+{% if white_label_tema %}
+<link href="{% static 'css/white_label_theme.css' %}?v={{ static_asset_version }}" rel="stylesheet">
+<style id="white-label-variables">:root { --wl-primary: {{ wl_primaria }}; --wl-secondary: {{ wl_secundaria }}; --wl-accent: {{ wl_destaque }}; --wl-bg: {{ wl_fundo }}; --wl-light: {{ wl_clara }}; --wl-link: {{ wl_link }}; --wl-on-primary: {{ wl_texto_primaria }}; --wl-on-secondary: {{ wl_texto_secundaria }}; --wl-on-bg: {{ wl_texto_fundo }}; }</style>
+{% endif %}

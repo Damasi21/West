@@ -1,0 +1,53 @@
+/* Cores semanticas de erro/atencao/sucesso permanecem inalteradas. */
+body.white-label-themed { --blue: var(--wl-link); --primary: var(--wl-primary); --blue-light: var(--wl-light); --surface: var(--wl-bg); background: var(--wl-bg); }
+.white-label-themed .app-navbar { background: var(--wl-primary); border-bottom: 3px solid var(--wl-accent); color: var(--wl-on-primary); }
+.white-label-themed .companies-hero { background: var(--wl-secondary); color: var(--wl-on-secondary); }
+.white-label-themed .app-navbar .user-menu, .white-label-themed .settings-menu, .white-label-themed .company-pill { color: var(--wl-on-primary); }
+.white-label-themed .companies-hero h1, .white-label-themed .companies-hero p, .white-label-themed .companies-hero .eyebrow { color: var(--wl-on-secondary); }
+.white-label-themed .brand-name { color: var(--wl-on-primary); font-size: 1rem; max-width: 240px; overflow-wrap: anywhere; }
+.white-label-themed .btn-primary { --bs-btn-bg: var(--wl-primary); --bs-btn-border-color: var(--wl-primary); --bs-btn-color: var(--wl-on-primary); --bs-btn-hover-bg: var(--wl-secondary); --bs-btn-hover-border-color: var(--wl-secondary); --bs-btn-hover-color: var(--wl-on-secondary); --bs-btn-active-bg: var(--wl-secondary); --bs-btn-active-border-color: var(--wl-secondary); --bs-btn-active-color: var(--wl-on-secondary); }
+.white-label-themed .btn-outline-primary { --bs-btn-color: var(--wl-primary); --bs-btn-border-color: var(--wl-primary); --bs-btn-hover-bg: var(--wl-primary); --bs-btn-hover-border-color: var(--wl-primary); --bs-btn-hover-color: var(--wl-on-primary); --bs-btn-active-bg: var(--wl-primary); --bs-btn-active-border-color: var(--wl-primary); }
+.white-label-themed .sidebar-nav a.active { background: var(--wl-light); color: var(--wl-link); box-shadow: inset 3px 0 var(--wl-accent); }
+.white-label-themed .text-primary { color: var(--wl-link) !important; }
+.white-label-themed .eyebrow, .white-label-themed .company-card a, .white-label-themed .company-card .company-link { color: var(--wl-link); }
+.white-label-themed .form-control:focus, .white-label-themed .form-select:focus { border-color: var(--wl-accent); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--wl-accent) 20%, transparent); }
+.white-label-themed input[type=checkbox], .white-label-themed input[type=radio] { accent-color: var(--wl-primary); }
+.white-label-themed.login-page:not(.register-page) { background: radial-gradient(circle at 15% 15%, color-mix(in srgb, var(--wl-accent) 16%, transparent), transparent 45%), linear-gradient(115deg,var(--wl-light),var(--wl-bg)); }
+.white-label-themed.login-page .visual-content h1 { color: var(--wl-link); background: none; -webkit-text-fill-color: currentColor; }
+.white-label-themed.login-page .visual-content p, .white-label-themed.login-page .login-help { color: #52637f; }
+.white-label-themed.login-page .login-card h2, .white-label-themed.login-page .login-card .eyebrow.text-primary, .white-label-themed.login-page .auth-small-link, .white-label-themed.login-page .auth-switch a { color: var(--wl-link) !important; }
+.white-label-themed.login-page .login-card .btn-primary { color: var(--wl-on-primary); background: var(--wl-primary); border-color: var(--wl-primary); box-shadow: none; }
+.white-label-themed.login-page .login-card .btn-primary:hover { background: var(--wl-secondary); border-color: var(--wl-secondary); color: var(--wl-on-secondary); }
+.white-label-themed.login-page .login-card .btn-outline-primary { background: transparent; color: var(--wl-primary); border-color: var(--wl-primary); }
+.white-label-themed.login-page .login-card .btn-outline-primary:hover { background: var(--wl-primary); color: var(--wl-on-primary); }
+.white-label-themed.login-page .visual-chart span { background: linear-gradient(var(--wl-primary),var(--wl-secondary)); }
+.white-label-themed.login-page .visual-chart span:nth-child(3n) { background: var(--wl-accent); }
+.white-label-themed .visual-brand-name { display: block; font-size: 2rem; color: var(--wl-link); margin-bottom: 2rem; overflow-wrap: anywhere; }
+.white-label-themed.login-page .login-card .form-control:focus { border-color: var(--wl-accent); box-shadow: 0 0 0 .2rem color-mix(in srgb,var(--wl-accent) 20%,transparent); }
+.login-mobile-brand { display: none; }
+.wl-preview-only a, .wl-preview-only button { pointer-events: none; }
+.white-label-themed.wl-layout-aurora.login-page { grid-template-columns: 1fr 1fr; padding: clamp(1rem,4vw,4rem); gap: 2rem; min-height: 100vh; background: var(--wl-bg); }
+.white-label-themed.wl-layout-aurora.login-page .login-visual { border-radius: 32px; min-height: calc(100vh - 8rem); padding: 3.5rem; background: var(--wl-secondary); box-shadow: 0 24px 65px color-mix(in srgb,var(--wl-secondary) 20%,transparent); }
+.white-label-themed.wl-layout-aurora.login-page .visual-content { transform: none; }
+.white-label-themed.wl-layout-aurora.login-page .visual-content h1, .white-label-themed.wl-layout-aurora.login-page .visual-content p, .white-label-themed.wl-layout-aurora.login-page .visual-brand-name { color: var(--wl-on-secondary); }
+.white-label-themed.wl-layout-aurora.login-page .visual-logo { max-height: 150px; width: min(100%,380px); object-fit: contain; background: #fff; padding: 1rem; border-radius: 16px; }
+.white-label-themed.wl-layout-aurora.login-page .visual-chart span { background: var(--wl-accent); }
+.white-label-themed.wl-layout-aurora.login-page .login-panel { min-height: 0; padding: 1rem; }
+.white-label-themed.wl-layout-aurora.login-page .login-card { transform: none; background: #fff; padding: 2.25rem; border-radius: 24px; box-shadow: 0 18px 60px rgba(15,23,42,.08); width: min(480px,100%); }
+.white-label-themed.wl-layout-aurora.login-page .login-card .form-control { background: #f8fafc; }
+@media (max-width:900px) {
+    .white-label-themed .login-mobile-brand { display: block; margin-bottom: 1.5rem; color: var(--wl-primary); font-size: 1.4rem; font-weight: 700; }
+    .login-mobile-brand img { max-width: 220px; max-height: 80px; object-fit: contain; }
+    .white-label-themed.wl-layout-aurora.login-page { display: block; padding: 1rem; }
+    .white-label-themed.wl-layout-aurora.login-page .login-panel { min-height: calc(100vh - 2rem); padding: 0; }
+    .white-label-themed.wl-layout-aurora.login-page .login-card { padding: 1.5rem; }
+}
+
+.white-label-themed .page-heading h1, .white-label-themed .page-heading > div > p, .white-label-themed .page-heading .eyebrow { color: var(--wl-on-bg); }
+.white-label-themed .btn-primary { --bs-btn-disabled-bg: var(--wl-primary); --bs-btn-disabled-border-color: var(--wl-primary); --bs-btn-disabled-color: var(--wl-on-primary); }
+.white-label-themed.login-page .visual-logo { max-height: 190px; object-fit: contain; }
+body.white-label-themed.login-page { zoom: 1; background-repeat: no-repeat; background-size: cover; }
+.white-label-themed.login-page .visual-chart span:nth-child(3n+1) { background: var(--wl-primary); }
+.white-label-themed.login-page .visual-chart span:nth-child(3n+2) { background: var(--wl-secondary); }
+.white-label-themed.login-page .visual-chart span:nth-child(3n) { background: var(--wl-accent); }
+.white-label-themed.wl-layout-aurora.login-page .visual-chart span:nth-child(n) { background: var(--wl-accent); }

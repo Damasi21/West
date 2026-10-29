@@ -1,4 +1,5 @@
 import re
+import uuid
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -12,6 +13,10 @@ from .categorias import eh_categoria_transferencia
 
 def ano_atual():
     return timezone.localdate().year
+
+
+def arquivo_identidade_white_label(instance, filename):
+    return f"white_label/{instance.pk}/{uuid.uuid4().hex}.png"
 
 
 def mes_atual():
@@ -135,6 +140,10 @@ class Empresa(models.Model):
 
 
 class AmbienteWhiteLabel(models.Model):
+    class Layout(models.TextChoices):
+        CLASSICO = "classico", "Clássico — 3 cores"
+        AURORA = "aurora", "Aurora — 4 cores"
+
     class Tipo(models.TextChoices):
         GRUPO = "grupo", "Grupo empresarial"
         PARCEIRO = "parceiro", "Contabilidade / parceiro"
@@ -145,6 +154,14 @@ class AmbienteWhiteLabel(models.Model):
     contato_nome = models.CharField("Responsável / contato", max_length=150, blank=True)
     email_suporte = models.EmailField("E-mail de suporte", blank=True)
     telefone_suporte = models.CharField("Telefone de suporte", max_length=30, blank=True)
+    identidade_personalizada = models.BooleanField(default=False)
+    layout_login = models.CharField(max_length=20, choices=Layout.choices, default=Layout.CLASSICO)
+    cor_primaria = models.CharField(max_length=7, default="#217ed4")
+    cor_secundaria = models.CharField(max_length=7, default="#214fac")
+    cor_destaque = models.CharField(max_length=7, default="#20cfa1")
+    cor_fundo = models.CharField(max_length=7, default="#f3f7fb")
+    logo_login = models.ImageField(upload_to=arquivo_identidade_white_label, blank=True)
+    logo_navbar = models.ImageField(upload_to=arquivo_identidade_white_label, blank=True)
     ativa = models.BooleanField("Ambiente ativo", default=True)
     empresas = models.ManyToManyField(Empresa, blank=True, related_name="ambientes_white_label")
     administradores = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name="ambientes_white_label_administrados")
