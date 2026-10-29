@@ -23,7 +23,7 @@ class PreCadastroTests(TestCase):
         self.empresa = Empresa.objects.create(nome="Acesso Novo", cnpj="00.000.000/0001-61")
         self.outra = Empresa.objects.create(nome="Outra Empresa Acesso", cnpj="00.000.000/0001-62")
         self.admin = get_user_model().objects.create_user(username="gestor-acesso", password=self.senha)
-        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.admin, papel="admin")
+        EmpresaUsuario.objects.create(empresa=self.empresa, usuario=self.admin, papel="gestor")
         self.url = reverse("dashboards:usuarios", args=[self.empresa.slug])
 
     def convite(self, email="pessoa@empresa.com.br", **kwargs):
@@ -159,7 +159,7 @@ class PreCadastroTests(TestCase):
     def test_gestor_nao_pode_elevar_perfil_ou_editar_outra_empresa(self):
         EmpresaUsuario.objects.filter(usuario=self.admin).update(papel="gestor")
         self.client.force_login(self.admin)
-        r = self.client.post(self.url, {"first_name": "Pessoa", "email": "pessoa@empresa.com.br", "papel": "admin"})
+        r = self.client.post(self.url, {"first_name": "Pessoa", "email": "pessoa@empresa.com.br", "papel": "white_label"})
         self.assertEqual(r.status_code, 200)
         self.assertFalse(PreCadastroUsuario.objects.exists())
         outro = PreCadastroUsuario.objects.create(empresa=self.outra, nome="Pessoa", email="pessoa@empresa.com.br")

@@ -1,11 +1,16 @@
 from django.urls import path
 
 from . import views
+from . import white_label_views
 
 
 app_name = "empresas"
 
 urlpatterns = [
+    path("configuracoes/white-label/", white_label_views.lista, name="white_label"),
+    path("configuracoes/white-label/novo/", white_label_views.cadastro, name="white_label_novo"),
+    path("configuracoes/white-label/<slug:slug>/", white_label_views.cadastro, name="white_label_editar"),
+    path("configuracoes/white-label/<slug:slug>/cnpjs/novo/", white_label_views.cadastrar_cnpj, name="white_label_cnpj_novo"),
     path("trial/", views.trial_cadastro, name="trial"),
     path(
         "trial/<slug:empresa_slug>/expirado/",

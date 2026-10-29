@@ -13,7 +13,8 @@ from .models import (
     IntegracaoOmie,
     SincronizacaoOmie,
 )
-from .services import usuario_pode_gerenciar_vinculo
+from .services import (usuario_pode_gerenciar_vinculo, papeis_gerenciaveis,
+                       vinculo_empresa, escopo_delegavel)
 
 
 class EmpresaForm(forms.ModelForm):
@@ -438,13 +439,21 @@ class EmpresaUsuarioForm(forms.Form):
         self.operador = operador
         self.vinculo = vinculo
         self.convite = convite
+        self.areas = areas
+        modulos, dashboards = escopo_delegavel(operador, empresa, areas)
+        self.fields["papel"].choices = [
+            (valor, rotulo) for valor, rotulo in EmpresaUsuario.Papel.choices
+            if valor in papeis_gerenciaveis(operador, empresa)
+        ]
         self.fields["areas_permitidas"].choices = [
             (slug, area["titulo"]) for slug, area in areas.items()
+            if slug in modulos
         ]
         self.fields["dashboards_permitidos"].choices = [
             (f"{area_slug}:{dashboard['slug']}", f"{area['titulo']} - {dashboard['titulo']}")
             for area_slug, area in areas.items()
             for dashboard in area["dashboards"]
+            if f"{area_slug}:{dashboard['slug']}" in dashboards
         ]
         if not vinculo and not convite:
             self.fields.pop("ativo")
@@ -469,21 +478,10 @@ class EmpresaUsuarioForm(forms.Form):
                                  "papel": convite.papel, "areas_permitidas": convite.areas_permitidas,
                                  "dashboards_permitidos": convite.dashboards_permitidos, "ativo": convite.ativo})
 
-        if not operador.is_superuser and not operador.is_staff:
-            operador_vinculo = EmpresaUsuario.objects.filter(
-                empresa=empresa,
-                usuario=operador,
-                ativo=True,
-            ).first()
-            if operador_vinculo and operador_vinculo.papel == EmpresaUsuario.Papel.GESTOR:
-                self.fields["papel"].choices = [
-                    (EmpresaUsuario.Papel.VISUALIZADOR, "Visualizador")
-                ]
-
     def clean(self):
         cleaned = super().clean()
         alvo = self.vinculo or self.convite
-        if alvo and not usuario_pode_gerenciar_vinculo(
+        if not usuario_pode_gerenciar_vinculo(
             self.operador,
             self.empresa,
             alvo,
@@ -492,15 +490,9 @@ class EmpresaUsuarioForm(forms.Form):
 
         papel = cleaned.get("papel") or EmpresaUsuario.Papel.VISUALIZADOR
         cleaned["papel"] = papel
-        if not self.operador.is_superuser and not self.operador.is_staff:
-            operador_vinculo = EmpresaUsuario.objects.filter(
-                empresa=self.empresa,
-                usuario=self.operador,
-                ativo=True,
-            ).first()
-            if operador_vinculo and operador_vinculo.papel == EmpresaUsuario.Papel.GESTOR:
-                if papel != EmpresaUsuario.Papel.VISUALIZADOR:
-                    raise forms.ValidationError("Gerentes só podem cadastrar usuários.")
+        if papel not in papeis_gerenciaveis(self.operador, self.empresa):
+            raise forms.ValidationError("Voce nao pode conceder este perfil.")
+        self._validar_escopo(cleaned)
 
         email = (cleaned.get("email") or "").strip().lower()
         cleaned["email"] = email
@@ -514,9 +506,37 @@ class EmpresaUsuarioForm(forms.Form):
                 self.add_error("email", "Este e-mail ja possui um pre-cadastro nesta empresa.")
         return cleaned
 
+    def _validar_escopo(self, dados):
+        operador = vinculo_empresa(self.operador, self.empresa)
+        if not operador or operador.papel != EmpresaUsuario.Papel.LIDER:
+            return
+        modulos_permitidos, dashboards_permitidos = escopo_delegavel(self.operador, self.empresa, self.areas)
+        areas = dados.get("areas_permitidas") or [
+            slug for slug in self.areas if slug in modulos_permitidos
+        ]
+        dashboards = dados.get("dashboards_permitidos") or [
+            f"{area}:{dashboard['slug']}" for area in areas
+            for dashboard in self.areas[area]["dashboards"]
+            if f"{area}:{dashboard['slug']}" in dashboards_permitidos
+        ]
+        if not areas or not dashboards:
+            raise forms.ValidationError("O lider nao possui acessos disponiveis para delegar.")
+        if any(area not in modulos_permitidos for area in areas):
+            raise forms.ValidationError("Selecione apenas modulos liberados para voce.")
+        for chave in dashboards:
+            area, dashboard = chave.split(":", 1)
+            if area not in areas or chave not in dashboards_permitidos:
+                raise forms.ValidationError("Selecione apenas dashboards dos seus modulos autorizados.")
+        # Empty lists historically mean unrestricted access: persist an explicit scope.
+        dados["areas_permitidas"] = areas
+        dados["dashboards_permitidos"] = dashboards
+
     def save(self):
         from django.db import transaction
         with transaction.atomic():
+            # Recheck current authority under lock, including changes since form validation.
+            if not self.operador.is_superuser:
+                EmpresaUsuario.objects.select_for_update().filter(empresa=self.empresa, usuario=self.operador).first()
             if self.vinculo:
                 alvo = EmpresaUsuario.objects.select_for_update().get(pk=self.vinculo.pk, empresa=self.empresa)
             elif self.convite:
@@ -525,6 +545,13 @@ class EmpresaUsuarioForm(forms.Form):
                     raise forms.ValidationError("Este pre-cadastro ja foi utilizado. Edite o usuario vinculado.")
             else:
                 alvo = PreCadastroUsuario(empresa=self.empresa, criado_por=self.operador)
+            if not usuario_pode_gerenciar_vinculo(self.operador, self.empresa, alvo if alvo.pk else None):
+                raise forms.ValidationError("Voce nao pode alterar este acesso.")
+            if self.cleaned_data["papel"] not in papeis_gerenciaveis(self.operador, self.empresa):
+                raise forms.ValidationError("Voce nao pode conceder este perfil.")
+            self._validar_escopo(self.cleaned_data)
+            operador = vinculo_empresa(self.operador, self.empresa)
+            alvo.delegado_por = operador if operador and operador.papel == EmpresaUsuario.Papel.LIDER else None
             if not self.vinculo:
                 alvo.email = self.cleaned_data["email"]
                 alvo.nome = self.cleaned_data["first_name"].strip()

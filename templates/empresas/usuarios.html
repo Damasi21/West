@@ -11,7 +11,7 @@
         <h1>Usuários</h1>
         <p>Gerencie acessos, papéis e permissões da {{ empresa.nome_fantasia }}.</p>
     </div>
-    <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">
+    <a href="{% url 'dashboards:home' empresa.slug %}" class="btn btn-white">
         <i class="bi bi-arrow-left me-2"></i>Voltar
     </a>
 </div>
@@ -52,20 +52,21 @@
             <div>
                 <label class="form-label" for="{{ form.papel.id_for_label }}">{{ form.papel.label }}</label>
                 {{ form.papel }}
+                <p class="small text-muted mt-2">Adm White Label e Gestor administram esta empresa. O Gestor nao altera a identidade visual da plataforma. Lideres e Usuarios simples utilizam os acessos definidos abaixo.</p>
                 {% for error in form.papel.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
             </div>
 
         <div class="users-permission-grid">
             <div>
                 <h3>Módulos</h3>
-                <p>Sem seleção significa acesso a todos os módulos disponíveis.</p>
+                <p>Sem selecao, utiliza os modulos disponiveis para este convite. Lideres so podem delegar seus proprios acessos.</p>
                 <div class="users-check-list">
                     {{ form.areas_permitidas }}
                 </div>
             </div>
             <div>
                 <h3>Dashboards</h3>
-                <p>Para usuários, limite dashboards específicos quando necessário.</p>
+                <p>Limite os dashboards de Lideres e Usuarios simples. Sem selecao, utiliza os dashboards permitidos nos modulos escolhidos.</p>
                 <div class="users-check-list users-check-list-long">
                     {{ form.dashboards_permitidos }}
                 </div>

@@ -24,7 +24,7 @@ class AuditLogMiddleware:
         usuario = getattr(request, "user", None)
         if not getattr(usuario, "is_authenticated", False):
             return None
-        if usuario.is_superuser or usuario.is_staff:
+        if usuario.is_superuser:
             return None
         if request.path_info.startswith(self.SKIP_PREFIXES):
             return None

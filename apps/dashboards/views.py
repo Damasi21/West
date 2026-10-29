@@ -467,7 +467,7 @@ def _periodo_historico_aprovacao_pagamentos(request, periodo_inicio, periodo_fim
     return inicio, fim
 
 def _filtros_exportacao_aprovacao_pagamentos(request, empresa):
-    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa, "financeiro", "aprovacao-de-pagamentos"))
     empresas_selecionadas = _empresas_inicio_selecionadas(
         request,
         empresa,
@@ -581,7 +581,7 @@ def _resposta_excel_historico_aprovacao_pagamentos(dados):
 
 
 def _filtros_exportacao_faturamento(request, empresa):
-    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa, "comercial", "faturamento"))
     empresas_selecionadas = _empresas_inicio_selecionadas(
         request,
         empresa,
@@ -803,7 +803,7 @@ def _totalizar_faturamento_servicos_linhas(linhas):
 
 
 def _filtros_exportacao_faturamento(request, empresa):
-    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa, "comercial", "faturamento"))
     empresas_selecionadas = _empresas_inicio_selecionadas(
         request,
         empresa,
@@ -1122,7 +1122,7 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
     ):
         raise Http404("Dashboard nao encontrado.")
 
-    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa, area_slug, dashboard_slug))
     chave_dashboard = (
         f"filtros_dashboard:{empresa.pk}:{area_slug}:{dashboard_slug}"
     )
@@ -1710,7 +1710,7 @@ def fluxo_caixa_horizontal(request, empresa_slug):
     ):
         raise Http404("Dashboard nao encontrado.")
 
-    empresas = list(empresas_permitidas_no_grupo(request.user, empresa))
+    empresas = list(empresas_permitidas_no_grupo(request.user, empresa, "financeiro", "fluxo-de-caixa"))
     empresas_selecionadas = _empresas_inicio_selecionadas(
         request,
         empresa,

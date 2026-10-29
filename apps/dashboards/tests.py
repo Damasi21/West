@@ -135,7 +135,7 @@ class DashboardPermissaoTests(TestCase):
         administrador = get_user_model().objects.create_user(
             username="admin_dashboard",
             password="senha-segura",
-            is_staff=True,
+            is_staff=True, is_superuser=True,
         )
         self.client.force_login(administrador)
 
@@ -170,7 +170,7 @@ class DashboardPermissaoTests(TestCase):
         EmpresaUsuario.objects.create(
             empresa=self.empresa,
             usuario=self.usuario,
-            papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+            papel=EmpresaUsuario.Papel.GESTOR,
         )
         self.client.force_login(self.usuario)
 
@@ -207,11 +207,11 @@ class DashboardPermissaoTests(TestCase):
             ),
         )
 
-    def test_gestor_acessa_apenas_modulos_liberados(self):
+    def test_lider_acessa_apenas_modulos_liberados(self):
         EmpresaUsuario.objects.create(
             empresa=self.empresa,
             usuario=self.usuario,
-            papel=EmpresaUsuario.Papel.GESTOR,
+            papel=EmpresaUsuario.Papel.LIDER,
             areas_permitidas=["financeiro"],
         )
         self.client.force_login(self.usuario)

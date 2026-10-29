@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}White Label | {{ app_brand_name }}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/white_label.css' %}?v={{ static_asset_version }}">{% endblock %}
+{% block public_content %}
+<section class="settings-heading"><div class="container py-4 py-lg-5">
+    <nav aria-label="breadcrumb"><ol class="breadcrumb small"><li class="breadcrumb-item"><a href="{% url 'empresas:lista' %}">Painel inicial</a></li><li class="breadcrumb-item active">White Label</li></ol></nav>
+    <div class="wl-heading"><div><span class="eyebrow">CONFIGURAÇÕES</span><h1>White Label</h1><p class="text-secondary mb-0">Organize as marcas e os CNPJs de cada ambiente.</p></div>
+    {% if user.is_superuser %}<a class="btn btn-primary" href="{% url 'empresas:white_label_novo' %}"><i class="bi bi-plus-lg me-2"></i>Cadastrar marca</a>{% endif %}</div>
+</div></section>
+<section class="container pb-5">
+    <form method="get" class="wl-search mb-4" role="search"><label class="visually-hidden" for="wl-busca">Buscar marca, empresa ou CNPJ</label><i class="bi bi-search" aria-hidden="true"></i><input id="wl-busca" class="form-control" type="search" name="q" value="{{ busca }}" placeholder="Buscar marca, empresa ou CNPJ" maxlength="120"><button class="btn btn-white" type="submit">Buscar</button>{% if busca %}<a class="btn btn-white" href="{% url 'empresas:white_label' %}">Limpar</a>{% endif %}</form>
+    <div class="wl-grid">
+    {% for ambiente in ambientes %}<article class="settings-card wl-card">
+        <div class="wl-heading"><span class="wl-mark" aria-hidden="true">{{ ambiente.nome|first|upper }}</span><span class="badge {% if ambiente.ativa %}text-bg-success-subtle text-success-emphasis{% else %}text-bg-secondary-subtle text-secondary-emphasis{% endif %}">{% if ambiente.ativa %}Ativo{% else %}Inativo{% endif %}</span></div>
+        <h2>{{ ambiente.nome }}</h2><p class="text-secondary">{{ ambiente.get_tipo_display }}</p>
+        <dl class="wl-stats"><div><dt>CNPJs vinculados</dt><dd>{{ ambiente.total_cnpjs }}</dd></div><div><dt>Administradores</dt><dd>{{ ambiente.total_administradores }}</dd></div></dl>
+        <a href="{% url 'empresas:white_label_editar' ambiente.slug %}" class="btn btn-outline-primary">Gerenciar ambiente <i class="bi bi-arrow-right ms-2"></i></a>
+    </article>{% empty %}<div class="settings-card wl-empty"><i class="bi bi-palette" aria-hidden="true"></i><h2>{% if busca %}Nenhum ambiente encontrado{% else %}Nenhuma marca cadastrada{% endif %}</h2><p class="text-secondary">{% if busca %}Tente outro nome ou CNPJ.{% else %}Cadastre a primeira marca para organizar seus CNPJs e responsáveis.{% endif %}</p></div>{% endfor %}
+    </div>
+</section>
+{% endblock %}

@@ -87,8 +87,11 @@ def detalhe(request, empresa_slug, caso_id):
     contexto = _contexto(request, empresa_slug, "alertas")
     empresa = contexto["empresa"]
     caso = get_object_or_404(CasoAuditoria.objects.select_related("responsavel", "ultima_execucao"), empresa=empresa, pk=caso_id)
-    usuarios = get_user_model().objects.filter(is_active=True, vinculos_empresas__empresa=empresa, vinculos_empresas__ativo=True).distinct()
-    if request.user.is_staff or request.user.is_superuser:
+    usuarios = get_user_model().objects.filter(is_active=True).filter(
+        Q(vinculos_empresas__empresa=empresa, vinculos_empresas__ativo=True)
+        | Q(ambientes_white_label_administrados__ativa=True, ambientes_white_label_administrados__empresas=empresa)
+    ).distinct()
+    if request.user.is_superuser:
         usuarios = get_user_model().objects.filter(is_active=True).filter(Q(pk__in=usuarios.values("pk")) | Q(pk=request.user.pk))
     form = TratamentoForm(request.POST or None, caso=caso, usuarios=usuarios)
     if request.method == "POST":

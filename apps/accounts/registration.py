@@ -59,7 +59,8 @@ def _vincular_pre_cadastros(usuario):
         _, criado = EmpresaUsuario.objects.get_or_create(
             empresa=convite.empresa, usuario=usuario,
             defaults={"papel": convite.papel, "ativo": True, "areas_permitidas": convite.areas_permitidas,
-                      "dashboards_permitidos": convite.dashboards_permitidos},
+                      "dashboards_permitidos": convite.dashboards_permitidos,
+                      "delegado_por": convite.delegado_por},
         )
         convite.utilizado_por = usuario
         convite.utilizado_em = timezone.now()

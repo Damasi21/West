@@ -41,7 +41,7 @@ class TrialCadastroTests(TestCase):
             EmpresaUsuario.objects.filter(
                 empresa=empresa,
                 usuario=usuario,
-                papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+                papel=EmpresaUsuario.Papel.GESTOR,
                 ativo=True,
             ).exists()
         )
@@ -69,7 +69,7 @@ class TrialCadastroTests(TestCase):
         EmpresaUsuario.objects.create(
             empresa=empresa,
             usuario=usuario,
-            papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+            papel=EmpresaUsuario.Papel.GESTOR,
             ativo=True,
         )
         self.client.force_login(usuario)

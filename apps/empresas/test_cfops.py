@@ -12,7 +12,7 @@ class ClassificacaoCfopTests(TestCase):
     def setUp(self):
         self.empresa = Empresa.objects.create(nome="CFOP", cnpj="00.000.000/0001-81")
         self.outra = Empresa.objects.create(nome="Outra CFOP", cnpj="00.000.000/0001-82")
-        self.admin = get_user_model().objects.create_user(username="admin_cfop", is_staff=True)
+        self.admin = get_user_model().objects.create_user(username="admin_cfop", is_staff=True, is_superuser=True)
         self.client.force_login(self.admin)
         self.url = reverse("dashboards:classificacoes", kwargs={"empresa_slug": self.empresa.slug})
 

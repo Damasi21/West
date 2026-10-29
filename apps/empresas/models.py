@@ -134,11 +134,38 @@ class Empresa(models.Model):
         self.trial_convertido_em = timezone.now()
 
 
+class AmbienteWhiteLabel(models.Model):
+    class Tipo(models.TextChoices):
+        GRUPO = "grupo", "Grupo empresarial"
+        PARCEIRO = "parceiro", "Contabilidade / parceiro"
+
+    nome = models.CharField("Nome da marca", max_length=120)
+    slug = models.SlugField("Identificador", max_length=100, unique=True)
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.GRUPO)
+    contato_nome = models.CharField("Responsável / contato", max_length=150, blank=True)
+    email_suporte = models.EmailField("E-mail de suporte", blank=True)
+    telefone_suporte = models.CharField("Telefone de suporte", max_length=30, blank=True)
+    ativa = models.BooleanField("Ambiente ativo", default=True)
+    empresas = models.ManyToManyField(Empresa, blank=True, related_name="ambientes_white_label")
+    administradores = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name="ambientes_white_label_administrados")
+    criada_em = models.DateTimeField(auto_now_add=True)
+    atualizada_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["nome", "pk"]
+        verbose_name = "ambiente White Label"
+        verbose_name_plural = "ambientes White Label"
+
+    def __str__(self):
+        return self.nome
+
+
 class EmpresaUsuario(models.Model):
     class Papel(models.TextChoices):
-        ADMINISTRADOR = "admin", "Administrador"
+        ADM_WHITE_LABEL = "white_label", "Adm White Label"
         GESTOR = "gestor", "Gestor"
-        VISUALIZADOR = "viewer", "Visualizador"
+        LIDER = "lider", "Líder"
+        VISUALIZADOR = "viewer", "Usuário simples"
 
     empresa = models.ForeignKey(
         Empresa, on_delete=models.CASCADE, related_name="vinculos"
@@ -149,8 +176,9 @@ class EmpresaUsuario(models.Model):
         related_name="vinculos_empresas",
     )
     papel = models.CharField(
-        max_length=10, choices=Papel.choices, default=Papel.VISUALIZADOR
+        max_length=20, choices=Papel.choices, default=Papel.VISUALIZADOR
     )
+    delegado_por = models.ForeignKey("self", null=True, blank=True, on_delete=models.RESTRICT, related_name="acessos_delegados")
     areas_permitidas = models.JSONField(default=list, blank=True)
     dashboards_permitidos = models.JSONField(default=list, blank=True)
     ativo = models.BooleanField(default=True)
@@ -173,7 +201,8 @@ class PreCadastroUsuario(models.Model):
     empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name="pre_cadastros_usuarios")
     email = models.EmailField(max_length=254)
     nome = models.CharField(max_length=150)
-    papel = models.CharField(max_length=10, choices=EmpresaUsuario.Papel.choices, default=EmpresaUsuario.Papel.VISUALIZADOR)
+    papel = models.CharField(max_length=20, choices=EmpresaUsuario.Papel.choices, default=EmpresaUsuario.Papel.VISUALIZADOR)
+    delegado_por = models.ForeignKey(EmpresaUsuario, null=True, blank=True, on_delete=models.RESTRICT, related_name="convites_delegados")
     areas_permitidas = models.JSONField(default=list, blank=True)
     dashboards_permitidos = models.JSONField(default=list, blank=True)
     ativo = models.BooleanField(default=True)

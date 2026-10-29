@@ -143,6 +143,7 @@ class ContasPagarLocaisTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 200)
 
     def test_permissao_dashboard_tambem_obrigatoria(self):
+        self.vinculo.papel = "lider"
         self.vinculo.areas_permitidas = ["compras"]
         self.vinculo.save()
         self.assertEqual(self.client.post(self.url, self.dados()).status_code, 403)

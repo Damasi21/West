@@ -18,7 +18,7 @@
                         </span>
                     {% endif %}
                 {% endif %}
-                {% if user.is_staff or pode_administrar_empresa %}
+                {% if user.is_superuser or pode_administrar_empresa or pode_gerenciar_usuarios or pode_gerenciar_white_label %}
                     <div class="dropdown">
                         <button class="btn settings-menu dropdown-toggle" data-bs-toggle="dropdown">
                             <i class="bi bi-gear"></i>
@@ -26,7 +26,10 @@
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow border-0">
                             <li class="dropdown-header">Gestão</li>
-                            {% if user.is_staff %}
+                            {% if pode_gerenciar_white_label %}
+                                <li><a class="dropdown-item" href="{% url 'empresas:white_label' %}"><i class="bi bi-palette me-2"></i>White Label</a></li>
+                            {% endif %}
+                            {% if user.is_superuser %}
                                 <li>
                                     <a class="dropdown-item" href="{% url 'empresas:configuracoes' %}">
                                         <i class="bi bi-buildings me-2"></i>Empresas
@@ -38,12 +41,14 @@
                                     </a>
                                 </li>
                             {% endif %}
-                            {% if empresa and pode_administrar_empresa %}
+                            {% if empresa and pode_gerenciar_usuarios %}
                                 <li>
                                     <a class="dropdown-item" href="{% url 'dashboards:usuarios' empresa.slug %}">
                                         <i class="bi bi-people me-2"></i>Usuários
                                     </a>
                                 </li>
+                            {% endif %}
+                            {% if empresa and pode_administrar_empresa %}
                                 <li>
                                     <a class="dropdown-item" href="{% url 'dashboards:controle_logs' empresa.slug %}">
                                         <i class="bi bi-clock-history me-2"></i>Controle de log
@@ -59,7 +64,7 @@
                         <span class="d-none d-sm-inline">{{ user.get_full_name|default:user.username }}</span>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-                        {% if user.is_staff %}
+                        {% if user.is_superuser %}
                             <li><a class="dropdown-item" href="{% url 'admin:index' %}"><i class="bi bi-sliders me-2"></i>Administração avançada</a></li>
                         {% endif %}
                         <li><a class="dropdown-item" href="{% url 'empresas:lista' %}"><i class="bi bi-buildings me-2"></i>Empresas</a></li>

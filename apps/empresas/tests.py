@@ -166,7 +166,7 @@ class UsuariosEmpresaTests(TestCase):
         EmpresaUsuario.objects.create(
             empresa=self.empresa,
             usuario=self.admin_cliente,
-            papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+            papel=EmpresaUsuario.Papel.GESTOR,
         )
         EmpresaUsuario.objects.create(
             empresa=self.empresa,
@@ -220,8 +220,10 @@ class UsuariosEmpresaTests(TestCase):
         self.assertEqual(vinculo.dashboards_permitidos, ["financeiro:visao-geral"])
         self.assertFalse(get_user_model().objects.filter(email="ana@empresa.com.br").exists())
 
-    def test_gerente_nao_edita_administrador(self):
+    def test_gestor_nao_edita_adm_white_label(self):
         vinculo_admin = EmpresaUsuario.objects.get(usuario=self.admin_cliente)
+        vinculo_admin.papel = EmpresaUsuario.Papel.ADM_WHITE_LABEL
+        vinculo_admin.save()
         self.client.force_login(self.gerente)
 
         response = self.client.get(
@@ -239,7 +241,7 @@ class ConfiguracoesEmpresasTests(TestCase):
             username="admin_oeste",
             email="admin@oeste.com",
             password="senha-segura",
-            is_staff=True,
+            is_staff=True, is_superuser=True,
         )
         self.cliente = User.objects.create_user(
             username="cliente_comum",
@@ -338,7 +340,7 @@ class ConfiguracoesEmpresasTests(TestCase):
         EmpresaUsuario.objects.create(
             empresa=empresa,
             usuario=self.administrador,
-            papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+            papel=EmpresaUsuario.Papel.GESTOR,
         )
         self.client.force_login(self.administrador)
 
@@ -417,7 +419,7 @@ class ParametrosOmieTests(TestCase):
         self.administrador = get_user_model().objects.create_user(
             username="admin_parametros",
             password="senha-segura",
-            is_staff=True,
+            is_staff=True, is_superuser=True,
         )
         self.cliente = get_user_model().objects.create_user(
             username="cliente_parametros",
@@ -639,7 +641,7 @@ class EstruturaDRETests(TestCase):
         self.administrador = get_user_model().objects.create_user(
             username="admin_dre",
             password="senha-segura",
-            is_staff=True,
+            is_staff=True, is_superuser=True,
         )
         self.cliente = get_user_model().objects.create_user(
             username="cliente_dre",
@@ -1156,7 +1158,7 @@ class CategoriasOmieTests(TestCase):
         self.administrador = get_user_model().objects.create_user(
             username="admin_categorias",
             password="senha-segura",
-            is_staff=True,
+            is_staff=True, is_superuser=True,
         )
         self.cliente = get_user_model().objects.create_user(
             username="cliente_categorias",
@@ -1536,7 +1538,7 @@ class SincronizacaoClientesOmieTests(TestCase):
         self.administrador = get_user_model().objects.create_user(
             username="admin_sync_omie",
             password="senha-segura",
-            is_staff=True,
+            is_staff=True, is_superuser=True,
         )
         self.empresa = Empresa.objects.create(
             nome="Empresa Sync OMIE Ltda",

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{% if ambiente %}{{ ambiente.nome }}{% else %}Cadastrar marca{% endif %} | White Label{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/white_label.css' %}?v={{ static_asset_version }}">{% endblock %}
+{% block public_content %}
+<section class="settings-heading"><div class="container py-4 py-lg-5">
+    <nav aria-label="breadcrumb"><ol class="breadcrumb small"><li class="breadcrumb-item"><a href="{% url 'empresas:white_label' %}">White Label</a></li><li class="breadcrumb-item active">{% if ambiente %}Gerenciar ambiente{% else %}Cadastrar marca{% endif %}</li></ol></nav>
+    <div class="wl-heading"><div><span class="eyebrow">AMBIENTE WHITE LABEL</span><h1>{% if ambiente %}{{ ambiente.nome }}{% else %}Cadastrar marca{% endif %}</h1><p class="text-secondary mb-0">Uma marca pode reunir vários CNPJs, mantendo os dados de cada empresa.</p></div><a href="{% url 'empresas:white_label' %}" class="btn btn-white"><i class="bi bi-arrow-left me-2"></i>Voltar</a></div>
+</div></section>
+<section class="container pb-5">
+    <form method="post" class="company-form-card wl-form" novalidate>
+        {% csrf_token %}
+        {% for error in form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endfor %}
+        <div class="wl-section-heading"><span class="wl-step">1</span><div><h2>Cadastro da marca</h2><p>Identifique o grupo empresarial ou parceiro responsável.</p></div></div>
+        <div class="row g-3">
+        {% for field in form %}{% if field.name != 'empresas' and field.name != 'administradores' and field.name != 'ativa' %}
+            <div class="col-md-6"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span aria-hidden="true">*</span>{% endif %}</label>{{ field }}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+        {% endif %}{% endfor %}
+        {% if form.ativa %}<div class="col-12"><label class="form-check form-switch">{{ form.ativa }}<span class="form-check-label">Ambiente ativo</span></label><div class="form-text">Desativar suspende os acessos concedidos por este ambiente. Vínculos diretos com empresas permanecem válidos.</div></div>{% endif %}
+        </div>
+        {% if form.administradores %}
+        <div class="wl-section-heading"><span class="wl-step">2</span><div><h2>Administradores White Label</h2><p>Os responsáveis selecionados poderão gerenciar este ambiente e todos os CNPJs vinculados.</p></div></div>
+        <div class="wl-choices">{{ form.administradores }}</div>{% for error in form.administradores.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+        {% endif %}
+        <div class="wl-section-heading"><span class="wl-step">{% if form.administradores %}3{% else %}2{% endif %}</span><div><h2>CNPJs do ambiente</h2><p>Selecione empresas já cadastradas. Uma empresa pode participar de mais de uma marca.</p></div></div>
+        {% if ambiente and ambiente.ativa %}<a href="{% url 'empresas:white_label_cnpj_novo' ambiente.slug %}" class="btn btn-white mb-3"><i class="bi bi-building-add me-2"></i>Cadastrar novo CNPJ</a><p class="form-text">Salve as alterações deste formulário antes de cadastrar um novo CNPJ.</p>{% endif %}
+        {% if form.empresas.field.queryset.exists %}<div class="wl-choices">{{ form.empresas }}</div>{% else %}<p class="wl-notice">Nenhuma empresa disponível para vincular.{% if not ambiente %} Salve a marca para cadastrar seu primeiro CNPJ.{% endif %}</p>{% endif %}
+        {% for error in form.empresas.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+        <p class="form-text mt-3">Desmarcar retira somente o vínculo com a marca. Não exclui a empresa, seus usuários ou seus dados. O grupo de consolidação dos dashboards não é alterado.</p>
+        <div class="form-actions"><a href="{% url 'empresas:white_label' %}" class="btn btn-light">Voltar à lista</a><button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-2"></i>Salvar ambiente</button></div>
+    </form>
+    {% if ambiente %}<div class="settings-card wl-linked mt-4"><h2>Empresas vinculadas</h2><div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Empresa</th><th>CNPJ</th><th>Situação</th><th><span class="visually-hidden">Acesso</span></th></tr></thead><tbody>{% for item in empresas_vinculadas %}<tr><td><strong>{{ item.nome_fantasia|default:item.nome }}</strong><small class="d-block text-secondary">{{ item.nome }}</small></td><td class="text-nowrap">{{ item.cnpj }}</td><td>{% if item.ativa %}Ativa{% else %}Inativa{% endif %}</td><td>{% if item.ativa %}<a class="btn btn-sm btn-outline-primary text-nowrap" href="{% url 'dashboards:home' item.slug %}">Abrir BI <i class="bi bi-arrow-up-right"></i></a>{% endif %}</td></tr>{% empty %}<tr><td colspan="4" class="text-secondary py-4">Nenhum CNPJ vinculado a esta marca.</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+</section>
+{% endblock %}

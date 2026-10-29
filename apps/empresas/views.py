@@ -54,6 +54,8 @@ from .services import (
     usuario_admin_empresa,
     usuario_gestor_empresa,
     usuario_pode_gerenciar_vinculo,
+    areas_permitidas_usuario,
+    vinculo_empresa,
 )
 from .tasks import enfileirar_sincronizacao_omie, fila_sincronizacao_omie
 
@@ -155,7 +157,7 @@ def trial_cadastro(request):
             EmpresaUsuario.objects.create(
                 empresa=empresa,
                 usuario=usuario,
-                papel=EmpresaUsuario.Papel.ADMINISTRADOR,
+                papel=EmpresaUsuario.Papel.GESTOR,
                 ativo=True,
             )
 
@@ -203,7 +205,7 @@ def trial_expirado(request, empresa_slug):
 
 
 def _exigir_administrador(request):
-    if not (request.user.is_superuser or request.user.is_staff):
+    if not request.user.is_superuser:
         raise PermissionDenied
 
 
@@ -633,15 +635,15 @@ def usuarios(request, empresa_slug):
         .order_by("usuario__first_name", "usuario__username")
     )
     convites = PreCadastroUsuario.objects.filter(empresa=empresa, utilizado_em__isnull=True)
-    if not (request.user.is_superuser or request.user.is_staff):
-        operador = EmpresaUsuario.objects.filter(
-            empresa=empresa,
-            usuario=request.user,
-            ativo=True,
-        ).first()
-        if operador and operador.papel == EmpresaUsuario.Papel.GESTOR:
-            vinculos = vinculos.exclude(papel=EmpresaUsuario.Papel.ADMINISTRADOR)
-            convites = convites.exclude(papel=EmpresaUsuario.Papel.ADMINISTRADOR)
+    if not request.user.is_superuser:
+        operador = vinculo_empresa(request.user, empresa)
+        if operador and operador.papel == EmpresaUsuario.Papel.LIDER:
+            vinculos = vinculos.filter(papel=EmpresaUsuario.Papel.VISUALIZADOR, delegado_por=operador)
+            convites = convites.filter(papel=EmpresaUsuario.Papel.VISUALIZADOR, delegado_por=operador)
+        elif operador and operador.papel == EmpresaUsuario.Papel.GESTOR:
+            vinculos = vinculos.exclude(papel=EmpresaUsuario.Papel.ADM_WHITE_LABEL)
+            convites = convites.exclude(papel=EmpresaUsuario.Papel.ADM_WHITE_LABEL)
+        vinculos = vinculos.exclude(usuario=request.user).exclude(usuario__is_superuser=True)
 
     vinculo_edicao = None
     convite_edicao = None
@@ -667,6 +669,8 @@ def usuarios(request, empresa_slug):
         if request.method == "POST" and request.POST.get("acao") == "cancelar_pre_cadastro":
             with transaction.atomic():
                 convite = PreCadastroUsuario.objects.select_for_update().get(pk=convite_edicao.pk)
+                if not usuario_pode_gerenciar_vinculo(request.user, empresa, convite):
+                    raise PermissionDenied
                 if not convite.utilizado_em:
                     convite.ativo = False
                     convite.save(update_fields=["ativo"])
@@ -705,7 +709,7 @@ def usuarios(request, empresa_slug):
             "vinculo_edicao": vinculo_edicao,
             "convite_edicao": convite_edicao,
             "convites": convites,
-            "areas": areas,
+            "areas": areas_permitidas_usuario(request.user, empresa, areas),
             "pode_administrar_empresa": usuario_admin_empresa(request.user, empresa),
         },
     )
