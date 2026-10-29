@@ -12,10 +12,13 @@ from django.utils import timezone
 
 from apps.empresas.models import EmpresaUsuario, PreCadastroUsuario
 from .models import ConfirmacaoCadastro
+from apps.empresas.white_label_domains import convites_do_host, email_autorizado_no_host
 
 
 def enviar_codigo_cadastro(email, nome):
     email = email.strip().lower()
+    if not email_autorizado_no_host(email):
+        raise ValidationError("Cadastro indisponível para este e-mail neste ambiente.")
     agora = timezone.now()
     with transaction.atomic():
         registro, _ = ConfirmacaoCadastro.objects.get_or_create(email=email, defaults={"nome": nome})
@@ -52,9 +55,9 @@ def enviar_codigo_cadastro(email, nome):
 
 def _vincular_pre_cadastros(usuario):
     vinculados = 0
-    for convite in PreCadastroUsuario.objects.select_for_update().filter(
+    for convite in convites_do_host(PreCadastroUsuario.objects.select_for_update().filter(
         email__iexact=usuario.email.strip(), ativo=True, utilizado_em__isnull=True, empresa__ativa=True,
-    ).order_by("pk"):
+    )).order_by("pk"):
         # Existing access, including revoked access, is never overwritten by an invitation.
         _, criado = EmpresaUsuario.objects.get_or_create(
             empresa=convite.empresa, usuario=usuario,
@@ -102,9 +105,9 @@ def cadastrar_pelo_sistema(email, nome, senha):
         User = get_user_model()
         if User.objects.filter(email__iexact=email).exists():
             raise ValidationError("Este e-mail ja possui conta. Entre com sua senha atual.")
-        convites = list(PreCadastroUsuario.objects.select_for_update().filter(
+        convites = list(convites_do_host(PreCadastroUsuario.objects.select_for_update().filter(
             email__iexact=email, ativo=True, utilizado_em__isnull=True, empresa__ativa=True,
-        ).order_by("pk"))
+        )).order_by("pk"))
         if not convites:
             raise ValidationError("Cadastro indisponivel para este e-mail. Contate o administrador.")
         from django.contrib.auth.password_validation import validate_password
@@ -124,6 +127,8 @@ def cadastrar_pelo_sistema(email, nome, senha):
 def confirmar_cadastro(registro_id, codigo, senha, usuario_logado=None):
     with transaction.atomic():
         registro = ConfirmacaoCadastro.objects.select_for_update().get(pk=registro_id)
+        if not email_autorizado_no_host(registro.email):
+            return None, "Cadastro indisponível para este e-mail neste ambiente."
         if registro.consumida_em or not registro.expira_em or registro.expira_em <= timezone.now() or registro.tentativas >= 5:
             return None, "Codigo invalido, expirado ou sem tentativas disponiveis. Solicite outro codigo."
         registro.tentativas += 1

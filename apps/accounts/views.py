@@ -24,6 +24,7 @@ from .forms import (
 from .models import PasswordResetCode, ConfirmacaoCadastro
 from .registration import confirmar_cadastro, enviar_codigo_cadastro, vincular_email_verificado
 from .registration import cadastrar_pelo_sistema, vincular_pre_cadastros_sistema
+from apps.empresas.white_label_domains import usuario_no_host, convites_do_host
 
 
 class EntrarView(LoginView):
@@ -49,7 +50,7 @@ class EntrarView(LoginView):
         else:
             vincular_email_verificado(usuario)
         from apps.empresas.models import PreCadastroUsuario
-        if settings.CADASTRO_EXIGIR_CONFIRMACAO_EMAIL and usuario.email and PreCadastroUsuario.objects.filter(email__iexact=usuario.email.strip(), ativo=True, utilizado_em__isnull=True, empresa__ativa=True).exists():
+        if settings.CADASTRO_EXIGIR_CONFIRMACAO_EMAIL and usuario.email and convites_do_host(PreCadastroUsuario.objects.filter(email__iexact=usuario.email.strip(), ativo=True, utilizado_em__isnull=True, empresa__ativa=True)).exists():
             try:
                 registro = enviar_codigo_cadastro(usuario.email, usuario.first_name or usuario.username)
             except ValidationError as erro:
@@ -88,7 +89,7 @@ class SairView(LogoutView):
         from apps.empresas.white_label_branding import SESSION_MARCA
         from apps.empresas.models import AmbienteWhiteLabel
         marca_id = request.session.get(SESSION_MARCA)
-        self.marca_logout = AmbienteWhiteLabel.objects.filter(pk=marca_id, ativa=True).first() if isinstance(marca_id, int) else None
+        self.marca_logout = getattr(request, "white_label_host", None) or (AmbienteWhiteLabel.objects.filter(pk=marca_id, ativa=True).first() if isinstance(marca_id, int) else None)
         if request.user.is_authenticated:
             from apps.empresas.auditoria import registrar_acao
             from apps.empresas.models import AcaoUsuarioLog
@@ -102,6 +103,8 @@ class SairView(LogoutView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_default_redirect_url(self):
+        if getattr(self.request, "white_label_host", None):
+            return reverse("accounts:login")
         if getattr(self, "marca_logout", None):
             return reverse("accounts:login_marca", args=[self.marca_logout.slug])
         return super().get_default_redirect_url()
@@ -182,6 +185,7 @@ def solicitar_redefinicao_senha(request):
             .objects.filter(email__iexact=email, is_active=True)
             .first()
         )
+        usuario = usuario_no_host(usuario)
         if usuario:
             codigo = f"{secrets.randbelow(1000000):06d}"
             PasswordResetCode.objects.create(
@@ -232,6 +236,7 @@ def confirmar_redefinicao_senha(request):
             .objects.filter(email__iexact=email, is_active=True)
             .first()
         )
+        usuario = usuario_no_host(usuario)
         reset_code = None
         if usuario:
             reset_codes = PasswordResetCode.objects.filter(

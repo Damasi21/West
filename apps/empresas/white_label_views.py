@@ -42,7 +42,8 @@ def cadastro(request, slug=None):
                 if ambiente:
                     ambiente = get_object_or_404(ambientes_administraveis(request.user).select_for_update(), pk=ambiente.pk)
                 anterior = None if not ambiente else {
-                        "nome": ambiente.nome, "empresas": list(ambiente.empresas.values_list("pk", flat=True)),
+                        "nome": ambiente.nome, "dominio": ambiente.dominio, "dominio_ativo": ambiente.dominio_ativo,
+                        "empresas": list(ambiente.empresas.values_list("pk", flat=True)),
                         "administradores": list(ambiente.administradores.values_list("pk", flat=True)),
                     }
                 form = AmbienteWhiteLabelForm(request.POST, instance=ambiente, operador=request.user)
@@ -50,7 +51,7 @@ def cadastro(request, slug=None):
                     salvo = form.save()
                     registrar_acao(usuario=request.user, tipo=AcaoUsuarioLog.Tipo.ALTERACAO,
                         descricao=f"Salvou ambiente White Label: {salvo.nome}", request=request,
-                        dados={"ambiente_id": salvo.pk, "anterior": anterior,
+                        dados={"ambiente_id": salvo.pk, "anterior": anterior, "dominio": salvo.dominio, "dominio_ativo": salvo.dominio_ativo,
                             "empresas": list(salvo.empresas.values_list("pk", flat=True)),
                             "administradores": list(salvo.administradores.values_list("pk", flat=True))})
                     messages.success(request, "Ambiente White Label salvo.")
@@ -112,7 +113,7 @@ def identidade(request, slug):
             form.add_error(None, "Não foi possível salvar. Atualize a página e tente novamente.")
     response = render(request, "empresas/white_label_identidade.html", {
         "ambiente": ambiente, "form": form,
-        "login_marca_url": request.build_absolute_uri(reverse("accounts:login_marca", args=[ambiente.slug])),
+        "login_marca_url": (f"https://{ambiente.dominio}" + reverse("accounts:login")) if ambiente.dominio and ambiente.dominio_ativo else request.build_absolute_uri(reverse("accounts:login_marca", args=[ambiente.slug])),
     })
     response["Cache-Control"] = "private, no-store"
     return response

@@ -6,7 +6,7 @@
 <section class="settings-heading"><div class="container py-4 py-lg-5">
     <nav aria-label="breadcrumb"><ol class="breadcrumb small"><li class="breadcrumb-item"><a href="{% url 'empresas:lista' %}">Painel inicial</a></li><li class="breadcrumb-item active">White Label</li></ol></nav>
     <div class="wl-heading"><div><span class="eyebrow">CONFIGURAÇÕES</span><h1>White Label</h1><p class="text-secondary mb-0">Organize as marcas e os CNPJs de cada ambiente.</p></div>
-    {% if user.is_superuser %}<a class="btn btn-primary" href="{% url 'empresas:white_label_novo' %}"><i class="bi bi-plus-lg me-2"></i>Cadastrar marca</a>{% endif %}</div>
+    {% if user.is_superuser and not white_label_dominio_fixo %}<a class="btn btn-primary" href="{% url 'empresas:white_label_novo' %}"><i class="bi bi-plus-lg me-2"></i>Cadastrar marca</a>{% endif %}</div>
 </div></section>
 <section class="container pb-5">
     <form method="get" class="wl-search mb-4" role="search"><label class="visually-hidden" for="wl-busca">Buscar marca, empresa ou CNPJ</label><i class="bi bi-search" aria-hidden="true"></i><input id="wl-busca" class="form-control" type="search" name="q" value="{{ busca }}" placeholder="Buscar marca, empresa ou CNPJ" maxlength="120"><button class="btn btn-white" type="submit">Buscar</button>{% if busca %}<a class="btn btn-white" href="{% url 'empresas:white_label' %}">Limpar</a>{% endif %}</form>

@@ -10,6 +10,7 @@ def brand(request):
     pode_gerenciar = bool(empresa and request.user.is_authenticated and usuario_pode_gerenciar_vinculo(request.user, empresa))
     pode_white_label = request.user.is_authenticated and (request.user.is_superuser or ambientes_administraveis(request.user).exists())
     contexto = {
+        "white_label_dominio_fixo": bool(getattr(request, "white_label_host", None)),
         "pode_gerenciar_usuarios": pode_gerenciar,
         "pode_gerenciar_white_label": pode_white_label,
         "app_brand_name": settings.APP_BRAND_NAME,

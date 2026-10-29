@@ -150,6 +150,8 @@ class AmbienteWhiteLabel(models.Model):
 
     nome = models.CharField("Nome da marca", max_length=120)
     slug = models.SlugField("Identificador", max_length=100, unique=True)
+    dominio = models.CharField("Domínio de acesso", max_length=253, unique=True, null=True, blank=True)
+    dominio_ativo = models.BooleanField("Ativar acesso pelo domínio", default=False)
     tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.GRUPO)
     contato_nome = models.CharField("Responsável / contato", max_length=150, blank=True)
     email_suporte = models.EmailField("E-mail de suporte", blank=True)
@@ -175,6 +177,13 @@ class AmbienteWhiteLabel(models.Model):
 
     def __str__(self):
         return self.nome
+
+    def save(self, *args, **kwargs):
+        from .white_label_domains import normalizar_dominio
+        self.dominio = normalizar_dominio(self.dominio)
+        if self.dominio_ativo and not self.dominio:
+            raise ValidationError({"dominio": "Informe o domínio antes de ativar o acesso."})
+        return super().save(*args, **kwargs)
 
 
 class EmpresaUsuario(models.Model):

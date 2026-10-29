@@ -66,6 +66,11 @@ if not CSRF_TRUSTED_ORIGINS:
     ]
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+WHITE_LABEL_PRIMARY_HOSTS = [
+    host.strip().lower() for host in os.getenv(
+        "WHITE_LABEL_PRIMARY_HOSTS", "app.elevdata.com.br,localhost,127.0.0.1,testserver"
+    ).split(",") if host.strip()
+]
 SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)
 SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", not DEBUG)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)
@@ -139,6 +144,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "apps.empresas.white_label_middleware.WhiteLabelDomainMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",

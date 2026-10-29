@@ -25,6 +25,8 @@ def texto_contraste(cor):
 
 
 def marca_do_request(request):
+    if getattr(request, "white_label_host", None) is not None:
+        return request.white_label_host
     if hasattr(request, "_white_label_marca"):
         return request._white_label_marca
     marca = None

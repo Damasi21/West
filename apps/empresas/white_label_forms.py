@@ -8,6 +8,7 @@ from django.utils.text import slugify
 from .forms import EmpresaForm
 from .models import AmbienteWhiteLabel, Empresa
 from .white_label_services import empresas_vinculaveis
+from .white_label_domains import normalizar_dominio
 
 
 class EmpresaChoiceField(forms.ModelMultipleChoiceField):
@@ -26,7 +27,7 @@ class AmbienteWhiteLabelForm(forms.ModelForm):
 
     class Meta:
         model = AmbienteWhiteLabel
-        fields = ("nome", "tipo", "contato_nome", "email_suporte", "telefone_suporte", "ativa", "empresas", "administradores")
+        fields = ("nome", "tipo", "contato_nome", "email_suporte", "telefone_suporte", "dominio", "dominio_ativo", "ativa", "empresas", "administradores")
         widgets = {
             "nome": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex.: Grupo Horizonte"}),
             "tipo": forms.Select(attrs={"class": "form-select"}),
@@ -34,6 +35,12 @@ class AmbienteWhiteLabelForm(forms.ModelForm):
             "email_suporte": forms.EmailInput(attrs={"class": "form-control"}),
             "telefone_suporte": forms.TextInput(attrs={"class": "form-control"}),
             "ativa": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "dominio": forms.TextInput(attrs={"class": "form-control", "placeholder": "app.revee.elevdata.com.br", "autocapitalize": "none", "spellcheck": "false"}),
+            "dominio_ativo": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+        help_texts = {
+            "dominio": "Somente o endereço, sem https:// ou barras. Exclusivo dos superusuários.",
+            "dominio_ativo": "Ative após configurar DNS, HTTPS e o endereço permitido no servidor. Salvar não publica o domínio automaticamente.",
         }
 
     def __init__(self, *args, operador, **kwargs):
@@ -42,11 +49,16 @@ class AmbienteWhiteLabelForm(forms.ModelForm):
         if operador.is_superuser:
             self.fields["administradores"].queryset = get_user_model().objects.filter(is_active=True).order_by("first_name", "username")
         else:
-            for campo in ("ativa", "administradores"):
+            for campo in ("ativa", "administradores", "dominio", "dominio_ativo"):
                 self.fields.pop(campo)
+
+    def clean_dominio(self):
+        return normalizar_dominio(self.cleaned_data.get("dominio"))
 
     def clean(self):
         dados = super().clean()
+        if dados.get("dominio_ativo") and not dados.get("dominio"):
+            self.add_error("dominio", "Informe o domínio antes de ativar o acesso.")
         if not self.instance.pk and dados.get("nome"):
             base = slugify(dados["nome"])[:90] or "marca"
             identificador = base

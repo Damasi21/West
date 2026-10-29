@@ -29,7 +29,7 @@
                             {% if pode_gerenciar_white_label %}
                                 <li><a class="dropdown-item" href="{% url 'empresas:white_label' %}"><i class="bi bi-palette me-2"></i>White Label</a></li>
                             {% endif %}
-                            {% if user.is_superuser %}
+                            {% if user.is_superuser and not white_label_dominio_fixo %}
                                 <li>
                                     <a class="dropdown-item" href="{% url 'empresas:configuracoes' %}">
                                         <i class="bi bi-buildings me-2"></i>Empresas
@@ -64,7 +64,7 @@
                         <span class="d-none d-sm-inline">{{ user.get_full_name|default:user.username }}</span>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-                        {% if user.is_superuser %}
+                        {% if user.is_superuser and not white_label_dominio_fixo %}
                             <li><a class="dropdown-item" href="{% url 'admin:index' %}"><i class="bi bi-sliders me-2"></i>Administração avançada</a></li>
                         {% endif %}
                         <li><a class="dropdown-item" href="{% url 'empresas:lista' %}"><i class="bi bi-buildings me-2"></i>Empresas</a></li>

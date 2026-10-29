@@ -2,8 +2,8 @@
 
 Entrada: Configuracoes > White Label, no menu principal, inclusive antes de selecionar
 uma empresa. O cadastro organiza ambientes/marcas e CNPJs. Dentro da marca, Layout,
-cores e logos abre o editor de identidade visual. A resolucao pelo dominio ainda nao
-foi implementada: esta rotina nao configura DNS ou certificados.
+cores e logos abre o editor de identidade visual. O dominio de acesso identifica
+a marca automaticamente; DNS e certificados continuam sendo configurados no servidor.
 
 ## Cadastro
 
@@ -57,9 +57,9 @@ com o ambiente, operador e IDs vinculados; o cadastro de CNPJ tambem identifica 
 Sem ambiente ativo ou apos remocao do responsavel/CNPJ, os direitos decorrentes daquele
 ambiente deixam de valer. A desativacao nao suspende direitos diretos independentes.
 
-Quando a resolucao por dominio for implementada, sera necessario limitar tambem a
-sessao, o cadastro, as consultas e os arquivos ao ambiente ativo. Esta etapa nao deve
-ser tratada como isolamento completo por host ou como publicacao de uma nova marca.
+Em um dominio exclusivo ativo, o ambiente do host limita a navegacao, o cadastro,
+as consultas de empresas/consolidacao e os downloads privados. Permissoes por CNPJ
+continuam obrigatorias; conhecer o endereco da marca nao concede acesso.
 
 ## Publicacao
 
@@ -107,6 +107,65 @@ Ao abrir outro CNPJ autorizado fora da marca selecionada, a identidade e reavali
 para nao aplicar o logo de uma marca sobre uma empresa alheia.
 
 O contexto visual e distinto do controle de acesso: permissao por CNPJ continua
-valendo. Para futuros dominios exclusivos, ainda sera necessario implementar o
-isolamento do ambiente pelo host e conferir todas as consultas/arquivos nesse contexto.
+valendo. O link de marca no site principal seleciona uma identidade na sessao;
+ja o dominio exclusivo fixa e restringe o ambiente pelo host validado.
 O site geral ELEVDATA permanece com a identidade padrao quando nenhuma marca e escolhida.
+
+## Dominio de acesso (0058_dominio_white_label)
+
+Em Configuracoes > White Label > Gerenciar ambiente, somente o superusuario edita
+Dominio de acesso e Ativar acesso pelo dominio. Adm White Label ve o endereco em modo
+de leitura; POST forjado nao altera os campos. Um dominio pertence a uma unica marca.
+O endereco e normalizado para minusculas/IDNA, sem ponto final. URLs, portas, caminhos,
+wildcards, IPs e os hosts principais sao rejeitados. Sem dominio, a marca continua
+acessivel pelo link existente. Salvar um dominio nao valida DNS, emite SSL ou publica Nginx.
+
+O middleware usa request.get_host() e ALLOWED_HOSTS, nunca parametros do cliente ou
+X-Forwarded-Host. Hosts exclusivos desconhecidos, inativos ou desativados retornam 404;
+nao caem silenciosamente no login ELEVDATA. O host tem prioridade sobre a sessao e links
+de outras marcas. CNPJs externos sao negados antes das views, inclusive para superusers.
+Consultas centralizadas e consolidacoes ficam restritas aos CNPJs da marca. Convites
+consumidos no cadastro/login sao apenas os do ambiente; recuperacao de senha nao opera
+sobre usuarios externos. Administracao global, Django Admin e trial independente sao
+acessados somente pelo host principal. Administradores de marca nao ganham direitos
+por serem administradores de outra marca, mesmo havendo CNPJ compartilhado.
+
+Escopo em ContextVar e reiniciado ao final de cada request/erro e de cada trecho de
+exportacao streaming. Workers e agendamentos continuam independentes do host, sem
+mudanca de filas, concorrencia, sincronizacao ou base de dados. Cookies de sessao/CSRF
+permanecem host-only (nao usar SESSION_COOKIE_DOMAIN ou CSRF_COOKIE_DOMAIN compartilhados).
+Respostas da aplicacao em dominio de marca sao privadas/no-store. Logos e assets sao
+publicos; anexos financeiros continuam privados e autorizados por CNPJ/usuario.
+
+### Publicar app.revee.elevdata.com.br
+
+1. Backup do BD/configuracoes; publicar codigo e aplicar migrate empresas (0058).
+   Migracao aditiva, sem ativar dominios nas marcas existentes. Coordenar app/worker
+   conforme mudancas do deploy; esta funcionalidade nao exige interromper sincronizacoes.
+2. Confirmar a zona DNS autoritativa: em 29/10/2026 os NS publicos de elevdata.com.br
+   eram hadlee.ns.cloudflare.com e shane.ns.cloudflare.com. O subdominio retornou
+   NXDOMAIN em consultas local, Google DNS e no servidor. Um registro criado apenas na
+   HostGator nao publica a zona mantida na Cloudflare. Criar registro A, nome app.revee,
+   valor 187.127.129.222 na zona ativa; conferir tambem AAAA/CNAME conflitantes.
+3. Adicionar app.revee.elevdata.com.br a ALLOWED_HOSTS e a origem HTTPS a
+   CSRF_TRUSTED_ORIGINS, preservando os hosts/origens atuais. Configurar
+   WHITE_LABEL_PRIMARY_HOSTS apenas com os enderecos gerais da plataforma, nunca com
+   dominios de marcas. Padrao: app.elevdata.com.br,localhost,127.0.0.1,testserver.
+   Reiniciar app para carregar ambiente. Nunca usar ALLOWED_HOSTS=* para contornar isso.
+4. Configurar um virtual host HTTP dedicado com server_name exato e webroot ACME
+   /var/www/certbot. Conferir DNS/porta 80; emitir um certificado proprio com Certbot
+   (certonly --webroot -w /var/www/certbot -d app.revee.elevdata.com.br). O certificado
+   atual de app.elevdata.com.br cobre apenas aquele nome, nao o novo subdominio.
+5. Apos emitir, preparar virtual host HTTPS conforme
+   .docker/nginx.white-label.conf.example. Este e um modelo do Nginx DO HOST; nao subir
+   o proxy Compose, pois as portas 80/443 ja sao usadas pelo Nginx existente. Revisar
+   paths e permissao de leitura; nginx -t antes de systemctl reload nginx.
+6. No cadastro GRUPO REVEE, salvar o dominio exato e habilitar acesso. Testar HTTPS,
+   login/paleta/logo, usuarios, CNPJs, consolidacao, anexos privados e logout. Testar
+   tambem negacao de outra marca/CNPJ e continuidade do endereco principal.
+7. Conferir renovacao automatica do certificado. Em futuras marcas, repetir DNS,
+   certificado, host permitido e vinculo, sem duplicar instalacao/BD/workers.
+
+Nao ha provisionamento automatico de infraestrutura ou chamadas externas ao salvar
+o formulario. Se a publicacao falhar, desativar acesso do dominio pelo site principal;
+o vinculo da marca/CNPJs e seus dados permanecem intactos.

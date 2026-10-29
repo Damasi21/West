@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from apps.empresas.white_label_domains import convites_do_host, email_autorizado_no_host
 
 
 class LoginForm(AuthenticationForm):
@@ -66,7 +67,10 @@ class CadastroForm(forms.Form):
     )
 
     def clean_email(self):
-        return self.cleaned_data["email"].strip().lower()
+        email = self.cleaned_data["email"].strip().lower()
+        if not email_autorizado_no_host(email):
+            raise ValidationError("Cadastro indisponível para este e-mail neste ambiente. Contate o administrador.")
+        return email
 
 
 class CadastroSistemaForm(CadastroForm):
@@ -77,9 +81,9 @@ class CadastroSistemaForm(CadastroForm):
         dados = super().clean()
         email = dados.get("email")
         from apps.empresas.models import PreCadastroUsuario
-        if email and (get_user_model().objects.filter(email__iexact=email).exists() or not PreCadastroUsuario.objects.filter(
+        if email and (get_user_model().objects.filter(email__iexact=email).exists() or not convites_do_host(PreCadastroUsuario.objects.filter(
             email__iexact=email, ativo=True, utilizado_em__isnull=True, empresa__ativa=True,
-        ).exists()):
+        )).exists()):
             self.add_error("email", "Cadastro indisponivel para este e-mail. Se ja possui conta, entre com sua senha atual; caso contrario, contate o administrador.")
         if dados.get("password1"):
             if dados.get("password1") != dados.get("password2"):

@@ -14,9 +14,14 @@
         {% for error in form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endfor %}
         <div class="wl-section-heading"><span class="wl-step">1</span><div><h2>Cadastro da marca</h2><p>Identifique o grupo empresarial ou parceiro responsável.</p></div></div>
         <div class="row g-3">
-        {% for field in form %}{% if field.name != 'empresas' and field.name != 'administradores' and field.name != 'ativa' %}
+        {% for field in form %}{% if field.name != 'empresas' and field.name != 'administradores' and field.name != 'ativa' and field.name != 'dominio' and field.name != 'dominio_ativo' %}
             <div class="col-md-6"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span aria-hidden="true">*</span>{% endif %}</label>{{ field }}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
         {% endif %}{% endfor %}
+        {% if form.dominio %}
+        <div class="col-12"><hr><h3 class="h5">Endereço da marca</h3><p class="text-secondary">Vincule um domínio exclusivo a este ambiente. Esta configuração é exclusiva dos superusuários.</p></div>
+        <div class="col-md-8"><label class="form-label" for="{{ form.dominio.id_for_label }}">{{ form.dominio.label }}</label>{{ form.dominio }}<div class="form-text">{{ form.dominio.help_text }}</div>{% for error in form.dominio.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+        <div class="col-12"><label class="form-check form-switch">{{ form.dominio_ativo }}<span class="form-check-label">{{ form.dominio_ativo.label }}</span></label><div class="form-text">{{ form.dominio_ativo.help_text }}</div>{% for error in form.dominio_ativo.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+        {% elif ambiente.dominio %}<div class="col-12"><hr><h3 class="h5">Endereço da marca</h3><p>{{ ambiente.dominio }} · {% if ambiente.dominio_ativo %}Habilitado no sistema{% else %}Aguardando ativação{% endif %}</p><p class="form-text">Alterações do endereço são feitas pelo superusuário.</p></div>{% endif %}
         {% if form.ativa %}<div class="col-12"><label class="form-check form-switch">{{ form.ativa }}<span class="form-check-label">Ambiente ativo</span></label><div class="form-text">Desativar suspende os acessos concedidos por este ambiente. Vínculos diretos com empresas permanecem válidos.</div></div>{% endif %}
         </div>
         {% if form.administradores %}

@@ -3,19 +3,24 @@ from django.db.models import Q
 
 from .models import Empresa, EmpresaUsuario
 from .white_label_services import administra_empresa_por_ambiente
+from .white_label_domains import limitar_empresas, marca_host_atual
 
 PERFIS_MASTER = {EmpresaUsuario.Papel.ADM_WHITE_LABEL, EmpresaUsuario.Papel.GESTOR}
 
 
 def empresas_permitidas(usuario):
-    queryset = Empresa.objects.filter(ativa=True)
+    queryset = limitar_empresas(Empresa.objects.filter(ativa=True))
     if not usuario.is_authenticated or not usuario.is_active:
         return queryset.none()
     if usuario.is_superuser:
         return queryset
+    administracao_marca = Q(ambientes_white_label__ativa=True, ambientes_white_label__administradores=usuario)
+    marca = marca_host_atual()
+    if marca is not None:
+        administracao_marca &= Q(ambientes_white_label__pk=marca.pk)
     return queryset.filter(
         Q(vinculos__usuario=usuario, vinculos__ativo=True)
-        | Q(ambientes_white_label__ativa=True, ambientes_white_label__administradores=usuario)
+        | administracao_marca
     ).distinct()
 
 
@@ -34,6 +39,9 @@ def obter_empresa_permitida(usuario, slug):
 
 
 def vinculo_empresa(usuario, empresa):
+    marca = marca_host_atual()
+    if marca is not None and not marca.empresas.filter(pk=empresa.pk).exists():
+        return None
     if not usuario.is_authenticated or not usuario.is_active or usuario.is_superuser:
         return None
     if administra_empresa_por_ambiente(usuario, empresa):
