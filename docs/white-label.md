@@ -7,10 +7,13 @@ ambiente pelo dominio serao implementados separadamente.
 
 ## Cadastro
 
-O superusuario cadastra nome da marca, identificador unico, tipo (grupo empresarial
+O superusuario cadastra nome da marca, tipo (grupo empresarial
 ou contabilidade/parceiro), responsavel/contatos de suporte, status e os usuarios
 responsaveis. Pelo menos um administrador ativo e obrigatorio no formulario.
-O identificador e interno: nao representa um dominio validado/publicado.
+O identificador e gerado automaticamente pelo nome, sem campo tecnico no formulario;
+nomes com espacos, maiusculas e acentos sao aceitos. Colisoes recebem um sufixo interno.
+Renomear uma marca preserva seu identificador e os enderecos existentes. Esse codigo
+interno nao representa um dominio validado/publicado.
 
 Os administradores designados recebem o papel efetivo Adm White Label nas empresas
 vinculadas enquanto o ambiente e a conta do usuario estiverem ativos. Nao recebem
@@ -19,7 +22,7 @@ em EmpresaUsuario. Um vinculo direto de menor privilegio nao limita a administra
 concedida explicitamente pelo ambiente. A permissao efetiva e recalculada a cada acesso.
 
 Somente superusuarios criam ambientes, designam os administradores e alteram o
-identificador/status. O administrador do ambiente edita o cadastro da marca e seus
+status. O administrador do ambiente edita o cadastro da marca e seus
 CNPJs. Gestores, Lideres e Usuarios simples nao administram o ambiente da marca.
 Ter o papel White Label em um CNPJ isolado nao permite assumir ambientes existentes;
 o responsavel deve ser designado pelo superusuario.

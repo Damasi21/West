@@ -175,13 +175,41 @@ class AmbienteWhiteLabelTests(TestCase):
             self.assertTrue(response.context["form"].errors)
         self.assertEqual(Empresa.objects.count(), 2)
 
-    def test_campos_invalidos_e_identificador_duplicado(self):
+    def test_campos_invalidos(self):
         self.client.force_login(self.superuser)
-        for extra in (dict(nome=""), dict(administradores=[]), dict(slug="marca-alfa"), dict(slug="Domínio Inválido"), dict(email_suporte="invalido")):
+        for extra in (dict(nome=""), dict(administradores=[]), dict(email_suporte="invalido")):
             response = self.client.post(self.novo, self.dados(**extra))
             self.assertEqual(response.status_code, 200)
             self.assertTrue(response.context["form"].errors)
         self.assertEqual(AmbienteWhiteLabel.objects.count(), 2)
+
+    def test_nome_grupo_revee_sem_campo_tecnico(self):
+        self.client.force_login(self.superuser)
+        response = self.client.get(self.novo)
+        self.assertNotContains(response, 'name="slug"')
+        dados = self.dados(nome="GRUPO REVEE")
+        dados.pop("slug")
+        response = self.client.post(self.novo, dados)
+        self.assertRedirects(response, reverse("empresas:white_label_editar", args=["grupo-revee"]))
+        self.assertEqual(AmbienteWhiteLabel.objects.get(slug="grupo-revee").nome, "GRUPO REVEE")
+
+    def test_identificador_antigo_enviado_e_ignorado_e_nome_aceita_acentos(self):
+        self.client.force_login(self.superuser)
+        self.assertEqual(self.client.post(self.novo, self.dados(nome="São João", slug="GRUPO REVEE")).status_code, 302)
+        self.assertTrue(AmbienteWhiteLabel.objects.filter(nome="São João", slug="sao-joao").exists())
+
+    def test_nomes_repetidos_recebem_identificadores_distintos(self):
+        self.client.force_login(self.superuser)
+        response = self.client.post(self.novo, self.dados(nome="Marca Alfa"))
+        self.assertEqual(response.status_code, 302)
+        marcas = list(AmbienteWhiteLabel.objects.filter(nome="Marca Alfa").values_list("slug", flat=True))
+        self.assertEqual(len(set(marcas)), 2)
+
+    def test_renomear_marca_preserva_endereco_existente(self):
+        self.client.force_login(self.superuser)
+        self.assertRedirects(self.client.post(self.editar, self.dados(nome="Outra descrição", slug="outro-endereco")), self.editar)
+        self.ambiente.refresh_from_db()
+        self.assertEqual(self.ambiente.slug, "marca-alfa")
 
     def test_busca_e_contagem_sem_duplicidade(self):
         self.ambiente.administradores.add(self.superuser)

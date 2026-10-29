@@ -1,4 +1,5 @@
 import re
+import uuid
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -25,10 +26,9 @@ class AmbienteWhiteLabelForm(forms.ModelForm):
 
     class Meta:
         model = AmbienteWhiteLabel
-        fields = ("nome", "slug", "tipo", "contato_nome", "email_suporte", "telefone_suporte", "ativa", "empresas", "administradores")
+        fields = ("nome", "tipo", "contato_nome", "email_suporte", "telefone_suporte", "ativa", "empresas", "administradores")
         widgets = {
             "nome": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex.: Grupo Horizonte"}),
-            "slug": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex.: grupo-horizonte"}),
             "tipo": forms.Select(attrs={"class": "form-select"}),
             "contato_nome": forms.TextInput(attrs={"class": "form-control"}),
             "email_suporte": forms.EmailInput(attrs={"class": "form-control"}),
@@ -39,18 +39,21 @@ class AmbienteWhiteLabelForm(forms.ModelForm):
     def __init__(self, *args, operador, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["empresas"].queryset = empresas_vinculaveis(operador).order_by("nome_fantasia", "pk")
-        self.fields["slug"].help_text = "Identificador interno. O domínio e o subdomínio serão configurados em outra etapa."
         if operador.is_superuser:
             self.fields["administradores"].queryset = get_user_model().objects.filter(is_active=True).order_by("first_name", "username")
         else:
-            for campo in ("slug", "ativa", "administradores"):
+            for campo in ("ativa", "administradores"):
                 self.fields.pop(campo)
 
-    def clean_slug(self):
-        valor = self.cleaned_data["slug"].strip()
-        if valor != slugify(valor):
-            raise forms.ValidationError("Use apenas letras minúsculas, números e hífens.")
-        return valor
+    def clean(self):
+        dados = super().clean()
+        if not self.instance.pk and dados.get("nome"):
+            base = slugify(dados["nome"])[:90] or "marca"
+            identificador = base
+            while AmbienteWhiteLabel.objects.filter(slug=identificador).exists():
+                identificador = f"{base}-{uuid.uuid4().hex[:8]}"
+            self.instance.slug = identificador
+        return dados
 
 
 class EmpresaWhiteLabelForm(EmpresaForm):

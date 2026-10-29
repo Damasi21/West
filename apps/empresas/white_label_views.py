@@ -53,7 +53,7 @@ def cadastro(request, slug=None):
                     messages.success(request, "Ambiente White Label salvo.")
                     return redirect("empresas:white_label_editar", slug=salvo.slug)
         except IntegrityError:
-            form.add_error(None, "Não foi possível salvar. Confira o identificador e atualize a página.")
+            form.add_error(None, "Não foi possível salvar. Atualize a página e tente novamente.")
     empresas = ambiente.empresas.order_by("nome_fantasia", "pk") if ambiente else []
     return render(request, "empresas/white_label_form.html", {"form": form, "ambiente": ambiente, "empresas_vinculadas": empresas})
 
