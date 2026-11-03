@@ -55,37 +55,7 @@
         </div>
     </div>
 
-    <div class="data-source-grid" data-source-tabs>
-        <button class="data-source-card is-active" type="button" data-source-target="omie">
-            <span class="data-source-logo">
-                <img src="/media/omie_icone.png" alt="Omie">
-            </span>
-            <span>
-                <strong>Omie</strong>
-                <small>API financeira e cadastros</small>
-            </span>
-        </button>
-        <button class="data-source-card" type="button" data-source-target="conta-azul">
-            <span class="data-source-logo">
-                <img src="/media/contaazul_icone.jpg" alt="Conta Azul">
-            </span>
-            <span>
-                <strong>Conta Azul</strong>
-                <small>Credenciais da API</small>
-            </span>
-        </button>
-        <button class="data-source-card" type="button" data-source-target="excel">
-            <span class="data-source-logo">
-                <img src="/media/excel_icone.png" alt="Excel">
-            </span>
-            <span>
-                <strong>Excel</strong>
-                <small>Importacao por planilha</small>
-            </span>
-        </button>
-    </div>
-
-    <article class="omie-settings-card data-source-panel is-active" id="integracao-omie" data-source-panel="omie">
+    <article class="omie-settings-card" id="integracao-omie">
             <div class="omie-settings-header">
                 <div class="data-source-logo is-large">
                     <img src="/media/omie_icone.png" alt="Omie">
@@ -153,66 +123,6 @@
             </form>
     </article>
 
-    <article class="omie-settings-card data-source-panel" data-source-panel="conta-azul">
-        <div class="omie-settings-header">
-            <div class="data-source-logo is-large">
-                <img src="/media/contaazul_icone.jpg" alt="Conta Azul">
-            </div>
-            <div>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <h2>Integracao Conta Azul</h2>
-                    <span class="integration-status">Planejada</span>
-                </div>
-                <p class="mb-0">Campos reservados para a futura integracao da {{ empresa.nome_fantasia }}.</p>
-            </div>
-        </div>
-
-        <div class="row g-4">
-            <div class="col-md-6">
-                <label class="form-label" for="conta-azul-app-key">App Key</label>
-                <input class="form-control" id="conta-azul-app-key" type="text" placeholder="Disponivel em breve" disabled>
-            </div>
-            <div class="col-md-6">
-                <label class="form-label" for="conta-azul-app-secret">App Secret</label>
-                <input class="form-control" id="conta-azul-app-secret" type="password" placeholder="Disponivel em breve" disabled>
-            </div>
-        </div>
-
-        <div class="form-actions">
-            <button class="btn btn-outline-secondary" type="button" disabled>
-                <i class="bi bi-plug me-2"></i>Testar conexao
-            </button>
-            <button class="btn btn-primary" type="button" disabled>
-                <i class="bi bi-shield-check me-2"></i>Salvar credenciais
-            </button>
-        </div>
-    </article>
-
-    <article class="omie-settings-card data-source-panel" data-source-panel="excel">
-        <div class="omie-settings-header">
-            <div class="data-source-logo is-large">
-                <img src="/media/excel_icone.png" alt="Excel">
-            </div>
-            <div>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <h2>Importacao Excel</h2>
-                    <span class="integration-status">Planejada</span>
-                </div>
-                <p class="mb-0">Importacao de planilhas para alimentar a base local.</p>
-            </div>
-        </div>
-
-        <div class="excel-import-placeholder">
-            <i class="bi bi-file-earmark-spreadsheet"></i>
-            <div>
-                <strong>Importacao por planilha</strong>
-                <span>A dinamica de layout, validacao e processamento sera definida na proxima etapa.</span>
-            </div>
-            <button class="btn btn-outline-secondary" type="button" disabled>
-                Selecionar planilha
-            </button>
-        </div>
-    </article>
 
 </div>
 {% endblock %}
@@ -226,21 +136,5 @@
         this.querySelector("i").className = showing ? "bi bi-eye" : "bi bi-eye-slash";
     });
 
-    document.querySelectorAll("[data-source-tabs]").forEach((tabs) => {
-        const cards = [...tabs.querySelectorAll("[data-source-target]")];
-        const panels = [...document.querySelectorAll("[data-source-panel]")];
-
-        cards.forEach((card) => {
-            card.addEventListener("click", () => {
-                const target = card.dataset.sourceTarget;
-                cards.forEach((item) => {
-                    item.classList.toggle("is-active", item === card);
-                });
-                panels.forEach((panel) => {
-                    panel.classList.toggle("is-active", panel.dataset.sourcePanel === target);
-                });
-            });
-        });
-    });
 </script>
 {% endblock %}

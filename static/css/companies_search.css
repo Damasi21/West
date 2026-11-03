@@ -1,0 +1,24 @@
+.companies-search {
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: white;
+}
+.companies-search-controls { display: flex; gap: .75rem; align-items: center; }
+.companies-search-input { position: relative; flex: 1; min-width: 0; }
+.companies-search-input > i {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+}
+.companies-search-input .form-control { padding-left: 2.75rem; min-height: 46px; }
+.companies-search-controls > button { flex-shrink: 0; min-height: 46px; }
+[data-companies-search][hidden], [data-company-item][hidden],
+[data-company-empty][hidden], [data-company-clear][hidden] { display: none !important; }
+@media (max-width: 575.98px) {
+    .companies-search-controls { align-items: stretch; flex-direction: column; }
+    .companies-search { padding: 1rem; }
+}
