@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}Empresas | {{ app_brand_name }}{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/companies_search.css' %}?v={{ static_asset_version }}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/companies_search.css' %}?v={{ static_asset_version }}-compacta-1">{% endblock %}
 
 {% block public_content %}
 <section class="companies-hero">
@@ -26,10 +26,9 @@
 <section class="container companies-section">
     {% if empresas %}
         <div class="companies-search mb-4" role="search" data-companies-search hidden>
-            <label for="company-search" class="form-label fw-semibold">Pesquisar empresa</label>
+            <label for="company-search" class="visually-hidden">Pesquisar empresa por nome, razão social ou CNPJ</label>
             <div class="companies-search-controls">
-                <div class="companies-search-input"><i class="bi bi-search" aria-hidden="true"></i><input id="company-search" type="search" class="form-control" placeholder="Digite o nome, a razão social ou o CNPJ" maxlength="120" autocomplete="off" aria-controls="companies-grid" data-company-query></div>
-                <button type="button" class="btn btn-outline-primary" data-company-clear hidden>Limpar busca</button>
+                <div class="companies-search-input"><i class="bi bi-search" aria-hidden="true"></i><input id="company-search" type="search" class="form-control" placeholder="Buscar empresa..." title="Busque por nome, razão social ou CNPJ" maxlength="120" autocomplete="off" aria-controls="companies-grid" data-company-query><button type="button" class="companies-search-clear" data-company-clear aria-label="Limpar busca" title="Limpar busca" hidden><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
             </div>
             <p class="small text-secondary mt-2 mb-0" role="status" aria-live="polite" aria-atomic="true" data-company-results></p>
         </div>
@@ -72,4 +71,4 @@
     {% endif %}
 </section>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'js/companies_search.js' %}?v={{ static_asset_version }}" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/companies_search.js' %}?v={{ static_asset_version }}-compacta-1" defer></script>{% endblock %}

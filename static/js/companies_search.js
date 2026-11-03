@@ -24,6 +24,7 @@
         });
         empty.hidden = count !== 0;
         search.querySelector('[data-company-clear]').hidden = !input.value;
+        results.classList.toggle('visually-hidden', !query);
         results.textContent = query
             ? `${count} empresa${count === 1 ? '' : 's'} encontrada${count === 1 ? '' : 's'} de ${companies.length} disponíve${companies.length === 1 ? 'l' : 'is'}.`
             : `${companies.length} empresa${companies.length === 1 ? '' : 's'} disponíve${companies.length === 1 ? 'l' : 'is'}.`;
