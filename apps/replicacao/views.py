@@ -1,0 +1,230 @@
+from datetime import timedelta
+from functools import wraps
+
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.paginator import Paginator
+from django.db import transaction
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
+
+from apps.empresas.models import AmbienteWhiteLabel, Empresa
+from apps.empresas.white_label_branding import SESSION_MARCA
+from apps.empresas.white_label_domains import _marca_host, marca_host_atual
+from .forms import PlanoForm
+from .models import PlanoReplicacao, ComparacaoReplicacao, ItemReplicacao, DestinoReplicacao
+from .permissions import empresas_gerenciaveis, planos_permitidos, conferir_acesso
+from .services import solicitar_comparacao, publicar, aprovar, resolver_item, candidatos_item, auditar
+
+
+def ambiente_view(view):
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        marca = marca_host_atual()
+        if marca is None:
+            marca_id = request.session.get(SESSION_MARCA)
+            if isinstance(marca_id, int):
+                marca = AmbienteWhiteLabel.objects.filter(pk=marca_id, ativa=True).first()
+        token = _marca_host.set(marca)
+        try:
+            if empresas_gerenciaveis(request.user).count() < 2:
+                raise PermissionDenied("É necessário administrar a matriz e ao menos uma empresa destino.")
+            response = view(request, *args, **kwargs)
+            response["Cache-Control"] = "private, no-store"
+            return response
+        finally:
+            _marca_host.reset(token)
+    return login_required(wrapped)
+
+
+def plano_request(request, plano_id):
+    return get_object_or_404(planos_permitidos(request.user).select_related("matriz", "marca"), pk=plano_id)
+
+
+def informar_erro(request, erro):
+    messages.error(request, " ".join(erro.messages) if hasattr(erro, "messages") else "Operação não autorizada.")
+
+
+def voltar_comparacao(plano, comparacao_id):
+    return redirect(reverse("replicacao:detalhe", args=[plano.pk])+f"?comparacao={comparacao_id}")
+
+
+@ambiente_view
+@require_GET
+def lista(request):
+    planos = planos_permitidos(request.user).select_related("matriz").prefetch_related("destinos__empresa")
+    return render(request, "replicacao/lista.html", {"planos": planos})
+
+
+@ambiente_view
+@require_http_methods(["GET", "POST"])
+def novo(request):
+    form = PlanoForm(request.POST or None, usuario=request.user)
+    if request.method == "POST" and form.is_valid():
+        try:
+            plano = form.salvar()
+            auditar(plano, request.user, "Criou plano de replicação", destinos=list(plano.destinos.values_list("empresa_id", flat=True)))
+            messages.success(request, "Configuração salva. Compare os cadastros antes de escolher o que replicar.")
+            return redirect("replicacao:detalhe", plano_id=plano.pk)
+        except (ValidationError, PermissionDenied) as erro:
+            form.add_error(None, erro)
+    return render(request, "replicacao/novo.html", {"form": form})
+
+
+@ambiente_view
+@require_GET
+def detalhe(request, plano_id):
+    plano = plano_request(request, plano_id)
+    comparacoes = plano.comparacoes.select_related("solicitado_por")
+    comparacao_id = request.GET.get("comparacao")
+    comparacao = get_object_or_404(comparacoes, pk=comparacao_id) if comparacao_id and comparacao_id.isascii() and comparacao_id.isdigit() else comparacoes.first()
+    itens = comparacao.itens.select_related("origem", "categoria", "destino__empresa") if comparacao else ItemReplicacao.objects.none()
+    resumo = {"criar": 0, "alterar": 0, "igual": 0, "ambiguo": 0, "bloqueado": 0}
+    if comparacao:
+        from django.db.models import Count
+        resumo.update({linha["situacao"]: linha["total"] for linha in itens.values("situacao").annotate(total=Count("pk"))})
+    situacao = request.GET.get("situacao", "")
+    if situacao in resumo:
+        itens = itens.filter(situacao=situacao)
+    busca = request.GET.get("q", "").strip()[:120]
+    if busca:
+        itens = itens.filter(caminho__icontains=busca)
+    pagina = Paginator(itens, 100).get_page(request.GET.get("page"))
+    for item in pagina:
+        item.pode_selecionar = item.status == "pendente" and item.situacao not in {"ambiguo", "bloqueado"} and comparacao.status in {"pronta", "concluida"} and plano.ativo
+        item.pode_resolver = item.status == "pendente" and item.situacao != "bloqueado" and comparacao.status in {"pronta", "concluida"} and plano.ativo
+        item.pode_verificar = plano.ativo and (item.status == "incerto" or (item.status == "executando" and item.atualizado_em < timezone.now()-timedelta(minutes=30)))
+    return render(request, "replicacao/detalhe.html", {
+        "plano": plano, "comparacao": comparacao, "comparacoes": comparacoes[:20], "pagina": pagina,
+        "resumo": resumo, "situacao": situacao, "busca": busca,
+        "situacoes": ItemReplicacao.Situacao.choices,
+        "em_processamento": comparacao and comparacao.status in {"fila", "comparando", "enviando"},
+        "pode_enviar": comparacao and comparacao.status in {"pronta", "concluida"} and plano.ativo,
+    })
+
+
+@ambiente_view
+@require_POST
+def comparar(request, plano_id):
+    plano = plano_request(request, plano_id)
+    try:
+        comparacao = solicitar_comparacao(plano, request.user)
+        transaction.on_commit(lambda: publicar(comparacao))
+    except (ValidationError, PermissionDenied) as erro:
+        informar_erro(request, erro)
+    return redirect("replicacao:detalhe", plano_id=plano.pk)
+
+
+@ambiente_view
+@require_POST
+def enviar(request, plano_id, comparacao_id):
+    plano = plano_request(request, plano_id)
+    comparacao = get_object_or_404(plano.comparacoes, pk=comparacao_id)
+    if request.POST.get("confirmar") != "sim":
+        messages.error(request, "Confirme que os itens selecionados serão aplicados na OMIE das empresas destino.")
+    else:
+        try:
+            valores = request.POST.getlist("itens")
+            if any(not i.isascii() or not i.isdigit() for i in valores):
+                raise ValidationError("Seleção inválida.")
+            comparacao = aprovar(comparacao, request.user, [int(i) for i in valores])
+            transaction.on_commit(lambda: publicar(comparacao, envio=True))
+            messages.success(request, "Itens selecionados enviados para a fila de replicação.")
+        except (ValidationError, PermissionDenied) as erro:
+            informar_erro(request, erro)
+    return voltar_comparacao(plano, comparacao.pk)
+
+
+@ambiente_view
+@require_http_methods(["GET", "POST"])
+def resolver(request, plano_id, item_id):
+    plano = plano_request(request, plano_id)
+    item = get_object_or_404(ItemReplicacao, pk=item_id, comparacao__plano=plano)
+    if not plano.ativo or item.status != "pendente" or item.situacao == "bloqueado" or item.comparacao.status not in {"pronta", "concluida"}:
+        raise PermissionDenied
+    if request.method == "GET":
+        return render(request, "replicacao/resolver.html", {"plano": plano, "item": item, "candidatos": candidatos_item(item)})
+    valor = request.POST.get("categoria", "")
+    try:
+        if valor != "nova" and (not valor.isascii() or not valor.isdigit()):
+            raise ValidationError("Selecione o cadastro correspondente ou escolha criar um novo.")
+        resolver_item(item, request.user, categoria_id=int(valor) if valor != "nova" else None, criar=valor == "nova")
+        messages.success(request, "Correspondência definida. Revise e selecione o item para replicar.")
+    except (ValidationError, PermissionDenied) as erro:
+        informar_erro(request, erro)
+    return voltar_comparacao(plano, item.comparacao_id)
+
+
+@ambiente_view
+@require_POST
+def verificar(request, plano_id, item_id):
+    from .tasks import verificar_categoria
+    plano = plano_request(request, plano_id)
+    item = get_object_or_404(ItemReplicacao, pk=item_id, comparacao__plano=plano)
+    try:
+        conferir_acesso(plano, request.user)
+        if item.status != "incerto" and not (item.status == "executando" and item.atualizado_em < timezone.now()-timedelta(minutes=30)):
+            raise ValidationError("O envio ainda não está disponível para verificação.")
+        codigo = request.POST.get("codigo", "").strip()
+        if len(codigo) > 20 or (codigo and any(c not in "0123456789." for c in codigo)):
+            raise ValidationError("Informe somente o código da categoria na OMIE destino.")
+        conhecido = item.codigo_confirmado or (item.categoria.codigo if item.categoria_id else "")
+        if conhecido and codigo and conhecido != codigo:
+            raise ValidationError("O código informado difere do código original deste envio.")
+        if not conhecido and not codigo:
+            raise ValidationError("Consulte o cadastro na OMIE e informe seu código para verificar a inclusão.")
+        verificar_categoria.apply_async(args=[item.pk, request.user.pk, codigo], queue="omie_replicacao", retry=False)
+        messages.success(request, "Verificação solicitada. Esta ação consulta a OMIE e não repete inclusões ou alterações.")
+    except (ValidationError, PermissionDenied) as erro:
+        informar_erro(request, erro)
+    except Exception:
+        messages.error(request, "Não foi possível conectar ao worker. Tente verificar novamente.")
+    return voltar_comparacao(plano, item.comparacao_id)
+
+
+@ambiente_view
+@require_POST
+def atualizar_situacao(request, plano_id, comparacao_id):
+    plano = plano_request(request, plano_id)
+    with transaction.atomic():
+        comparacao = get_object_or_404(plano.comparacoes.select_for_update(), pk=comparacao_id)
+        if comparacao.status == "fila" or (comparacao.status == "enviando" and comparacao.iniciada_em is None):
+            transaction.on_commit(lambda: publicar(comparacao, envio=comparacao.status == "enviando"))
+            messages.success(request, "Solicitação reenfileirada. O controle de processamento impede envios duplicados.")
+        elif comparacao.status in {"comparando", "enviando"} and comparacao.atualizada_em < timezone.now()-timedelta(minutes=30):
+            comparacao.itens.filter(status="executando").update(status="incerto", mensagem="Processamento sem conclusão. Verifique o resultado na OMIE; não será reenviado.")
+            comparacao.itens.filter(status="fila").update(status="erro", mensagem="Não processado. Gere uma nova comparação.")
+            comparacao.status = "erro" if comparacao.status == "comparando" else "concluida"
+            comparacao.mensagem = "Espera encerrada. Revise os resultados sem confirmação antes de uma nova comparação."
+            comparacao.save()
+        else:
+            messages.info(request, "O processamento ainda está no prazo de execução. Atualize a página para acompanhar.")
+    return redirect("replicacao:detalhe", plano_id=plano.pk)
+
+
+@ambiente_view
+@require_POST
+def alternar(request, plano_id):
+    plano = plano_request(request, plano_id)
+    try:
+        with transaction.atomic():
+            list(Empresa.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
+            plano = PlanoReplicacao.objects.select_for_update().get(pk=plano.pk)
+            if plano.comparacoes.filter(status__in=["comparando", "enviando"]).exists():
+                raise ValidationError("Aguarde a conclusão do processamento antes de pausar este plano.")
+            if plano.ativo and ItemReplicacao.objects.filter(comparacao__plano=plano, status__in=["incerto", "executando"]).exists():
+                raise ValidationError("Verifique os envios sem confirmação antes de pausar ou substituir este fluxo.")
+            plano.ativo = not plano.ativo
+            plano.save()
+            if plano.ativo:
+                conferir_acesso(plano, request.user)
+                ids = list(plano.destinos.values_list("empresa_id", flat=True))
+                if DestinoReplicacao.objects.filter(plano__ativo=True, empresa_id__in=[plano.matriz_id, *ids]).exclude(plano=plano).exists() or PlanoReplicacao.objects.filter(ativo=True, matriz_id__in=ids).exclude(pk=plano.pk).exists():
+                    raise ValidationError("Há outro fluxo ativo usando estas empresas. Não é possível reativar este plano.")
+            auditar(plano, request.user, "Alterou situação do plano de replicação", ativo=plano.ativo)
+    except (ValidationError, PermissionDenied) as erro:
+        informar_erro(request, erro)
+    return redirect("replicacao:detalhe", plano_id=plano.pk)

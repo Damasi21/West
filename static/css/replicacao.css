@@ -1,0 +1,38 @@
+.rep-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.rep-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.rep-destinos { padding-left: 1.2rem; }
+.rep-destinos li { margin-bottom: .4rem; }
+.rep-notice { background: var(--blue-light, #eef5ff); border: 1px solid var(--border); padding: 1.25rem; border-radius: 14px; }
+.rep-badge { display: inline-block; padding: .35rem .65rem; border-radius: 20px; font-size: .75rem; font-weight: 600; background: #edf2f8; color: #24364d; }
+.rep-criar { background: #e9f3ff; color: #184f99; }
+.rep-igual { background: #e5f4ef; color: #146550; }
+.rep-alterar, .rep-ambiguo { background: #fff3d5; color: #785000; }
+.rep-bloqueado { background: #fceaea; color: #942b2b; }
+.rep-empresas { max-height: 380px; overflow-y: auto; padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
+.rep-empresas label { display: flex; align-items: center; gap: .7rem; padding: .6rem; }
+.rep-chips { display: flex; gap: .5rem; flex-wrap: wrap; }
+.rep-chips span { padding: .4rem .75rem; border-radius: 8px; background: #f2f6fa; font-size: .8rem; }
+.rep-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .8rem; }
+.rep-summary > div { padding: 1.2rem; border-radius: 14px; background: white; border: 1px solid var(--border); }
+.rep-summary strong { display: block; font-size: 1.6rem; }
+.rep-summary span { font-size: .78rem; color: var(--muted); }
+.rep-filters { display: flex; gap: .75rem; }
+.rep-filters .form-control { max-width: 400px; }
+.rep-filters .form-select { max-width: 260px; }
+.rep-table { min-width: 1020px; }
+.rep-table th { white-space: nowrap; }
+.rep-table td:nth-child(2) { min-width: 220px; }
+.rep-table td:nth-child(5) { min-width: 240px; }
+.rep-table td:last-child { min-width: 150px; }
+.rep-message { margin-top: .4rem; max-width: 360px; }
+.rep-verificar { min-width: 180px; }
+.rep-history { list-style: none; padding-left: 0; }
+.rep-history li { padding: .75rem 0; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; }
+.rep-history li:last-child { border-bottom: 0; }
+@media (max-width: 767.98px) {
+    .rep-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rep-summary > div { padding: 1rem; }
+    .rep-filters { flex-direction: column; }
+    .rep-filters .form-control, .rep-filters .form-select { max-width: none; }
+    .rep-toolbar .rep-actions { width: 100%; }
+}

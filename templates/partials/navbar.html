@@ -18,7 +18,7 @@
                         </span>
                     {% endif %}
                 {% endif %}
-                {% if user.is_superuser or pode_administrar_empresa or pode_gerenciar_usuarios or pode_gerenciar_white_label %}
+                {% if user.is_superuser or pode_administrar_empresa or pode_gerenciar_usuarios or pode_gerenciar_white_label or pode_replicar_dados %}
                     <div class="dropdown">
                         <button class="btn settings-menu dropdown-toggle" data-bs-toggle="dropdown">
                             <i class="bi bi-gear"></i>
@@ -26,6 +26,7 @@
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow border-0">
                             <li class="dropdown-header">Gestão</li>
+                            {% if pode_replicar_dados %}<li><a class="dropdown-item" href="{% url 'replicacao:lista' %}"><i class="bi bi-diagram-3 me-2"></i>Replicar dados</a></li>{% endif %}
                             {% if pode_gerenciar_white_label %}
                                 <li><a class="dropdown-item" href="{% url 'empresas:white_label' %}"><i class="bi bi-palette me-2"></i>White Label</a></li>
                             {% endif %}

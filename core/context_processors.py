@@ -30,6 +30,8 @@ def brand(request):
         "app_brand_footer_subtitle": settings.APP_BRAND_FOOTER_SUBTITLE,
         "static_asset_version": settings.STATIC_ASSET_VERSION,
     }
+    from apps.replicacao.permissions import empresas_gerenciaveis
+    contexto["pode_replicar_dados"] = request.user.is_authenticated and empresas_gerenciaveis(request.user).count() >= 2
     from apps.empresas.white_label_branding import marca_do_request, contexto_identidade
     marca = marca_do_request(request)
     if marca and (marca.identidade_personalizada or getattr(request, "_white_label_forcar_tema", False) or request.session.get("white_label_ambiente") == marca.pk):

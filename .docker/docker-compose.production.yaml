@@ -285,6 +285,34 @@ services:
       - app_network
     logging: *default-logging
 
+  replicacao_worker:
+    image: ${APP_IMAGE_NAME:-west}:${APP_VERSION:-production}
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings
+      RUN_DJANGO_SETUP: "False"
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY}
+      OMIE_CREDENTIALS_ENCRYPTION_KEY: ${OMIE_CREDENTIALS_ENCRYPTION_KEY}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["celery", "-A", "core", "worker", "-Q", "omie_replicacao", "--concurrency", "1", "--loglevel", "INFO", "--hostname", "omie-replicacao@%h"]
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_network
+    logging: *default-logging
+
   postgres:
     image: postgres:16-alpine
     environment:

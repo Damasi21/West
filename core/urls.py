@@ -17,6 +17,7 @@ urlpatterns = [
     path("healthz", healthz),
     path("admin/", admin.site.urls),
     path("conta/", include("apps.accounts.urls")),
+    path("configuracoes/replicar-dados/", include("apps.replicacao.urls")),
     path("", include("apps.empresas.urls")),
     path("empresas/<slug:empresa_slug>/dashboard/auditor/", include("apps.auditor.urls")),
     path("empresas/<slug:empresa_slug>/dashboard/", include("apps.dashboards.urls")),
