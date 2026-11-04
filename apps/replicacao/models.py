@@ -91,7 +91,7 @@ class ItemReplicacao(models.Model):
     matriz_dados = models.JSONField(default=dict)
     destino_dados = models.JSONField(default=dict)
     candidatos = models.JSONField(default=list)
-    revisao_inclusao = models.JSONField(default=dict)
+    revisao_inclusao = models.JSONField(default=dict, db_default={})
     mensagem = models.TextField(blank=True)
     metodo = models.CharField(max_length=30, blank=True)
     parametros = models.JSONField(default=dict)

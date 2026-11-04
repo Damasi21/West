@@ -196,6 +196,15 @@ class ReplicacaoTests(TestCase):
         self.assertFalse(VinculoCategoria.objects.exists())
         self.assertEqual(self.api.escritas,[])
 
+    def test_modelo_anterior_pode_criar_item_durante_transicao_de_versao(self):
+        from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
+        comp=self.comparar()
+        origem=CategoriaOmie.objects.create(empresa=self.matriz,codigo='2.01.99',descricao='Cadastro anterior')
+        historico=MigrationLoader(connection).project_state([('replicacao','0002_comparacaoreplicacao_aplicativos')]).apps.get_model('replicacao','ItemReplicacao')
+        antigo=historico.objects.create(comparacao_id=comp.pk,destino_id=self.alvo.pk,origem_id=origem.pk,situacao='criar',caminho='Cadastro anterior')
+        self.assertEqual(ItemReplicacao.objects.get(pk=antigo.pk).revisao_inclusao,{})
+
     def test_revisao_de_plural_padroniza_descricao_preservando_codigo_destino(self):
         self.preparar_aluguel()
         comp=self.comparar()

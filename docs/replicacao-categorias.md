@@ -75,7 +75,9 @@ candidato mudar ou aparecer outro semelhante antes do envio, é necessária nova
 revisão. Prévias antigas também são revalidadas para evitar inclusões não revisadas.
 Para ver as sugestões na grade de comparações anteriores, gere nova comparação.
 
-Publicar requer aplicar replicacao.0003, atualizar app e o replicacao_worker. Drenar
+Publicar requer aplicar replicacao.0003/0004, atualizar app e o replicacao_worker. A
+0004 mantém um padrão no banco para permitir a transição/retorno de versões que ainda
+não enviam o novo campo de revisão. Drenar
 graciosamente tarefas em curso desse worker antes de recriá-lo. Os demais workers
 podem continuar executando as sincronizações existentes.
 
