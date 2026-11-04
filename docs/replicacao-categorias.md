@@ -55,6 +55,30 @@ adotado automaticamente. Nomes repetidos exigem escolha explícita. Uma coincid�
 única apenas PROPOE um vínculo; ele só é persistido depois da seleção/aprovação e
 confirmação na OMIE. Os códigos dos aplicativos não precisam ser iguais.
 
+### Sugestões por semelhança de nomes (0003)
+
+Plural, acentos e grafias próximas (ex.: Aluguel / Aluguéis) geram sugestões para
+revisão. A comparação usa regras locais de grafia e similaridade textual, sem IA
+ou chamadas extras à OMIE. Não infere sinônimos ou equivalência contábil. Siglas
+curtas diferentes e nomes com números distintos não são aproximados.
+
+Só entram candidatos ativos da empresa destino, do mesmo tipo receita/despesa,
+nível grupo/categoria e grupo superior resolvido. São destacados até cinco nomes,
+em ordem de proximidade. A igualdade exata ou um vínculo já confirmado tem prioridade.
+Uma semelhança apenas coloca o item como correspondência ambígua, sem pré-selecionar,
+vincular, renomear ou incluir. O usuário abre Resolver vínculo e escolhe o cadastro.
+Ao aprovar a padronização depois, AlterarCategoria usa o código existente do destino.
+
+Se os nomes representam cadastros distintos, o usuário pode escolher Criar novo.
+Essa decisão registra operador, data e assinatura dos candidatos revisados. Se um
+candidato mudar ou aparecer outro semelhante antes do envio, é necessária nova
+revisão. Prévias antigas também são revalidadas para evitar inclusões não revisadas.
+Para ver as sugestões na grade de comparações anteriores, gere nova comparação.
+
+Publicar requer aplicar replicacao.0003, atualizar app e o replicacao_worker. Drenar
+graciosamente tarefas em curso desse worker antes de recriá-lo. Os demais workers
+podem continuar executando as sincronizações existentes.
+
 O vínculo persistente é único por destino+origem e destino+categoria correspondente.
 Mudanças de hierarquia/tipo em um vínculo existente exigem revisão; esta versão não
 move uma categoria para outro grupo. O usuário pode selecionar um correspondente

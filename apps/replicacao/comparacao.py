@@ -1,12 +1,55 @@
 """Comparação determinística; nomes/códigos isolados nunca autorizam alterações."""
 import re
 import unicodedata
+import hashlib
+import json
+from difflib import SequenceMatcher
 
 from .models import ItemReplicacao
 
 
 def normalizar(valor):
     return " ".join("".join(c for c in unicodedata.normalize("NFKD", str(valor or "")) if not unicodedata.combining(c)).casefold().split())
+
+
+def _nome_comparavel(valor):
+    return " ".join(re.findall(r"[a-z0-9]+", normalizar(valor)))
+
+
+def _singular_sugerido(palavra):
+    # A spelling heuristic for ranking only, never a semantic equivalence rule.
+    if len(palavra) < 5:
+        return palavra
+    for plural, singular in (("oes", "ao"), ("aes", "ao"), ("ais", "al"), ("eis", "el"), ("ois", "ol"), ("uis", "ul"), ("ns", "m")):
+        if palavra.endswith(plural):
+            return palavra[:-len(plural)] + singular
+    return palavra[:-1] if palavra.endswith("s") and not palavra.endswith("ss") else palavra
+
+
+def semelhanca(a, b):
+    a, b = _nome_comparavel(a), _nome_comparavel(b)
+    if not a or not b:
+        return 0
+    if a == b:
+        return 1
+    # Do not infer matches between short acronyms or different numbered accounts.
+    if min(len(a.replace(" ", "")), len(b.replace(" ", ""))) < 5 or set(re.findall(r"\d+", a)) != set(re.findall(r"\d+", b)):
+        return 0
+    termos_a, termos_b = a.split(), b.split()
+    if {_singular_sugerido(p) for p in termos_a} == {_singular_sugerido(p) for p in termos_b}:
+        return .97
+    indice = min(SequenceMatcher(None, a, b, autojunk=False).ratio(), SequenceMatcher(None, b, a, autojunk=False).ratio())
+    return indice if indice >= .8 else 0
+
+
+def sugestoes_nome(descricao, categorias):
+    ordenadas = [(semelhanca(descricao, c.descricao), c) for c in categorias]
+    return [c for score, c in sorted(ordenadas, key=lambda par: (-par[0], normalizar(par[1].descricao), par[1].codigo, par[1].pk)) if score >= .8][:5]
+
+
+def assinatura_semelhantes(origem, candidatos):
+    semelhantes = sorted((c for c in candidatos if semelhanca(origem["descricao"], c["descricao"]) >= .8), key=lambda c: c["codigo"])
+    return hashlib.sha256(json.dumps(semelhantes, sort_keys=True, ensure_ascii=False).encode()).hexdigest() if semelhantes else ""
 
 
 def dados(categoria):
@@ -88,7 +131,7 @@ def gerar_linhas(comparacao, destino, origens, catalogo_destino, vinculos):
         item.mensagem = impedimento(origem, fontes)
         codigo_pai = propostos.get(origem["categoria_superior"])
         possiveis = [c for c in catalogo_destino if compativel(origem, alvos[c.codigo], codigo_pai)]
-        item.candidatos = [c.pk for c in possiveis]
+        item.candidatos = []
         if item.mensagem:
             item.situacao = "bloqueado"
         elif origem["codigo"] in vinculados:
@@ -106,6 +149,10 @@ def gerar_linhas(comparacao, destino, origens, catalogo_destino, vinculos):
                 item.mensagem = "Há nomes repetidos. Escolha explicitamente o cadastro correspondente."
             elif len(iguais) == 1:
                 item.categoria = iguais[0]
+            elif (sugestoes := sugestoes_nome(origem["descricao"], possiveis)):
+                item.candidatos = [c.pk for c in sugestoes]
+                item.situacao = "ambiguo"
+                item.mensagem = "Há nomes semelhantes no destino. Revise se representam a mesma categoria antes de criar ou padronizar."
             elif origem["codigo"] in por_codigo:
                 item.situacao = "ambiguo"
                 item.mensagem = "O mesmo código existe com outro significado. Escolha o correspondente ou marque como nova categoria."

@@ -11,7 +11,7 @@ from apps.empresas.models import AcaoUsuarioLog, CategoriaOmie, IntegracaoOmie, 
 from apps.empresas.omie import _salvar_categorias
 from apps.empresas.white_label_domains import _marca_host
 from . import omie
-from .comparacao import dados, gerar_linhas, compativel, equivalentes, impedimento, normalizar, tipo
+from .comparacao import dados, gerar_linhas, compativel, equivalentes, normalizar, tipo, assinatura_semelhantes
 from .models import ComparacaoReplicacao, ItemReplicacao, VinculoCategoria
 from .permissions import conferir_acesso, contexto_plano
 
@@ -146,6 +146,10 @@ def resolver_item(item, usuario, categoria_id=None, criar=False):
             item.categoria = None
             item.destino_dados = {}
             item.situacao = "criar"
+            item.revisao_inclusao = {
+                "usuario_id": usuario.pk, "em": timezone.now().isoformat(),
+                "assinatura": assinatura_semelhantes(item.matriz_dados, [dados(c) for c in candidatos_item(item)]),
+            }
             item.mensagem = "Inclusão escolhida explicitamente. A OMIE será consultada novamente antes do envio."
         else:
             candidatos = {c.pk: c for c in candidatos_item(item)}
@@ -155,6 +159,7 @@ def resolver_item(item, usuario, categoria_id=None, criar=False):
             if comparacao.itens.filter(destino=item.destino, categoria=categoria).exclude(pk=item.pk).exists():
                 raise ValidationError("Este cadastro já está proposto para outra categoria da matriz.")
             item.categoria = categoria
+            item.revisao_inclusao = {}
             item.destino_dados = dados(categoria)
             item.situacao = "igual" if equivalentes(item.matriz_dados, item.destino_dados) else "alterar"
             item.mensagem = "Correspondência escolhida. Selecione o item para confirmar o vínculo ou a alteração."
@@ -184,6 +189,10 @@ def aprovar(comparacao, usuario, ids):
                 raise ValidationError("Resolva os vínculos pendentes antes de selecionar estes itens.")
             if dados(item.origem) != item.matriz_dados or (item.categoria and dados(item.categoria) != item.destino_dados):
                 raise ValidationError("Um cadastro mudou depois da comparação. Gere uma nova comparação.")
+            if item.categoria_id is None:
+                assinatura = assinatura_semelhantes(item.matriz_dados, [dados(c) for c in candidatos_item(item)])
+                if assinatura and item.revisao_inclusao.get("assinatura") != assinatura:
+                    raise ValidationError("Há nomes semelhantes no destino. Use Revisar vínculo antes de confirmar uma nova inclusão.")
             if ItemReplicacao.objects.filter(destino__empresa=item.destino.empresa, origem=item.origem, status__in=["fila", "executando", "incerto"]).exclude(pk=item.pk).exists():
                 raise ValidationError("Há outro envio ou resultado sem confirmação para este cadastro. Verifique o histórico antes de continuar.")
             if not item.matriz_dados["totalizadora"]:
@@ -272,6 +281,11 @@ def executar_item(item, integracao, fontes, alvos):
         return
     metodo, payload = parametros_item(item)
     if not item.categoria_id:
+        pai_codigo = payload.get("categoria_superior")
+        candidatos = [d for d in alvos.values() if compativel(item.matriz_dados, d, pai_codigo)]
+        assinatura = assinatura_semelhantes(item.matriz_dados, candidatos)
+        if assinatura and item.revisao_inclusao.get("assinatura") != assinatura:
+            raise ValidationError("Há um cadastro semelhante não revisado no destino. Gere nova comparação e revise o vínculo antes de incluir.")
         if ItemReplicacao.objects.filter(destino__empresa=item.destino.empresa, status__in=["incerto", "executando"], metodo__startswith="Incluir").exclude(pk=item.pk).exists():
             raise ValidationError("Há uma inclusão sem confirmação neste destino. Verifique o histórico antes de novas inclusões.")
         possiveis = [d for d in alvos.values() if d["totalizadora"] == item.matriz_dados["totalizadora"] and tipo(d) == tipo(item.matriz_dados) and normalizar(d["descricao"]) == normalizar(payload["descricao"]) and (d["totalizadora"] or d["categoria_superior"] == payload.get("categoria_superior"))]

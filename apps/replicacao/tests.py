@@ -14,7 +14,7 @@ from apps.empresas.models import Empresa, EmpresaUsuario, IntegracaoOmie, Catego
 from apps.empresas.omie import _salvar_categorias
 from apps.empresas.white_label_domains import _marca_host, marca_host_atual
 from . import omie
-from .comparacao import dados
+from .comparacao import dados, semelhanca
 from .forms import PlanoForm
 from .models import PlanoReplicacao, DestinoReplicacao, VinculoCategoria, ComparacaoReplicacao, ItemReplicacao
 from .permissions import empresas_gerenciaveis, planos_permitidos
@@ -179,6 +179,127 @@ class ReplicacaoTests(TestCase):
         self.api.catalogos[self.destino.pk].append(categoria('2.08.08','Energia elétrica',pai='2.08'))
         comp=self.comparar()
         self.assertEqual(self.item(comp).situacao,'ambiguo')
+
+    def preparar_aluguel(self, descricao_destino='Aluguéis'):
+        self.api.catalogos[self.matriz.pk][-1]['descricao']='Aluguel'
+        self.api.catalogos[self.destino.pk][-1]['descricao']=descricao_destino
+
+    def test_plural_sugere_revisao_sem_vincular_ou_enviar(self):
+        self.preparar_aluguel()
+        comp=self.comparar()
+        item=self.item(comp)
+        self.assertEqual(item.situacao,'ambiguo')
+        self.assertIsNone(item.categoria_id)
+        self.assertIn('semelhantes',item.mensagem)
+        self.assertEqual(item.candidatos,[CategoriaOmie.objects.get(empresa=self.destino,codigo='2.08.07').pk])
+        with self.assertRaises(ValidationError): aprovar(comp,self.superuser,[self.item(comp,True).pk,item.pk])
+        self.assertFalse(VinculoCategoria.objects.exists())
+        self.assertEqual(self.api.escritas,[])
+
+    def test_revisao_de_plural_padroniza_descricao_preservando_codigo_destino(self):
+        self.preparar_aluguel()
+        comp=self.comparar()
+        item=self.item(comp)
+        categoria_id=CategoriaOmie.objects.get(empresa=self.destino,codigo='2.08.07').pk
+        resolver_item(item,self.superuser,categoria_id=categoria_id)
+        item.refresh_from_db()
+        self.assertEqual(item.situacao,'alterar')
+        self.enviar(comp,[self.item(comp,True),item])
+        self.assertEqual(item.status,'sucesso',item.mensagem)
+        self.assertEqual(item.categoria_id,categoria_id)
+        self.assertEqual(self.api.escritas[-1][1],'AlterarCategoria')
+        self.assertEqual(self.api.escritas[-1][2]['codigo'],'2.08.07')
+        self.assertEqual(item.categoria.descricao,'Aluguel')
+
+    def test_usuario_pode_escolher_criar_apos_revisar_semelhantes(self):
+        self.preparar_aluguel()
+        comp=self.comparar()
+        item=self.item(comp)
+        resolver_item(item,self.superuser,criar=True)
+        item.refresh_from_db()
+        self.assertEqual(item.situacao,'criar')
+        self.assertTrue(item.revisao_inclusao['assinatura'])
+        self.assertEqual(item.revisao_inclusao['usuario_id'],self.superuser.pk)
+        self.enviar(comp,[self.item(comp,True),item])
+        self.assertEqual(item.status,'sucesso',item.mensagem)
+        self.assertEqual(self.api.escritas[-1][1],'IncluirCategoria')
+        self.assertEqual(next(c for c in self.api.catalogos[self.destino.pk] if c['codigo']=='2.08.07')['descricao'],'Aluguéis')
+
+    def test_previa_antiga_nao_libera_criar_sem_revisar_semelhantes(self):
+        self.preparar_aluguel()
+        comp=self.comparar()
+        item=self.item(comp)
+        comp.itens.filter(pk=item.pk).update(situacao='criar',candidatos=[])
+        with self.assertRaises(ValidationError): aprovar(comp,self.superuser,[self.item(comp,True).pk,item.pk])
+        self.assertEqual(self.api.escritas,[])
+
+    def test_semelhante_aparece_depois_da_aprovacao_bloqueia_inclusao(self):
+        self.api.catalogos[self.matriz.pk][-1]['descricao']='Aluguel'
+        self.api.catalogos[self.destino.pk]=[self.raiz,self.grupo_destino]
+        comp=self.comparar()
+        item=self.item(comp)
+        self.assertEqual(item.situacao,'criar')
+        aprovar(comp,self.superuser,[self.item(comp,True).pk,item.pk])
+        self.api.catalogos[self.destino.pk].append(categoria('2.08.07','Aluguéis',pai='2.08'))
+        executar_envio(comp.pk)
+        item.refresh_from_db()
+        self.assertEqual(item.status,'erro')
+        self.assertIn('semelhante',item.mensagem)
+        self.assertEqual(self.api.escritas,[])
+
+    def test_revisao_explicita_expira_se_aparece_outro_semelhante(self):
+        self.preparar_aluguel()
+        comp=self.comparar()
+        item=self.item(comp)
+        resolver_item(item,self.superuser,criar=True)
+        aprovar(comp,self.superuser,[self.item(comp,True).pk,item.pk])
+        self.api.catalogos[self.destino.pk].append(categoria('2.08.08','ALUGUEIS',pai='2.08'))
+        executar_envio(comp.pk)
+        item.refresh_from_db()
+        self.assertEqual(item.status,'erro')
+        self.assertEqual(self.api.escritas,[])
+
+    def test_semelhanca_nao_cruza_grupo_receita_inatividade_ou_empresa(self):
+        self.api.catalogos[self.matriz.pk][-1]['descricao']='Aluguel'
+        self.api.catalogos[self.destino.pk]=[self.raiz,self.grupo_destino,
+            categoria('2.09','Financeiro',grupo=True,pai='2'),
+            categoria('2.09.01','Aluguéis',pai='2.09'),
+            categoria('1.08.01','Aluguéis',pai='1.08',conta_despesa='N',conta_receita='S'),
+            categoria('2.08.11','Aluguéis',pai='2.08',conta_inativa='S'),
+            categoria('2.08.12','Aluguéis',pai='2.08',transferencia='S')]
+        _salvar_categorias(self.fora,[categoria('2.08.07','Aluguéis',pai='2.08')])
+        comp=self.comparar()
+        self.assertEqual(self.item(comp).situacao,'criar')
+        self.assertEqual(self.item(comp).candidatos,[])
+
+    def test_tela_destaca_sugestao_sem_pre_selecionar_destino(self):
+        self.preparar_aluguel()
+        comp=self.comparar()
+        item=self.item(comp)
+        self.client.force_login(self.superuser)
+        response=self.client.get(reverse('replicacao:detalhe',args=[self.plano.pk]))
+        self.assertContains(response,'Nomes semelhantes no destino:')
+        self.assertContains(response,'Aluguéis')
+        response=self.client.get(reverse('replicacao:resolver',args=[self.plano.pk,item.pk]))
+        self.assertContains(response,'Nomes semelhantes encontrados no destino')
+        self.assertContains(response,'Nomes semelhantes — revisar')
+        self.assertNotContains(response,' selected')
+        self.assertEqual(self.api.escritas,[])
+
+    def test_igualdade_exata_tem_preferencia_sobre_nomes_parecidos(self):
+        self.preparar_aluguel(descricao_destino='Aluguel')
+        self.api.catalogos[self.destino.pk].append(categoria('2.08.08','Aluguéis',pai='2.08'))
+        comp=self.comparar()
+        self.assertEqual(self.item(comp).situacao,'igual')
+        self.assertEqual(self.item(comp).categoria.codigo,'2.08.07')
+
+    def test_numeros_distintos_e_siglas_curtas_nao_sao_sugeridos(self):
+        self.assertEqual(semelhanca('Aluguel sala 1','Aluguel sala 2'),0)
+        self.assertEqual(semelhanca('ISS','ICMS'),0)
+        self.assertEqual(semelhanca('Taxa 2025','Taxa 2026'),0)
+        self.assertEqual(semelhanca('Aluguel','Locação'),0)
+        for origem,destino in [('Aluguel','Aluguéis'),('Manutenção','Manutenções'),('Serviço','Serviços'),('Manutenção predial','Manutencao prediall')]:
+            with self.subTest(origem=origem,destino=destino): self.assertGreaterEqual(semelhanca(origem,destino),.8)
 
     def test_resolver_nao_aceita_categoria_de_outra_empresa_ou_tipo(self):
         comp=self.comparar()

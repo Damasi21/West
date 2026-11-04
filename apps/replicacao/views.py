@@ -11,13 +11,14 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
-from apps.empresas.models import AmbienteWhiteLabel, Empresa
+from apps.empresas.models import AmbienteWhiteLabel, Empresa, CategoriaOmie
 from apps.empresas.white_label_branding import SESSION_MARCA
 from apps.empresas.white_label_domains import _marca_host, marca_host_atual
 from .forms import PlanoForm
-from .models import PlanoReplicacao, ComparacaoReplicacao, ItemReplicacao, DestinoReplicacao
+from .models import PlanoReplicacao, ComparacaoReplicacao, ItemReplicacao, DestinoReplicacao, VinculoCategoria
 from .permissions import empresas_gerenciaveis, planos_permitidos, conferir_acesso
 from .services import solicitar_comparacao, publicar, aprovar, resolver_item, candidatos_item, auditar
+from .comparacao import sugestoes_nome, compativel, dados
 
 
 def ambiente_view(view):
@@ -93,7 +94,23 @@ def detalhe(request, plano_id):
     if busca:
         itens = itens.filter(caminho__icontains=busca)
     pagina = Paginator(itens, 100).get_page(request.GET.get("page"))
+    ids_candidatos = {pk for item in pagina if item.categoria_id is None for pk in item.candidatos}
+    catalogo_sugeridos = {c.pk: c for c in CategoriaOmie.objects.filter(pk__in=ids_candidatos, ativo_omie=True, conta_inativa=False, transferencia=False)}
+    filhos_sugeridos = [item for item in pagina if item.candidatos and item.categoria_id is None and not item.matriz_dados["totalizadora"]]
+    destinos_ids = {item.destino_id for item in filhos_sugeridos}
+    codigos_pais = {item.matriz_dados["categoria_superior"] for item in filhos_sugeridos}
+    pais = {}
+    if filhos_sugeridos:
+        pais.update({(destino_id, origem_codigo): codigo for destino_id, origem_codigo, codigo in comparacao.itens.filter(
+            destino_id__in=destinos_ids, origem__codigo__in=codigos_pais, categoria__isnull=False
+        ).values_list("destino_id", "origem__codigo", "categoria__codigo")})
+        pais.update({(destino_id, origem_codigo): codigo for destino_id, origem_codigo, codigo in VinculoCategoria.objects.filter(
+            destino_id__in=destinos_ids, origem__codigo__in=codigos_pais
+        ).values_list("destino_id", "origem__codigo", "categoria__codigo")})
     for item in pagina:
+        item.sugestoes = sugestoes_nome(item.matriz_dados["descricao"], [catalogo_sugeridos[pk] for pk in item.candidatos
+            if pk in catalogo_sugeridos and catalogo_sugeridos[pk].empresa_id == item.destino.empresa_id
+            and compativel(item.matriz_dados, dados(catalogo_sugeridos[pk]), pais.get((item.destino_id, item.matriz_dados["categoria_superior"])))]) if item.categoria_id is None else []
         item.pode_selecionar = item.status == "pendente" and item.situacao not in {"ambiguo", "bloqueado"} and comparacao.status in {"pronta", "concluida"} and plano.ativo
         item.pode_resolver = item.status == "pendente" and item.situacao != "bloqueado" and comparacao.status in {"pronta", "concluida"} and plano.ativo
         item.pode_verificar = plano.ativo and (item.status == "incerto" or (item.status == "executando" and item.atualizado_em < timezone.now()-timedelta(minutes=30)))
@@ -146,7 +163,11 @@ def resolver(request, plano_id, item_id):
     if not plano.ativo or item.status != "pendente" or item.situacao == "bloqueado" or item.comparacao.status not in {"pronta", "concluida"}:
         raise PermissionDenied
     if request.method == "GET":
-        return render(request, "replicacao/resolver.html", {"plano": plano, "item": item, "candidatos": candidatos_item(item)})
+        candidatos = candidatos_item(item)
+        sugestoes = sugestoes_nome(item.matriz_dados["descricao"], candidatos) if item.categoria_id is None else []
+        ids_sugeridos = {c.pk for c in sugestoes}
+        return render(request, "replicacao/resolver.html", {"plano": plano, "item": item,
+            "candidatos": [c for c in candidatos if c.pk not in ids_sugeridos], "sugestoes": sugestoes})
     valor = request.POST.get("categoria", "")
     try:
         if valor != "nova" and (not valor.isascii() or not valor.isdigit()):
