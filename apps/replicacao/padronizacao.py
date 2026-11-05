@@ -19,6 +19,17 @@ def ordem(c):
     return tuple(int(n) for n in c["codigo"].split("."))
 
 
+def origem_ativa(categorias):
+    """An inactive parent excludes its descendants from the source sequence."""
+    ignorados = {c["codigo"] for c in categorias if c["conta_inativa"] or not c.get("ativo_omie", True)}
+    while True:
+        anteriores = len(ignorados)
+        ignorados.update(c["codigo"] for c in categorias if c["categoria_superior"] in ignorados)
+        if len(ignorados) == anteriores:
+            break
+    return [c for c in categorias if c["codigo"] not in ignorados]
+
+
 def estrutura(categorias, empresa=""):
     # Root totals and transfer accounts are outside the revenue/expense plan.
     itens = [c for c in categorias if c["codigo"] not in {"1", "2"} and tipo(c) and not c["transferencia"]]
@@ -46,11 +57,13 @@ def estrutura(categorias, empresa=""):
 
 
 def planejar(fonte, destino, *, empresa_pai="", empresa_filho=""):
-    grupos_pai, itens_pai = estrutura(fonte, empresa_pai)
+    grupos_pai, itens_pai = estrutura(origem_ativa(fonte), empresa_pai)
+    if not grupos_pai:
+        raise ValidationError("A matriz não possui grupos ativos de receita ou despesa para padronizar. Nenhuma alteração será enviada.")
     grupos_filho, itens_filho = estrutura(destino, empresa_filho)
     passos = []
 
-    def adicionar(origem, alvo, pai_indice=None, excedente=False, estado_novo=False):
+    def adicionar(origem, alvo, pai_indice=None, excedente=False):
         grupo = (origem or alvo)["totalizadora"]
         esperado = deepcopy(origem or alvo)
         if alvo:
@@ -63,9 +76,6 @@ def planejar(fonte, destino, *, empresa_pai="", empresa_filho=""):
             esperado["codigo_dre"] = alvo["codigo_dre"] if alvo else ""
         if excedente:
             esperado["conta_inativa"] = True
-        if estado_novo:
-            # IncluirCategoria has no documented conta_inativa parameter.
-            esperado["conta_inativa"] = False
         if grupo and esperado["conta_inativa"] != (alvo["conta_inativa"] if alvo else False):
             raise ValidationError("A situação de um grupo pai difere da matriz. A API de grupos não oferece ativação/inativação; ajuste esse grupo na OMIE e gere outra prévia.")
         acao = "manter" if sem_observacoes(alvo) == sem_observacoes(esperado) else "inativar" if excedente else "reescrever" if alvo else "criar"
@@ -87,16 +97,9 @@ def planejar(fonte, destino, *, empresa_pai="", empresa_filho=""):
             alvos = sorted([c for c in itens_filho if alvo and c["categoria_superior"] == alvo["codigo"] and not c["totalizadora"]], key=ordem)
             for n, filho in enumerate(filhos):
                 atual = alvos[n] if n < len(alvos) else None
-                ci = adicionar(filho, atual, gi, estado_novo=bool(not atual and filho["conta_inativa"]))
-                if not atual and filho["conta_inativa"]:
-                    # Explicit second step, shown and approved in the preview.
-                    passos.append({"origem": deepcopy(filho), "alvo": None, "esperado": deepcopy(filho),
-                        "acao": "inativar", "grupo": False, "pai_indice": gi, "referencia": ci,
-                        "status": "pendente", "rotulo": "Inativar após inclusão · " + filho["descricao"]})
+                adicionar(filho, atual, gi)
             for sobra in alvos[len(filhos):]:
                 adicionar(None, sobra, gi, excedente=True)
-    if not grupos_pai:
-        raise ValidationError("A matriz não possui grupos de receita ou despesa para padronizar.")
     return passos
 
 
@@ -130,6 +133,8 @@ def confirmar(op, usuario, escolhas):
         if op.modo != "espelho" or op.status != "revisao" or op.pedido.get("etapa") != "consulta":
             raise ValidationError("Esta prévia não está disponível para confirmação.")
         cancelar = escolhas.get("cancelar") == "sim"
+        if not cancelar and not op.pedido.get("somente_ativas"):
+            raise ValidationError("Encerre esta prévia anterior sem novos envios e gere outra com apenas as contas ativas da base PAI.")
         if not cancelar and escolhas.get("confirmar") != "sim":
             raise ValidationError("Confirme que os nomes dos lançamentos históricos também acompanharão as categorias reescritas.")
         if not cancelar and not any(escolhas.get(f"aplicar_{pk}") == "sim" for pk in op.empresas.values_list("pk", flat=True)):
@@ -171,11 +176,15 @@ def processar(op):
     ids = {l.empresa_id for l in linhas}
     if not ids or ids != set(op.pedido["destinos_ids"]) or not ids.issubset({e.pk for e in empresas} - {op.plano.matriz_id}):
         raise PermissionDenied("Os destinos não correspondem às empresas FILHO escolhidas.")
+    if op.pedido["etapa"] == "envio" and not op.pedido.get("somente_ativas"):
+        raise ValidationError("Esta prévia foi gerada pela regra anterior, que incluía contas inativas. Gere uma nova prévia com apenas as contas ativas da base PAI antes de enviar. Os envios já confirmados permanecem registrados.")
     with aplicativo_livre(op.plano.matriz, aguardar_sincronizacao=False) as integracao:
         fonte = catalogo(op.plano.matriz, integracao)
     if op.pedido["etapa"] == "consulta":
-        estrutura(fonte, "Base PAI — " + (op.plano.matriz.nome_fantasia or op.plano.matriz.nome))
-        op.pedido.update(fonte=fonte, destinos={})
+        grupos_fonte, _ = estrutura(origem_ativa(fonte), "Base PAI — " + (op.plano.matriz.nome_fantasia or op.plano.matriz.nome))
+        if not grupos_fonte:
+            raise ValidationError("A matriz não possui grupos ativos de receita ou despesa para padronizar. Nenhuma alteração será enviada.")
+        op.pedido.update(fonte=fonte, destinos={}, somente_ativas=True)
         progresso(op, "Base PAI consultada; preparando a sequência por empresa.", 1)
         for linha in linhas:
             conferir_operacao(op)
@@ -196,11 +205,11 @@ def processar(op):
             progresso(op, op.mensagem, 1)
         op.status = "revisao"
         op.save()
-        progresso(op, "Confira a prévia e confirme as empresas FILHO. A ordem segue os códigos OMIE, separando receitas e despesas.")
+        progresso(op, "Confira a prévia e confirme as empresas FILHO. Apenas contas ativas da base PAI compõem a sequência, separando receitas e despesas pelos códigos OMIE.")
         return
     if op.pedido["etapa"] != "envio" or not op.pedido.get("confirmado_em"):
         raise ValidationError("Padronização sem confirmação de prévia.")
-    if not iguais(fonte, op.pedido["fonte"]):
+    if not iguais(origem_ativa(fonte), origem_ativa(op.pedido["fonte"])):
         raise ValidationError("A base PAI mudou após a prévia. Encerre esta solicitação e prepare outra prévia; nenhuma nova escrita foi iniciada.")
     op.status = "enviando"
     op.progresso_total = sum(len(l.passos) for l in linhas if l.status != "ignorada") or 1
@@ -215,7 +224,7 @@ def processar(op):
             if linha.status == "incerto" or any(p.get("status") in {"executando", "incerto"} for p in linha.passos):
                 raise ValidationError("Verifique o envio sem confirmação antes de retomar; nenhuma escrita será repetida.")
             with aplicativo_livre(op.plano.matriz, aguardar_sincronizacao=False) as origem_integracao:
-                if not iguais(catalogo(op.plano.matriz, origem_integracao), op.pedido["fonte"]):
+                if not iguais(origem_ativa(catalogo(op.plano.matriz, origem_integracao)), origem_ativa(op.pedido["fonte"])):
                     raise ValidationError("A base PAI mudou. Nenhuma nova escrita será enviada nesta empresa; gere outra prévia.")
             with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
                 atual = catalogo(linha.empresa, integracao)

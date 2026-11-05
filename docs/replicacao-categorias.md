@@ -25,6 +25,10 @@ tratá-lo como campo replicado. Envios antigos incertos que efetivamente incluí
   grupos e filhos numericamente pelos códigos OMIE. O primeiro grupo corresponde ao
   primeiro grupo do mesmo tipo, independentemente de nome; seus filhos seguem a
   mesma regra. Vínculos antigos e semelhanças não alteram essa correspondência.
+- Somente grupos/categorias ativos da matriz entram na sequência; filhos de grupos
+  inativos também são ignorados. Os inativos não ocupam posições nem geram inclusões,
+  alterações ou vínculos como origem. Prévias anteriores devem ser encerradas e
+  refeitas antes de novos envios.
 - Dentro de cada grupo: reescrever os pares existentes, criar os filhos faltantes e
   inativar os filhos excedentes. Preservar os IDs existentes no destino. Copiar
   descrição e, nos filhos, tipo, código DRE OMIE e situação da matriz. O
@@ -34,8 +38,7 @@ tratá-lo como campo replicado. Envios antigos incertos que efetivamente incluí
 - O contrato da API de grupos não oferece `conta_inativa`. Grupos excedentes no
   destino ou grupos com situação diferente da matriz bloqueiam a empresa inteira
   na prévia, com indicação para ajuste no OMIE. Não há promessa de espelhamento
-  completo quando a API não permite essa etapa. Inclusão de filha inativa usa
-  inclusão seguida de alteração de situação, ambas visíveis na prévia.
+  completo quando a API não permite essa etapa. Não há inclusão de categorias inativas da origem.
 - O limite de 50 caracteres da descrição é verificado antes dos envios.
   O erro identifica a base PAI/FILHO e a empresa, cada grupo/categoria com seu código
   e descrição, o campo, o tamanho atual e quanto excede. Todos os excessos encontrados

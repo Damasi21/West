@@ -107,15 +107,15 @@ class PadronizacaoTests(TestCase):
         self.assertEqual(alvo["codigo_dre"], "MATRIZ")
         self.assertEqual(alvo["conta_inativa"], "N")
 
-    def test_inclusao_inativa_e_separada_e_confirmada(self):
+    def test_categoria_inativa_na_origem_nao_e_criada_nem_inativada_no_destino(self):
         self.api.catalogos[self.matriz.pk][-1]["conta_inativa"] = "S"
         self.api.catalogos[self.destino.pk] = [self.raiz,self.grupo_destino]
         op = self.previa()
         self.executar(self.confirmar(op))
         linha = op.empresas.get()
         self.assertEqual(linha.status, "sucesso", linha.mensagem)
-        self.assertEqual([m for _,m,_ in self.api.escritas], ["IncluirCategoria","AlterarCategoria"])
-        self.assertEqual(self.api.catalogos[self.destino.pk][-1]["conta_inativa"], "S")
+        self.assertEqual(self.api.escritas, [])
+        self.assertFalse(any(not c["grupo"] for c in linha.passos))
 
     def test_grupo_excedente_ou_situacao_incompativel_bloqueia_sem_gravar(self):
         self.api.catalogos[self.destino.pk].append(categoria("2.09","Excedente",grupo=True,pai="2"))
@@ -425,3 +425,61 @@ class PadronizacaoTests(TestCase):
         self.executar(op)
         self.assertEqual(set(op.empresas.values_list("status",flat=True)), {"sucesso"})
         self.assertTrue(all("natureza" not in payload for _,_,payload in self.api.escritas))
+
+    def test_inativa_nao_ocupa_posicao_e_nao_valida_descricao_fora_do_limite(self):
+        self.dois_grupos()
+        fonte = self.api.catalogos[self.matriz.pk]
+        fonte[2].update(conta_inativa="S", descricao="Inativa " * 8)
+        op = self.previa()
+        self.assertEqual(op.status, "revisao", op.mensagem)
+        linha = op.empresas.get()
+        self.assertEqual(linha.status, "revisao", linha.mensagem)
+        self.assertEqual(linha.passos[1]["origem"]["codigo"], "2.01.02")
+        self.assertEqual(linha.passos[1]["alvo"]["codigo"], "2.08.01")
+        self.assertFalse(any(p["origem"]["codigo"] == "2.01.01" and not p.get("excedente") for p in linha.passos))
+        self.executar(self.confirmar(op))
+        linha.refresh_from_db()
+        self.assertEqual(linha.status, "sucesso", linha.mensagem)
+        self.assertEqual(next(c for c in self.api.catalogos[self.destino.pk] if c["codigo"]=="2.08.01")["descricao"], "PAI A2")
+        self.assertFalse(any("Inativa " in p.get("descricao", "") for _,_,p in self.api.escritas))
+        self.assertFalse(VinculoCategoria.objects.filter(destino=self.alvo,origem__codigo="2.01.01").exists())
+
+    def test_grupo_inativo_exclui_filhos_ativos_da_sequencia(self):
+        self.dois_grupos()
+        self.api.catalogos[self.matriz.pk][1]["conta_inativa"] = "S"
+        self.api.catalogos[self.destino.pk] = [c for c in self.api.catalogos[self.destino.pk] if not c["codigo"].startswith("2.09")]
+        op = self.previa()
+        linha = op.empresas.get()
+        self.assertEqual(linha.status, "revisao", linha.mensagem)
+        self.assertEqual(linha.passos[0]["origem"]["codigo"], "2.02")
+        self.assertTrue(all(not p["origem"]["codigo"].startswith("2.01") for p in linha.passos if not p.get("excedente")))
+        self.executar(self.confirmar(op))
+        linha.refresh_from_db()
+        self.assertEqual(linha.status, "sucesso", linha.mensagem)
+
+    def test_sem_grupos_ativos_na_origem_nao_altera_destino(self):
+        self.api.catalogos[self.matriz.pk][1]["conta_inativa"] = "S"
+        op = self.previa()
+        self.assertEqual(op.status, "erro")
+        self.assertIn("não possui grupos ativos", op.mensagem)
+        self.assertEqual(self.api.escritas, [])
+
+    def test_previa_antiga_nao_autoriza_envio_pela_regra_nova(self):
+        op = self.previa()
+        op.pedido.pop("somente_ativas")
+        op.save()
+        with self.assertRaises(ValidationError): self.confirmar(op)
+        self.assertEqual(self.api.escritas, [])
+        op = padronizacao.confirmar(op,self.superuser,{"cancelar":"sim"})
+        self.assertEqual(op.status,"concluido")
+
+    def test_envio_antigo_ja_autorizado_nao_inclui_inativas_apos_atualizacao(self):
+        op = self.previa()
+        self.confirmar(op)
+        op.refresh_from_db()
+        op.pedido.pop("somente_ativas")
+        op.save()
+        self.executar(op)
+        self.assertEqual(op.status,"erro")
+        self.assertIn("regra anterior",op.mensagem)
+        self.assertEqual(self.api.escritas, [])
