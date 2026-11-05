@@ -327,3 +327,51 @@ class CadastroCentralTests(TestCase):
         self.assertEqual(linha.status,'erro')
         self.assertEqual(linha.mensagem,op.mensagem)
         self.assertEqual(self.api.escritas,[])
+
+    def test_destinos_por_categoria_nao_consulta_nem_grava_empresa_desmarcada(self):
+        Empresa.objects.filter(pk=self.fora.pk).update(grupo="Grupo teste")
+        DestinoReplicacao.objects.create(plano=self.plano,empresa=self.fora)
+        op=central.solicitar(self.plano,self.superuser,"Aluguel",self.pai,destinos_ids=[self.destino.pk])
+        self.executar(op)
+        self.assertEqual(op.status,"concluido",op.mensagem)
+        self.assertEqual(set(op.empresas.values_list("empresa_id",flat=True)),{self.matriz.pk,self.destino.pk})
+        self.assertEqual(op.pedido["destinos_ids"],[self.destino.pk])
+        self.assertEqual(op.progresso_total,4)
+        self.assertNotIn(self.fora.pk,[e for e,_,_ in self.api.escritas])
+        self.assertFalse(CategoriaOmie.objects.filter(empresa=self.fora).exists())
+
+    def test_formulario_exige_destino_e_rejeita_empresa_externa_ou_matriz(self):
+        from .forms import NovaCategoriaForm
+        for ids in ([],[self.matriz.pk],[self.fora.pk]):
+            form=NovaCategoriaForm({"descricao":"Aluguel","pai":self.pai.pk,"destinos":ids},plano=self.plano)
+            self.assertFalse(form.is_valid(),ids)
+        form=NovaCategoriaForm({"descricao":"Aluguel","pai":self.pai.pk,"destinos":[self.destino.pk]},plano=self.plano)
+        self.assertTrue(form.is_valid(),form.errors)
+
+    def test_backend_rejeita_selecao_invalida_sem_criar_solicitacao(self):
+        for ids in ([],[self.destino.pk,self.destino.pk],[str(self.destino.pk)]):
+            with self.assertRaises(ValidationError):central.solicitar(self.plano,self.superuser,"Aluguel",self.pai,destinos_ids=ids)
+        for ids in ([self.matriz.pk],[self.fora.pk]):
+            with self.assertRaises(PermissionDenied):central.solicitar(self.plano,self.superuser,"Aluguel",self.pai,destinos_ids=ids)
+        self.assertFalse(CadastroCategoria.objects.exists())
+
+    def test_worker_bloqueia_linha_adicionada_fora_da_selecao_original(self):
+        Empresa.objects.filter(pk=self.fora.pk).update(grupo="Grupo teste")
+        DestinoReplicacao.objects.create(plano=self.plano,empresa=self.fora)
+        op=central.solicitar(self.plano,self.superuser,"Aluguel",self.pai,destinos_ids=[self.destino.pk])
+        CadastroCategoriaEmpresa.objects.create(cadastro=op,empresa=self.fora)
+        self.executar(op)
+        self.assertEqual(op.status,"erro")
+        self.assertEqual(self.api.escritas,[])
+
+    def test_selecao_e_independente_a_cada_categoria_e_atualizar_arvore_continua_completa(self):
+        Empresa.objects.filter(pk=self.fora.pk).update(grupo="Grupo teste")
+        DestinoReplicacao.objects.create(plano=self.plano,empresa=self.fora)
+        primeiro=central.solicitar(self.plano,self.superuser,"Aluguel",self.pai,destinos_ids=[self.destino.pk])
+        self.executar(primeiro)
+        segundo=central.solicitar(self.plano,self.superuser,"Seguro predial",self.pai,destinos_ids=[self.fora.pk])
+        self.executar(segundo)
+        self.assertEqual(set(segundo.empresas.values_list("empresa_id",flat=True)),{self.matriz.pk,self.fora.pk})
+        self.assertEqual(self.plano.destinos.count(),2)
+        refresh=central.solicitar(self.plano,self.superuser,catalogo=True)
+        self.assertEqual(set(refresh.empresas.values_list("empresa_id",flat=True)),{self.matriz.pk,self.destino.pk,self.fora.pk})

@@ -69,8 +69,10 @@ class PlanoForm(forms.Form):
 class NovaCategoriaForm(forms.Form):
     descricao = forms.CharField(label="Descrição da nova categoria", max_length=50, widget=forms.TextInput(attrs={"class": "form-control"}))
     pai = forms.ModelChoiceField(label="Categoria PAI / grupo superior", queryset=Empresa.objects.none(), widget=forms.Select(attrs={"class": "form-select"}))
+    destinos = DestinosChoice(label="Empresas que receberão esta categoria", queryset=Empresa.objects.none(), widget=forms.CheckboxSelectMultiple)
 
     def __init__(self, *args, plano, **kwargs):
         from apps.empresas.models import CategoriaOmie
         super().__init__(*args, **kwargs)
         self.fields["pai"].queryset = CategoriaOmie.objects.filter(empresa=plano.matriz, ativo_omie=True, totalizadora=True, conta_inativa=False, transferencia=False).order_by("codigo")
+        self.fields["destinos"].queryset = Empresa.objects.filter(pk__in=plano.destinos.values("empresa_id"), ativa=True).order_by("nome_fantasia", "pk")

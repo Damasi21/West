@@ -58,8 +58,14 @@ Contrato: https://api.omie.com.br/docs/apis/geral/categorias
   consulta os OMIEs do grupo por worker e atualiza as categorias no PostgreSQL.
 - **Nova categoria** permite escolher um grupo superior ativo. Selecionar a raiz
   Receitas/Despesas cria um grupo; selecionar um grupo cria uma categoria filha.
-  A autorização inicial permite cadastrar em todos os OMIEs após a varredura.
-- O worker consulta TODAS as bases, incluindo a PAI, antes da primeira escrita.
+  O modal exige marcar ao menos uma empresa destino para cada novo cadastro. A base
+  PAI participa como origem. Os destinos começam desmarcados e a escolha não altera
+  a configuração nem é reaproveitada na próxima categoria.
+- O worker consulta a base PAI e somente os destinos marcados naquela solicitação
+  antes da primeira escrita. Empresas desmarcadas não são consultadas nem recebem
+  inclusões/alterações do cadastro. Atualizar árvore continua consultando as empresas
+  da configuração. A seleção fica gravada na solicitação e é preservada em revisão
+  e retomada; o worker rejeita linhas que não correspondam à seleção original.
   Correspondências exatas e únicas, do mesmo tipo/hierarquia, são aproveitadas.
   Semelhanças, duplicidades e nomes em outra hierarquia interrompem o envio para
   decisão. A busca inclui categorias inativas ou de outro tipo, mas elas não podem

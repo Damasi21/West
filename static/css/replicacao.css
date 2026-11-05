@@ -66,3 +66,5 @@
     .rep-level-3 { padding-left: 30px; }
     .rep-level-4 { padding-left: 36px; }
 }
+
+.rep-category-destinations { max-height: 180px; padding: .5rem; }

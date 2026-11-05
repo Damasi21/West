@@ -60,12 +60,19 @@ def conferir_operacao(operacao):
     return empresas
 
 
-def solicitar(plano, usuario, descricao="", pai=None, catalogo=False):
+def solicitar(plano, usuario, descricao="", pai=None, catalogo=False, destinos_ids=None):
     with transaction.atomic():
         plano = type(plano).objects.select_for_update().get(pk=plano.pk)
         empresas = conferir_grupo(plano, usuario)
         if plano.cadastros.filter(status__in=OCUPADOS | {"revisao"}).exists() or plano.comparacoes.filter(status__in=["fila", "comparando", "enviando"]).exists():
             raise ValidationError("Conclua a solicitação em andamento antes de iniciar outra.")
+        if destinos_ids is not None:
+            if catalogo or not isinstance(destinos_ids, list) or not destinos_ids or any(type(pk) is not int for pk in destinos_ids) or len(destinos_ids) != len(set(destinos_ids)):
+                raise ValidationError("Selecione ao menos uma empresa destino, sem repetições.")
+            permitidos = set(plano.destinos.values_list("empresa_id", flat=True))
+            if not set(destinos_ids).issubset(permitidos):
+                raise PermissionDenied("Selecione apenas empresas destino desta configuração. A base PAI já participa como origem.")
+            empresas = [e for e in empresas if e.pk == plano.matriz_id or e.pk in destinos_ids]
         pedido = {}
         if not catalogo:
             descricao = descricao.strip()
@@ -79,7 +86,7 @@ def solicitar(plano, usuario, descricao="", pai=None, catalogo=False):
                 raise ValidationError("O grupo superior deve ser de receita ou despesa.")
             if len(pai.descricao) > 50 or len(pai.natureza) > 50:
                 raise ValidationError("A descrição e a natureza do grupo superior devem ter até 50 caracteres.")
-            pedido = {"descricao": descricao, "pai": dados(pai)}
+            pedido = {"descricao": descricao, "pai": dados(pai), "destinos_ids": [e.pk for e in empresas if e.pk != plano.matriz_id]}
         op = CadastroCategoria.objects.create(plano=plano, solicitado_por=usuario,
             modo="catalogo" if catalogo else "cadastro", pedido=pedido,
             aplicativos=identificar_aplicativos(plano), progresso_total=len(empresas) * (1 if catalogo else 2),
@@ -212,6 +219,11 @@ def _executar_cadastro(pk):
             from .estado import processar
             processar(op)
             return
+        if op.modo == "cadastro" and "destinos_ids" in op.pedido:
+            esperadas = {op.plano.matriz_id, *op.pedido["destinos_ids"]}
+            permitidas = {op.plano.matriz_id, *op.plano.destinos.values_list("empresa_id", flat=True)}
+            if not esperadas.issubset(permitidas) or set(op.empresas.values_list("empresa_id", flat=True)) != esperadas:
+                raise ValidationError("As empresas da solicitação não correspondem aos destinos escolhidos. Inicie uma nova solicitação.")
         for linha in op.empresas.select_related("empresa"):
             progresso(op, f"Consultando categorias de {linha.empresa.nome_fantasia or linha.empresa.nome}.")
             conferir_operacao(op)

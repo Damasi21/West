@@ -373,7 +373,8 @@ def cadastrar(request, plano_id):
             raise ValidationError("Confirme o cadastro nos OMIEs do grupo.")
         if not form.is_valid():
             raise ValidationError([f"{form.fields[n].label}: {e}" for n, erros in form.errors.items() for e in erros])
-        op = central.solicitar(plano, request.user, form.cleaned_data["descricao"], form.cleaned_data["pai"])
+        op = central.solicitar(plano, request.user, form.cleaned_data["descricao"], form.cleaned_data["pai"],
+            destinos_ids=list(form.cleaned_data["destinos"].values_list("pk", flat=True)))
         transaction.on_commit(lambda: central.publicar_cadastro(op))
     except (ValidationError, PermissionDenied) as exc:
         informar_erro(request, exc)
