@@ -19,14 +19,23 @@ def ordem(c):
     return tuple(int(n) for n in c["codigo"].split("."))
 
 
-def estrutura(categorias):
+def estrutura(categorias, empresa=""):
     # Root totals and transfer accounts are outside the revenue/expense plan.
     itens = [c for c in categorias if c["codigo"] not in {"1", "2"} and tipo(c) and not c["transferencia"]]
+    erros = []
+    for c in itens:
+        for campo, rotulo in (("descricao", "Descrição"), ("natureza", "Natureza")):
+            tamanho = len(c[campo])
+            if tamanho > 50:
+                cadastro = "Grupo" if c["totalizadora"] else "Categoria"
+                erros.append(f'{empresa + ": " if empresa else ""}{cadastro} {c["codigo"]} — "{c["descricao"]}". '
+                    f'Campo {rotulo}: {tamanho} caracteres; máximo permitido pela OMIE: 50 '
+                    f'(excede em {tamanho - 50}). Ajuste esse campo na OMIE e retome a consulta.')
+    if erros:
+        raise ValidationError("\n".join(erros))
     for c in itens:
         if not re.fullmatch(r"[12]\.\d+" if c["totalizadora"] else r"[12]\.\d+\.\d+", c["codigo"]):
             raise ValidationError("Há uma hierarquia não suportada. Revise os níveis na OMIE antes de padronizar.")
-        if len(c["descricao"]) > 50 or len(c["natureza"]) > 50:
-            raise ValidationError("Há descrição ou natureza acima do limite de 50 caracteres da OMIE.")
     grupos = sorted([c for c in itens if c["totalizadora"]], key=ordem)
     ids = {g["codigo"] for g in grupos}
     if any(g["categoria_superior"] != g["codigo"].split(".")[0] for g in grupos):
@@ -36,9 +45,9 @@ def estrutura(categorias):
     return grupos, itens
 
 
-def planejar(fonte, destino):
-    grupos_pai, itens_pai = estrutura(fonte)
-    grupos_filho, itens_filho = estrutura(destino)
+def planejar(fonte, destino, *, empresa_pai="", empresa_filho=""):
+    grupos_pai, itens_pai = estrutura(fonte, empresa_pai)
+    grupos_filho, itens_filho = estrutura(destino, empresa_filho)
     passos = []
 
     def adicionar(origem, alvo, pai_indice=None, excedente=False, estado_novo=False):
@@ -164,7 +173,7 @@ def processar(op):
     with aplicativo_livre(op.plano.matriz, aguardar_sincronizacao=False) as integracao:
         fonte = catalogo(op.plano.matriz, integracao)
     if op.pedido["etapa"] == "consulta":
-        estrutura(fonte)
+        estrutura(fonte, "Base PAI — " + (op.plano.matriz.nome_fantasia or op.plano.matriz.nome))
         op.pedido.update(fonte=fonte, destinos={})
         progresso(op, "Base PAI consultada; preparando a sequência por empresa.", 1)
         for linha in linhas:
@@ -175,7 +184,9 @@ def processar(op):
                 with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
                     atual = catalogo(linha.empresa, integracao)
                 op.pedido["destinos"][str(linha.empresa_id)] = atual
-                linha.passos = planejar(fonte, atual)
+                linha.passos = planejar(fonte, atual,
+                    empresa_pai="Base PAI — " + (op.plano.matriz.nome_fantasia or op.plano.matriz.nome),
+                    empresa_filho="Base FILHO — " + (linha.empresa.nome_fantasia or linha.empresa.nome))
                 linha.status, linha.mensagem = "revisao", "Prévia por posição pronta; nenhuma alteração enviada."
             except ValidationError as exc:
                 linha.status, linha.mensagem = "bloqueada", " ".join(exc.messages)

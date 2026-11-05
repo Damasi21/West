@@ -69,6 +69,7 @@
 
 .rep-category-destinations { max-height: 180px; padding: .5rem; }
 .rep-preview td { overflow-wrap: anywhere; }
+[data-rep-message], [data-rep-company-message] { white-space: pre-line; overflow-wrap: anywhere; }
 @media (max-width: 767.98px) {
     .rep-preview thead { display: none; }
     .rep-preview tr { display: block; border-bottom: 1px solid var(--border, #e1e7ef); padding: .8rem 0; }

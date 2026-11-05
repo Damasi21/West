@@ -28,6 +28,11 @@ diretamente no OMIE. Departamentos ficam para uma etapa posterior.
   na prévia, com indicação para ajuste no OMIE. Não há promessa de espelhamento
   completo quando a API não permite essa etapa. Inclusão de filha inativa usa
   inclusão seguida de alteração de situação, ambas visíveis na prévia.
+- O limite de 50 caracteres em descrição e natureza é verificado antes dos envios.
+  O erro identifica a base PAI/FILHO e a empresa, cada grupo/categoria com seu código
+  e descrição, o campo, o tamanho atual e quanto excede. Todos os excessos encontrados
+  na base são listados em linhas separadas, sem truncar nem alterar os cadastros.
+  Após corrigir na OMIE, Retomar consulta refaz a leitura e atualiza o diagnóstico.
 - A prévia mostra código/nome anterior, descrição/situação desejada e ação de cada
   posição. Exige selecionar novamente as empresas e confirmar o impacto histórico:
   lançamentos anteriores conservam o código, mas passam a exibir a categoria

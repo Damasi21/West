@@ -326,3 +326,39 @@ class PadronizacaoTests(TestCase):
         op = self.previa()
         self.assertEqual(op.empresas.get().status,"bloqueada")
         self.assertEqual(self.api.escritas,[])
+
+    def test_limite_identifica_empresa_categoria_campo_e_quantidade_sem_cortar(self):
+        descricao = "Á" * 51
+        self.api.catalogos[self.matriz.pk][-1]["descricao"] = descricao
+        self.api.catalogos[self.matriz.pk][-1]["natureza"] = "N" * 54
+        op = self.previa()
+        self.assertEqual(op.status, "erro")
+        for trecho in ("Base PAI — Matriz", "2.01.01", descricao, "Campo Descrição: 51", "excede em 1", "Campo Natureza: 54", "excede em 4", "retome a consulta"):
+            self.assertIn(trecho, op.mensagem)
+        self.assertEqual(self.api.catalogos[self.matriz.pk][-1]["descricao"], descricao)
+        self.assertEqual(self.api.escritas, [])
+
+    def test_limite_na_filha_identifica_base_e_todos_os_cadastros(self):
+        self.api.catalogos[self.destino.pk][1]["natureza"] = "N" * 52
+        self.api.catalogos[self.destino.pk][-1]["descricao"] = "D" * 55
+        op = self.previa()
+        linha = op.empresas.get()
+        self.assertEqual(linha.status, "bloqueada")
+        for trecho in ("Base FILHO — Destino B", "Grupo 2.08", "Campo Natureza: 52", "Categoria 2.08.07", "Campo Descrição: 55"):
+            self.assertIn(trecho, linha.mensagem)
+        self.assertIn("\n", linha.mensagem)
+        self.assertEqual(self.api.escritas, [])
+
+    def test_cinquenta_caracteres_permitidos_e_mensagem_escapada_na_tela(self):
+        self.api.catalogos[self.matriz.pk][-1]["descricao"] = "D" * 50
+        self.api.catalogos[self.matriz.pk][-1]["natureza"] = "N" * 50
+        op = self.previa()
+        self.assertEqual(op.status, "revisao", op.mensagem)
+        padronizacao.confirmar(op, self.superuser, {"cancelar": "sim"})
+        self.api.catalogos[self.matriz.pk][-1]["descricao"] = "<script>alert(1)</script>" * 3
+        erro = self.previa()
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("replicacao:detalhe",args=[self.plano.pk]), {"cadastro": erro.pk})
+        self.assertContains(response, "&lt;script&gt;alert(1)&lt;/script&gt;")
+        self.assertNotContains(response, "<script>alert(1)</script>")
+        self.assertEqual(self.api.escritas, [])
