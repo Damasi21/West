@@ -129,7 +129,7 @@ class CadastroCategoria(models.Model):
 class CadastroCategoriaEmpresa(models.Model):
     cadastro = models.ForeignKey(CadastroCategoria, on_delete=models.CASCADE, related_name="empresas")
     empresa = models.ForeignKey("empresas.Empresa", on_delete=models.PROTECT)
-    status = models.CharField(max_length=16, default="pendente", choices=[("pendente", "Aguardando consulta"), ("pronta", "Verificada"), ("revisao", "Revisar semelhanças"), ("executando", "Cadastrando"), ("sucesso", "Confirmado"), ("ignorada", "Ignorada"), ("erro", "Pendente de conclusão"), ("incerto", "Verificar resultado")])
+    status = models.CharField(max_length=16, default="pendente", choices=[("pendente", "Aguardando consulta"), ("pronta", "Verificada"), ("revisao", "Revisar semelhanças"), ("executando", "Cadastrando"), ("sucesso", "Confirmado"), ("ignorada", "Ignorada"), ("bloqueada", "Bloqueada"), ("erro", "Pendente de conclusão"), ("incerto", "Verificar resultado")])
     mensagem = models.TextField(blank=True)
     passos = models.JSONField(default=list)
     atualizada_em = models.DateTimeField(auto_now=True)

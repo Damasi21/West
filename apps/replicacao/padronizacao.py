@@ -1,0 +1,336 @@
+"""Plano por posição: prévia congelada, IDs do destino e escritas reconciliáveis."""
+import re
+from copy import deepcopy
+
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
+from django.utils import timezone
+
+from apps.empresas.models import CategoriaOmie
+from apps.empresas.omie import _salvar_categorias
+from . import omie
+from .comparacao import normalizar, tipo
+from .estado import catalogo, snapshot
+from .models import PlanoReplicacao, CadastroCategoria, CadastroCategoriaEmpresa, VinculoCategoria
+from .services import aplicativo_livre, identificar_aplicativos, auditar
+
+
+def ordem(c):
+    return tuple(int(n) for n in c["codigo"].split("."))
+
+
+def estrutura(categorias):
+    # Root totals and transfer accounts are outside the revenue/expense plan.
+    itens = [c for c in categorias if c["codigo"] not in {"1", "2"} and tipo(c) and not c["transferencia"]]
+    for c in itens:
+        if not re.fullmatch(r"[12]\.\d+" if c["totalizadora"] else r"[12]\.\d+\.\d+", c["codigo"]):
+            raise ValidationError("Há uma hierarquia não suportada. Revise os níveis na OMIE antes de padronizar.")
+        if len(c["descricao"]) > 50 or len(c["natureza"]) > 50:
+            raise ValidationError("Há descrição ou natureza acima do limite de 50 caracteres da OMIE.")
+    grupos = sorted([c for c in itens if c["totalizadora"]], key=ordem)
+    ids = {g["codigo"] for g in grupos}
+    if any(g["categoria_superior"] != g["codigo"].split(".")[0] for g in grupos):
+        raise ValidationError("Há grupo superior fora da hierarquia de receitas/despesas. Revise a OMIE antes de padronizar.")
+    if any(not c["totalizadora"] and c["categoria_superior"] not in ids for c in itens):
+        raise ValidationError("Há categoria sem grupo superior correspondente. Atualize o cadastro na OMIE.")
+    return grupos, itens
+
+
+def planejar(fonte, destino):
+    grupos_pai, itens_pai = estrutura(fonte)
+    grupos_filho, itens_filho = estrutura(destino)
+    passos = []
+
+    def adicionar(origem, alvo, pai_indice=None, excedente=False, estado_novo=False):
+        grupo = (origem or alvo)["totalizadora"]
+        esperado = deepcopy(origem or alvo)
+        if alvo:
+            esperado.update(codigo=alvo["codigo"], categoria_superior=alvo["categoria_superior"])
+        else:
+            esperado["codigo"] = ""
+            esperado["categoria_superior"] = "" if not grupo else origem["categoria_superior"]
+        if grupo:
+            esperado["codigo_dre"] = alvo["codigo_dre"] if alvo else ""
+        if excedente:
+            esperado["conta_inativa"] = True
+        if estado_novo:
+            # IncluirCategoria has no documented conta_inativa parameter.
+            esperado["conta_inativa"] = False
+        if grupo and esperado["conta_inativa"] != (alvo["conta_inativa"] if alvo else False):
+            raise ValidationError("A situação de um grupo pai difere da matriz. A API de grupos não oferece ativação/inativação; ajuste esse grupo na OMIE e gere outra prévia.")
+        acao = "manter" if alvo == esperado else "inativar" if excedente else "reescrever" if alvo else "criar"
+        passos.append({"origem": deepcopy(origem or alvo), "alvo": deepcopy(alvo), "esperado": esperado,
+            "acao": acao, "grupo": grupo, "pai_indice": pai_indice, "excedente": excedente, "status": "pendente",
+            "rotulo": ("Grupo" if grupo else "Categoria") + " · " + (origem or alvo)["descricao"]})
+        return len(passos)-1
+
+    for natureza in ("R", "D"):
+        origem_grupos = [g for g in grupos_pai if tipo(g) == natureza]
+        destino_grupos = [g for g in grupos_filho if tipo(g) == natureza]
+        if len(destino_grupos) > len(origem_grupos):
+            raise ValidationError("O destino tem grupos pais excedentes. Sua inativação não é oferecida pela API de grupos; ajuste-os na OMIE antes de padronizar. Nenhuma alteração foi autorizada nesta empresa.")
+        for posicao, grupo in enumerate(origem_grupos):
+            alvo = destino_grupos[posicao] if posicao < len(destino_grupos) else None
+            gi = adicionar(grupo, alvo)
+            filhos = sorted([c for c in itens_pai if c["categoria_superior"] == grupo["codigo"]
+                and not c["totalizadora"] and normalizar(c["descricao"]) != "<disponivel>"], key=ordem)
+            alvos = sorted([c for c in itens_filho if alvo and c["categoria_superior"] == alvo["codigo"] and not c["totalizadora"]], key=ordem)
+            for n, filho in enumerate(filhos):
+                atual = alvos[n] if n < len(alvos) else None
+                ci = adicionar(filho, atual, gi, estado_novo=bool(not atual and filho["conta_inativa"]))
+                if not atual and filho["conta_inativa"]:
+                    # Explicit second step, shown and approved in the preview.
+                    passos.append({"origem": deepcopy(filho), "alvo": None, "esperado": deepcopy(filho),
+                        "acao": "inativar", "grupo": False, "pai_indice": gi, "referencia": ci,
+                        "status": "pendente", "rotulo": "Inativar após inclusão · " + filho["descricao"]})
+            for sobra in alvos[len(filhos):]:
+                adicionar(None, sobra, gi, excedente=True)
+    if not grupos_pai:
+        raise ValidationError("A matriz não possui grupos de receita ou despesa para padronizar.")
+    return passos
+
+
+def solicitar(plano, usuario, destinos_ids):
+    from .central import conferir_grupo, OCUPADOS
+    with transaction.atomic():
+        plano = PlanoReplicacao.objects.select_for_update().get(pk=plano.pk)
+        conferir_grupo(plano, usuario)
+        if not isinstance(destinos_ids, list) or not destinos_ids or any(type(pk) is not int for pk in destinos_ids) or len(destinos_ids) != len(set(destinos_ids)):
+            raise ValidationError("Selecione ao menos uma empresa FILHO, sem repetições.")
+        if not set(destinos_ids).issubset(set(plano.destinos.values_list("empresa_id", flat=True))):
+            raise PermissionDenied("Escolha somente empresas FILHO desta configuração.")
+        if plano.cadastros.filter(status__in=OCUPADOS | {"revisao"}).exists() or plano.comparacoes.filter(status__in=["fila", "comparando", "enviando"]).exists():
+            raise ValidationError("Conclua a solicitação em andamento antes de padronizar.")
+        op = CadastroCategoria.objects.create(plano=plano, solicitado_por=usuario, modo="espelho",
+            pedido={"descricao": "Padronização por sequência", "etapa": "consulta", "destinos_ids": destinos_ids},
+            aplicativos=identificar_aplicativos(plano), progresso_total=len(destinos_ids)+1,
+            mensagem="Aguardando o worker para preparar a prévia. A base PAI será somente consultada.")
+        CadastroCategoriaEmpresa.objects.bulk_create([CadastroCategoriaEmpresa(cadastro=op, empresa_id=pk) for pk in destinos_ids])
+        auditar(plano, usuario, "Solicitou prévia de padronização por posição", cadastro_id=op.pk, destinos=destinos_ids)
+        return op
+
+
+def confirmar(op, usuario, escolhas):
+    from .central import conferir_grupo, conferir_operacao
+    with transaction.atomic():
+        PlanoReplicacao.objects.select_for_update().get(pk=op.plano_id)
+        op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
+        conferir_grupo(op.plano, usuario)
+        conferir_operacao(op)
+        if op.modo != "espelho" or op.status != "revisao" or op.pedido.get("etapa") != "consulta":
+            raise ValidationError("Esta prévia não está disponível para confirmação.")
+        cancelar = escolhas.get("cancelar") == "sim"
+        if not cancelar and escolhas.get("confirmar") != "sim":
+            raise ValidationError("Confirme que os nomes dos lançamentos históricos também acompanharão as categorias reescritas.")
+        if not cancelar and not any(escolhas.get(f"aplicar_{pk}") == "sim" for pk in op.empresas.values_list("pk", flat=True)):
+            raise ValidationError("Marque ao menos uma empresa FILHO para aplicar ou encerre sem novos envios.")
+        for linha in op.empresas.select_for_update():
+            aplicar = not cancelar and escolhas.get(f"aplicar_{linha.pk}") == "sim"
+            if aplicar and linha.status != "revisao":
+                raise ValidationError("Não é possível aplicar uma empresa bloqueada ou sem prévia completa.")
+            linha.status = "pronta" if aplicar else "ignorada"
+            linha.mensagem = "Prévia autorizada; aguardando o worker." if aplicar else "Ignorada; nenhuma alteração autorizada."
+            linha.save()
+        op.pedido["etapa"] = "envio"
+        op.pedido["confirmado_em"] = timezone.now().isoformat()
+        op.solicitado_por = usuario
+        op.status = "fila" if op.empresas.filter(status="pronta").exists() else "concluido"
+        op.iniciada_em = None
+        op.save()
+        auditar(op.plano, usuario, "Confirmou prévia de padronização", cadastro_id=op.pk,
+            empresas=list(op.empresas.values("empresa_id", "status", "passos")))
+        return op
+
+
+def iguais(a, b):
+    return sorted(a, key=lambda c: c["codigo"]) == sorted(b, key=lambda c: c["codigo"])
+
+
+def esperado_catalogo(op, linha):
+    itens = {c["codigo"]: deepcopy(c) for c in op.pedido["destinos"][str(linha.empresa_id)]}
+    for passo in linha.passos:
+        if passo.get("status") == "sucesso":
+            itens[passo["codigo"]] = passo["confirmado"]
+    return list(itens.values())
+
+
+def processar(op):
+    from .central import conferir_operacao, conferir_sem_incerteza, progresso
+    empresas = conferir_operacao(op)
+    linhas = list(op.empresas.select_related("empresa"))
+    ids = {l.empresa_id for l in linhas}
+    if not ids or ids != set(op.pedido["destinos_ids"]) or not ids.issubset({e.pk for e in empresas} - {op.plano.matriz_id}):
+        raise PermissionDenied("Os destinos não correspondem às empresas FILHO escolhidas.")
+    with aplicativo_livre(op.plano.matriz, aguardar_sincronizacao=False) as integracao:
+        fonte = catalogo(op.plano.matriz, integracao)
+    if op.pedido["etapa"] == "consulta":
+        estrutura(fonte)
+        op.pedido.update(fonte=fonte, destinos={})
+        progresso(op, "Base PAI consultada; preparando a sequência por empresa.", 1)
+        for linha in linhas:
+            conferir_operacao(op)
+            conferir_sem_incerteza(linha.empresa, linha)
+            progresso(op, f"Preparando prévia de {linha.empresa.nome_fantasia or linha.empresa.nome}.")
+            try:
+                with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
+                    atual = catalogo(linha.empresa, integracao)
+                op.pedido["destinos"][str(linha.empresa_id)] = atual
+                linha.passos = planejar(fonte, atual)
+                linha.status, linha.mensagem = "revisao", "Prévia por posição pronta; nenhuma alteração enviada."
+            except ValidationError as exc:
+                linha.status, linha.mensagem = "bloqueada", " ".join(exc.messages)
+                linha.passos = []
+            linha.save()
+            progresso(op, op.mensagem, 1)
+        op.status = "revisao"
+        op.save()
+        progresso(op, "Confira a prévia e confirme as empresas FILHO. A ordem segue os códigos OMIE, separando receitas e despesas.")
+        return
+    if op.pedido["etapa"] != "envio" or not op.pedido.get("confirmado_em"):
+        raise ValidationError("Padronização sem confirmação de prévia.")
+    if not iguais(fonte, op.pedido["fonte"]):
+        raise ValidationError("A base PAI mudou após a prévia. Encerre esta solicitação e prepare outra prévia; nenhuma nova escrita foi iniciada.")
+    op.status = "enviando"
+    op.progresso_total = sum(len(l.passos) for l in linhas if l.status != "ignorada") or 1
+    op.progresso_atual = 0
+    op.save()
+    for linha in linhas:
+        if linha.status == "ignorada":
+            continue
+        try:
+            conferir_operacao(op)
+            conferir_sem_incerteza(linha.empresa, linha)
+            if linha.status == "incerto" or any(p.get("status") in {"executando", "incerto"} for p in linha.passos):
+                raise ValidationError("Verifique o envio sem confirmação antes de retomar; nenhuma escrita será repetida.")
+            with aplicativo_livre(op.plano.matriz, aguardar_sincronizacao=False) as origem_integracao:
+                if not iguais(catalogo(op.plano.matriz, origem_integracao), op.pedido["fonte"]):
+                    raise ValidationError("A base PAI mudou. Nenhuma nova escrita será enviada nesta empresa; gere outra prévia.")
+            with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
+                atual = catalogo(linha.empresa, integracao)
+                if not iguais(atual, esperado_catalogo(op, linha)):
+                    raise ValidationError("O destino mudou após a prévia ou a última confirmação. Nenhuma nova escrita foi enviada nesta empresa. Encerre a solicitação e gere uma nova prévia.")
+                linha.status = "executando"
+                linha.save()
+                for indice, passo in enumerate(linha.passos):
+                    conferir_operacao(op)
+                    progresso(op, f"{linha.empresa.nome_fantasia or linha.empresa.nome}: {indice+1}/{len(linha.passos)} · {passo['rotulo']} · {passo['acao']}.")
+                    if passo.get("status") != "sucesso":
+                        aplicar(linha, indice, integracao)
+                    progresso(op, op.mensagem, 1)
+                # The final complete read also catches unexpected structural changes.
+                final = catalogo(linha.empresa, integracao)
+                if not iguais(final, esperado_catalogo(op, linha)):
+                    raise ValidationError("O cadastro mudou durante a execução. Confira a OMIE e gere outra prévia para as diferenças.")
+                if any(p["acao"] != "manter" for p in planejar(fonte, final)):
+                    raise ValidationError("Os códigos atribuídos pela OMIE não mantiveram a sequência prevista. Confira a ordem e gere outra prévia para ajustar; os envios já confirmados não serão repetidos.")
+                linha.status, linha.mensagem = "sucesso", "Sequência confirmada na OMIE e atualizada no BI."
+                linha.save()
+                atualizar_vinculos(op, linha)
+                auditar(op.plano, op.solicitado_por, "Concluiu padronização por posição", cadastro_id=op.pk, empresa_id=linha.empresa_id, passos=linha.passos)
+        except Exception as exc:
+            incerto = any(p.get("status") in {"executando", "incerto"} for p in linha.passos)
+            linha.status = "incerto" if incerto else "erro"
+            linha.mensagem = ("Resultado sem confirmação. Verifique sem reenviar." if incerto else
+                " ".join(exc.messages) if isinstance(exc, ValidationError) else "A OMIE recusou a operação ou está indisponível. Confira antes de retomar.")
+            linha.save()
+    op.status = "concluido"
+    progresso(op, "Execução encerrada. Confira o resultado por empresa; eventuais pendências continuam identificadas abaixo.")
+
+
+def atualizar_vinculos(op, linha):
+    destino = op.plano.destinos.get(empresa=linha.empresa)
+    por_origem = {}
+    for passo in linha.passos:
+        if not passo.get("excedente"):
+            por_origem[passo["origem"]["codigo"]] = passo["codigo"]
+    with transaction.atomic():
+        VinculoCategoria.objects.filter(destino=destino).delete()
+        for origem_codigo, alvo_codigo in por_origem.items():
+            origem = CategoriaOmie.objects.get(empresa=op.plano.matriz, codigo=origem_codigo)
+            alvo = CategoriaOmie.objects.get(empresa=linha.empresa, codigo=alvo_codigo)
+            VinculoCategoria.objects.create(destino=destino, origem=origem, categoria=alvo, confirmado_por=op.solicitado_por)
+
+
+def aplicar(linha, indice, integracao):
+    passo = linha.passos[indice]
+    esperado = deepcopy(passo["esperado"])
+    referencia = passo.get("referencia")
+    alvo = passo["alvo"]
+    if referencia is not None:
+        alvo = linha.passos[referencia]["confirmado"]
+        esperado.update(codigo=alvo["codigo"], categoria_superior=alvo["categoria_superior"])
+    pai_indice = passo.get("pai_indice")
+    if pai_indice is not None:
+        esperado["categoria_superior"] = linha.passos[pai_indice]["codigo"]
+    if alvo:
+        registros = omie.listar(integracao, descricao=alvo["descricao"])
+        registro = next((c for c in registros if str(c.get("codigo")) == alvo["codigo"]), None)
+        if not registro:
+            raise ValidationError("A categoria de destino mudou. Gere outra prévia.")
+        with transaction.atomic():
+            _salvar_categorias(linha.empresa, [registro])
+            atual = snapshot(CategoriaOmie.objects.get(empresa=linha.empresa, codigo=alvo["codigo"]))
+            if atual != alvo:
+                raise ValidationError("Os dados do destino mudaram. Gere outra prévia antes de continuar.")
+    if alvo == esperado:
+        passo.update(status="sucesso", codigo=alvo["codigo"], confirmado=alvo)
+        linha.save()
+        return
+    metodo = ("Alterar" if alvo else "Incluir") + ("GrupoCategoria" if passo["grupo"] else "Categoria")
+    payload = {k: esperado[k] for k in ("descricao", "natureza")}
+    if alvo:
+        payload["codigo"] = alvo["codigo"]
+    elif passo["grupo"]:
+        payload["tipo_grupo"] = tipo(passo["origem"])
+    else:
+        payload["categoria_superior"] = esperado["categoria_superior"]
+    if not passo["grupo"]:
+        payload.update(tipo_categoria=esperado["tipo_categoria"], codigo_dre=esperado["codigo_dre"])
+        if alvo:
+            payload["conta_inativa"] = "S" if esperado["conta_inativa"] else "N"
+    passo.update(status="executando", metodo=metodo, parametros=payload, esperado=esperado)
+    with transaction.atomic():
+        linha.save()
+        antigos = VinculoCategoria.objects.filter(destino__plano=linha.cadastro.plano, destino__empresa=linha.empresa)
+        registros = list(antigos.values("origem_id", "categoria_id"))
+        if registros:
+            auditar(linha.cadastro.plano, linha.cadastro.solicitado_por, "Substituiu vínculos anteriores pela padronização", cadastro_id=linha.cadastro_id, empresa_id=linha.empresa_id, vinculos_anteriores=registros)
+            antigos.delete()
+    try:
+        resposta = omie.chamada(integracao, metodo, payload)
+    except omie.OmieRecusada:
+        passo["status"] = "erro"
+        linha.save()
+        raise
+    codigo = str(resposta.get("codigo") or "")
+    if alvo and codigo != alvo["codigo"]:
+        raise omie.OmieIncerta("Código retornado diferente do aprovado.")
+    passo["codigo"] = codigo
+    linha.save()
+    confirmar_resultado(linha, indice, integracao)
+
+
+def confirmar_resultado(linha, indice, integracao, codigo=""):
+    passo = linha.passos[indice]
+    conhecido = passo.get("codigo") or (passo.get("alvo") or {}).get("codigo")
+    if conhecido and codigo and conhecido != codigo:
+        raise ValidationError("O código difere da escrita originalmente enviada.")
+    codigo = conhecido or codigo
+    if not codigo:
+        raise ValidationError("Informe o código confirmado na OMIE; a inclusão não será repetida.")
+    if passo["acao"] == "criar":
+        antigos = linha.cadastro.pedido["destinos"][str(linha.empresa_id)]
+        if any(c["codigo"] == codigo for c in antigos) or any(p is not passo and p.get("codigo") == codigo for p in linha.passos):
+            raise ValidationError("O código informado já pertence a outro cadastro da prévia. Confira a inclusão na OMIE sem reenviar.")
+    esperado = {**passo["esperado"], "codigo": codigo}
+    registros = omie.listar(integracao, descricao=esperado["descricao"])
+    registro = next((c for c in registros if str(c.get("codigo")) == codigo), None)
+    if not registro:
+        raise omie.OmieIncerta("Resultado ainda não localizado na OMIE.")
+    with transaction.atomic():
+        _salvar_categorias(linha.empresa, [registro])
+        atual = snapshot(CategoriaOmie.objects.get(empresa=linha.empresa, codigo=codigo))
+        if atual != esperado:
+            raise omie.OmieIncerta("Dados diferentes da prévia autorizada.")
+        passo.update(status="sucesso", codigo=codigo, confirmado=atual)
+        linha.save()

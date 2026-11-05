@@ -44,12 +44,13 @@ class OmieSimulada:
         catalogo = self.catalogos[integracao.empresa_id]
         if metodo.startswith("Incluir"):
             grupo = metodo == "IncluirGrupoCategoria"
-            codigo = f"2.{9 + len(self.escritas):02d}" if grupo else payload["categoria_superior"]+f".{len(self.escritas):02d}"
+            raiz = ("1" if payload.get("tipo_grupo") == "R" else "2") if grupo else payload["categoria_superior"].split(".")[0]
+            codigo = f"{raiz}.{9 + len(self.escritas):02d}" if grupo else payload["categoria_superior"]+f".{len(self.escritas):02d}"
             numero = len(self.escritas)
             while codigo in {c['codigo'] for c in catalogo}:
                 numero += 1
-                codigo = f"2.{9 + numero:02d}" if grupo else payload["categoria_superior"]+f".{numero:02d}"
-            novo = categoria(codigo, payload["descricao"], grupo=grupo, pai="2" if grupo else payload["categoria_superior"])
+                codigo = f"{raiz}.{9 + numero:02d}" if grupo else payload["categoria_superior"]+f".{numero:02d}"
+            novo = categoria(codigo, payload["descricao"], grupo=grupo, pai=raiz if grupo else payload["categoria_superior"], conta_receita="S" if raiz == "1" else "N", conta_despesa="S" if raiz == "2" else "N")
             novo.update({k:v for k,v in payload.items() if k not in {"tipo_grupo"}})
             catalogo.append(novo)
         else:

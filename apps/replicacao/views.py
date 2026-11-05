@@ -15,7 +15,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from apps.empresas.models import AmbienteWhiteLabel, Empresa, CategoriaOmie
 from apps.empresas.white_label_branding import SESSION_MARCA
 from apps.empresas.white_label_domains import _marca_host, marca_host_atual
-from .forms import PlanoForm, NovaCategoriaForm
+from .forms import PlanoForm, NovaCategoriaForm, PadronizacaoForm
 from .models import CadastroCategoria, CadastroCategoriaEmpresa
 from . import central
 from .models import PlanoReplicacao, ComparacaoReplicacao, ItemReplicacao, DestinoReplicacao, VinculoCategoria
@@ -311,11 +311,11 @@ def painel_central(request, plano):
     linhas = list(operacao.empresas.select_related("empresa")) if operacao else []
     for linha in linhas:
         linha.precisa_codigo = any(p.get("status") in {"executando", "incerto"} and not p.get("codigo") and not p.get("alvo") for p in linha.passos)
-        if operacao.modo in {"inativar", "reativar"} and linha.status == "revisao":
+        if operacao.modo in {"inativar", "reativar", "espelho"} and linha.status == "revisao":
             linha.rotulo_situacao = "Aguardando confirmação"
     ocupado = plano.cadastros.filter(status__in=central.OCUPADOS | {"revisao"}).exists()
     return render(request, "replicacao/central.html", {"plano": plano, "arvore": arvore,
-        "erro_grupo": erro_grupo, "form": NovaCategoriaForm(plano=plano), "operacao": operacao,
+        "erro_grupo": erro_grupo, "form": NovaCategoriaForm(plano=plano), "form_padronizacao": PadronizacaoForm(plano=plano), "operacao": operacao,
         "progresso": central.situacao(operacao) if operacao else None, "linhas": linhas,
         "ocupado": ocupado, "historico": plano.cadastros.all()[:20],
         "alteracao_situacao": operacao and operacao.modo in {"inativar", "reativar"}})
@@ -374,7 +374,7 @@ def cadastrar(request, plano_id):
         if not form.is_valid():
             raise ValidationError([f"{form.fields[n].label}: {e}" for n, erros in form.errors.items() for e in erros])
         op = central.solicitar(plano, request.user, form.cleaned_data["descricao"], form.cleaned_data["pai"],
-            destinos_ids=list(form.cleaned_data["destinos"].values_list("pk", flat=True)))
+            destinos_ids=list(form.cleaned_data["destinos"].values_list("pk", flat=True)), estrito=True)
         transaction.on_commit(lambda: central.publicar_cadastro(op))
     except (ValidationError, PermissionDenied) as exc:
         informar_erro(request, exc)
@@ -391,6 +391,38 @@ def atualizar_arvore(request, plano_id):
     except (ValidationError, PermissionDenied) as exc:
         informar_erro(request, exc)
     return redirect("replicacao:detalhe", plano_id=plano.pk)
+
+
+@ambiente_view
+@require_POST
+def padronizar(request, plano_id):
+    from . import padronizacao
+    plano = plano_request(request, plano_id)
+    form = PadronizacaoForm(request.POST, plano=plano)
+    try:
+        if not form.is_valid():
+            raise ValidationError("Selecione as empresas FILHO desta configuração.")
+        op = padronizacao.solicitar(plano, request.user, list(form.cleaned_data["destinos"].values_list("pk", flat=True)))
+        transaction.on_commit(lambda: central.publicar_cadastro(op))
+        return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    return redirect("replicacao:detalhe", plano_id=plano.pk)
+
+
+@ambiente_view
+@require_POST
+def confirmar_padronizacao(request, plano_id, cadastro_id):
+    from . import padronizacao
+    plano = plano_request(request, plano_id)
+    op = get_object_or_404(plano.cadastros, pk=cadastro_id)
+    try:
+        op = padronizacao.confirmar(op, request.user, request.POST)
+        if op.status == "fila":
+            transaction.on_commit(lambda: central.publicar_cadastro(op))
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
 
 
 @ambiente_view

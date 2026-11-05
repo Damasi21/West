@@ -3,6 +3,8 @@ from . import views
 
 app_name = "replicacao"
 urlpatterns = [
+    path("<int:plano_id>/padronizar/", views.padronizar, name="padronizar"),
+    path("<int:plano_id>/cadastros/<int:cadastro_id>/confirmar-padronizacao/", views.confirmar_padronizacao, name="confirmar_padronizacao"),
     path("", views.lista, name="lista"),
     path("nova/", views.novo, name="novo"),
     path("<int:plano_id>/", views.detalhe, name="detalhe"),

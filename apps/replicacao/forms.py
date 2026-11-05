@@ -76,3 +76,12 @@ class NovaCategoriaForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["pai"].queryset = CategoriaOmie.objects.filter(empresa=plano.matriz, ativo_omie=True, totalizadora=True, conta_inativa=False, transferencia=False).order_by("codigo")
         self.fields["destinos"].queryset = Empresa.objects.filter(pk__in=plano.destinos.values("empresa_id"), ativa=True).order_by("nome_fantasia", "pk")
+
+
+class PadronizacaoForm(forms.Form):
+    destinos = DestinosChoice(label="Empresas FILHO que receberão o plano", queryset=Empresa.objects.none(), widget=forms.CheckboxSelectMultiple)
+
+    def __init__(self, *args, plano, **kwargs):
+        kwargs.setdefault("auto_id", "id_padronizacao_%s")
+        super().__init__(*args, **kwargs)
+        self.fields["destinos"].queryset = Empresa.objects.filter(pk__in=plano.destinos.values("empresa_id"), ativa=True).order_by("nome_fantasia", "pk")

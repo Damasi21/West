@@ -24,6 +24,10 @@ class NovaRevisao(Exception):
     pass
 
 
+class GrupoIncompativel(ValidationError):
+    pass
+
+
 def empresas_grupo(usuario, grupo):
     if not grupo.strip():
         raise ValidationError("Selecione um grupo cadastrado nas empresas.")
@@ -60,7 +64,7 @@ def conferir_operacao(operacao):
     return empresas
 
 
-def solicitar(plano, usuario, descricao="", pai=None, catalogo=False, destinos_ids=None):
+def solicitar(plano, usuario, descricao="", pai=None, catalogo=False, destinos_ids=None, estrito=True):
     with transaction.atomic():
         plano = type(plano).objects.select_for_update().get(pk=plano.pk)
         empresas = conferir_grupo(plano, usuario)
@@ -87,6 +91,8 @@ def solicitar(plano, usuario, descricao="", pai=None, catalogo=False, destinos_i
             if len(pai.descricao) > 50 or len(pai.natureza) > 50:
                 raise ValidationError("A descrição e a natureza do grupo superior devem ter até 50 caracteres.")
             pedido = {"descricao": descricao, "pai": dados(pai), "destinos_ids": [e.pk for e in empresas if e.pk != plano.matriz_id]}
+            if estrito:
+                pedido["estrito"] = True
         op = CadastroCategoria.objects.create(plano=plano, solicitado_por=usuario,
             modo="catalogo" if catalogo else "cadastro", pedido=pedido,
             aplicativos=identificar_aplicativos(plano), progresso_total=len(empresas) * (1 if catalogo else 2),
@@ -120,6 +126,15 @@ def montar_passos(op, catalogo, antigos=()):
     Only an exact, unique, active and structurally compatible name is reused
     automatically. Near names require a recorded choice against its snapshot.
     """
+    pai_estrito = None
+    if op.pedido.get("estrito") and op.pedido["pai"]["codigo"] not in {"1", "2"}:
+        origem = op.pedido["pai"]
+        pais = [c for c in catalogo if c["totalizadora"] and c["ativo_omie"] and not c["conta_inativa"]
+            and not c["transferencia"] and tipo(c) == tipo(origem) and c["descricao"] == origem["descricao"]
+            and re.fullmatch(r"[12]\.\d{2}", c["codigo"]) and c["categoria_superior"] == c["codigo"][0]]
+        if len(pais) != 1:
+            raise GrupoIncompativel("Cadastro bloqueado: o grupo superior deve existir uma única vez, ativo, com descrição e tipo idênticos à base PAI. Cadastre ou ajuste o grupo antes de retomar; ele não será criado automaticamente.")
+        pai_estrito = pais[0]
     passos = []
     pai_codigo = op.pedido["pai"]["codigo"] if op.pedido["pai"]["codigo"] in {"1", "2"} else None
     for indice, origem in enumerate(desejadas(op.pedido)):
@@ -135,6 +150,8 @@ def montar_passos(op, catalogo, antigos=()):
             raise ValidationError("Há uma escrita sem confirmação. Verifique seu resultado antes de continuar.")
         candidatos = []
         for c in catalogo:
+            if pai_estrito and indice == 0 and c["codigo"] != pai_estrito["codigo"]:
+                continue
             if c["codigo"] in {"1", "2"} or semelhanca(origem["descricao"], c["descricao"]) < .8:
                 continue
             compativel = (c["ativo_omie"] and not c["conta_inativa"] and not c["transferencia"]
@@ -219,6 +236,10 @@ def _executar_cadastro(pk):
             from .estado import processar
             processar(op)
             return
+        if op.modo == "espelho":
+            from .padronizacao import processar
+            processar(op)
+            return
         if op.modo == "cadastro" and "destinos_ids" in op.pedido:
             esperadas = {op.plano.matriz_id, *op.pedido["destinos_ids"]}
             permitidas = {op.plano.matriz_id, *op.plano.destinos.values_list("empresa_id", flat=True)}
@@ -247,7 +268,13 @@ def _executar_cadastro(pk):
                     pai = next((c for c in catalogo if c["codigo"] == op.pedido["pai"]["codigo"]), None)
                     if pai != op.pedido["pai"]:
                         raise ValidationError("O grupo superior da base PAI mudou. Atualize a árvore e inicie um novo cadastro.")
-                linha.passos = montar_passos(op, catalogo, linha.passos)
+                try:
+                    linha.passos = montar_passos(op, catalogo, linha.passos)
+                except GrupoIncompativel as exc:
+                    linha.status, linha.mensagem = "bloqueada", " ".join(exc.messages)
+                    linha.save()
+                    progresso(op, op.mensagem, 1)
+                    continue
                 linha.status = "revisao" if any(p["acao"] == "conflito" for p in linha.passos) else "pronta"
                 linha.mensagem = "Escolha Sobrescrever descrição ou Ignorar nesta empresa." if linha.status == "revisao" else "Varredura concluída."
             linha.save()
@@ -263,7 +290,7 @@ def _executar_cadastro(pk):
         op.status = "enviando"
         op.save()
         for linha in op.empresas.select_related("empresa"):
-            if linha.status in {"sucesso", "ignorada"}:
+            if linha.status in {"sucesso", "ignorada", "bloqueada"}:
                 progresso(op, op.mensagem, 1)
                 continue
             nome = linha.empresa.nome_fantasia or linha.empresa.nome
@@ -295,6 +322,9 @@ def _executar_cadastro(pk):
                     linha.status, linha.mensagem = "sucesso", "Cadastro confirmado na OMIE e atualizado no BI."
                     linha.save()
                     auditar(op.plano, op.solicitado_por, "Cadastro central confirmado", cadastro_id=op.pk, empresa_id=linha.empresa_id, passos=linha.passos)
+            except GrupoIncompativel as exc:
+                linha.status, linha.mensagem = "bloqueada", " ".join(exc.messages)
+                linha.save()
             except NovaRevisao:
                 linha.status, linha.mensagem = "revisao", "A OMIE mudou antes da gravação. Revise as novas correspondências."
                 linha.save()
@@ -368,6 +398,9 @@ def aplicar_passo(op, linha, indice, integracao, pai_codigo):
 
 
 def confirmar_passo(linha, indice, integracao, codigo=""):
+    if linha.cadastro.modo == "espelho":
+        from .padronizacao import confirmar_resultado
+        return confirmar_resultado(linha, indice, integracao, codigo)
     if linha.cadastro.modo in {"inativar", "reativar"}:
         from .estado import confirmar_resultado
         return confirmar_resultado(linha, indice, integracao, codigo)
@@ -458,7 +491,7 @@ def _retomar(op, usuario):
             raise ValidationError("Verifique os envios sem confirmação antes de retomar. Nenhuma escrita será repetida.")
         if op.status == "revisao":
             raise ValidationError("Resolva os conflitos apresentados na tela.")
-        if op.status == "concluido" and not op.empresas.filter(status="erro").exists():
+        if op.status == "concluido" and not op.empresas.filter(status__in=["erro", "bloqueada"]).exists():
             raise ValidationError("Esta solicitação já foi concluída.")
         if op.plano.cadastros.exclude(pk=op.pk).filter(status__in=OCUPADOS | {"revisao"}).exists():
             raise ValidationError("Há outra solicitação em andamento.")
@@ -487,6 +520,9 @@ def verificar_cadastro(linha_id, usuario_id, codigo=""):
                     break
             linha.status = "sucesso" if all(p.get("status") == "sucesso" for p in linha.passos) else "erro"
             linha.mensagem = "Resultado confirmado. Retome a consulta para concluir os passos restantes." if linha.status == "erro" else "Cadastro confirmado na OMIE."
+            if op.modo == "espelho":
+                linha.status = "erro"
+                linha.mensagem = "Resultado confirmado sem reenviar. Retome para concluir os passos restantes e validar a sequência final."
             linha.save()
             auditar(op.plano, get_user_model().objects.get(pk=usuario_id), "Verificou cadastro central sem repetir escrita", cadastro_id=op.pk, empresa_id=linha.empresa_id)
     except Exception:

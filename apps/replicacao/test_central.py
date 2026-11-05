@@ -28,7 +28,8 @@ class CadastroCentralTests(TestCase):
         self.pai = CategoriaOmie.objects.get(empresa=self.matriz, codigo="2.01")
 
     def solicitar(self, descricao="Aluguel", pai=None):
-        return central.solicitar(self.plano, self.superuser, descricao, pai or self.pai)
+        # Existing requests retain their original matching/parent creation rules.
+        return central.solicitar(self.plano, self.superuser, descricao, pai or self.pai, estrito=False)
 
     def executar(self, op):
         central.executar_cadastro(op.pk)

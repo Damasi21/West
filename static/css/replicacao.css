@@ -68,3 +68,10 @@
 }
 
 .rep-category-destinations { max-height: 180px; padding: .5rem; }
+.rep-preview td { overflow-wrap: anywhere; }
+@media (max-width: 767.98px) {
+    .rep-preview thead { display: none; }
+    .rep-preview tr { display: block; border-bottom: 1px solid var(--border, #e1e7ef); padding: .8rem 0; }
+    .rep-preview td { display: block; border: 0; padding: .4rem 0; }
+    .rep-preview td::before { content: attr(data-label); display: block; font-weight: 600; color: var(--muted, #64748b); font-size: .75rem; margin-bottom: .2rem; }
+}

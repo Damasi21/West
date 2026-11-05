@@ -1,12 +1,54 @@
 # Replicação de categorias entre aplicativos OMIE
 
 Entrada: Configurações > Replicar dados, inclusive no menu principal antes de escolher
-um CNPJ. A rotina atual é o cadastro central por grupo: escolha o grupo já informado
+um CNPJ. A configuração é organizada por grupo: escolha o grupo já informado
 nos cadastros das empresas e uma base PAI. Todas as outras empresas ativas desse
 grupo, no mesmo ambiente, participam. Não monitora automaticamente cadastros feitos
 diretamente no OMIE. Departamentos ficam para uma etapa posterior.
 
 ## Cadastro central e progresso
+
+### Padronização do plano por sequência
+
+- **Preparar prévia do plano** é uma operação distinta de **Nova categoria ou grupo**.
+  Escolha as empresas FILHO por solicitação, inicialmente desmarcadas. A matriz é
+  somente origem: não recebe inclusões, alterações nem inativações neste modo.
+- A prévia lê categorias atualizadas das APIs, separa receitas e despesas e ordena
+  grupos e filhos numericamente pelos códigos OMIE. O primeiro grupo corresponde ao
+  primeiro grupo do mesmo tipo, independentemente de nome; seus filhos seguem a
+  mesma regra. Vínculos antigos e semelhanças não alteram essa correspondência.
+- Dentro de cada grupo: reescrever os pares existentes, criar os filhos faltantes e
+  inativar os filhos excedentes. Preservar os IDs existentes no destino. Copiar
+  descrição/natureza e, nos filhos, tipo, código DRE OMIE e situação da matriz. O
+  vínculo personalizado `conta_dre` do BI permanece local. Raízes 1/2, contas de
+  transferência e outros tipos não participam; posições `<Disponível>` da matriz
+  não são categorias de negócio a incluir.
+- O contrato da API de grupos não oferece `conta_inativa`. Grupos excedentes no
+  destino ou grupos com situação diferente da matriz bloqueiam a empresa inteira
+  na prévia, com indicação para ajuste no OMIE. Não há promessa de espelhamento
+  completo quando a API não permite essa etapa. Inclusão de filha inativa usa
+  inclusão seguida de alteração de situação, ambas visíveis na prévia.
+- A prévia mostra código/nome anterior, descrição/situação desejada e ação de cada
+  posição. Exige selecionar novamente as empresas e confirmar o impacto histórico:
+  lançamentos anteriores conservam o código, mas passam a exibir a categoria
+  reescrita e sua classificação. Pode encerrar a prévia sem novos envios.
+- O worker recebe um plano congelado, não recalcula os pares depois de uma inclusão.
+  Revalida matriz, destino, permissões e integrações. Alterações externas interrompem
+  os novos envios; gere outra prévia. Cada intenção é persistida antes da única
+  chamada de escrita e confirmada por consulta. Incluídos sem resposta ficam incertos
+  e precisam do código encontrado na OMIE para verificação somente de leitura.
+- Retomadas pulam ações já confirmadas. Nenhuma ação incerta é reenviada. Uma falha
+  em um FILHO não interrompe os demais. A barra conta ações confirmadas, com nome da
+  empresa e categoria atual; pendências aparecem no resultado por empresa. A leitura
+  final também confirma que os códigos atribuídos pela OMIE mantiveram a sequência.
+- Vínculos anteriores do destino são auditados e invalidados antes da reescrita,
+  evitando reutilizar correspondências antigas numa execução parcial. Ao concluir,
+  os vínculos são refeitos conforme os pares confirmados do plano.
+- Usa `CadastroCategoria.modo=espelho` e a mesma fila `omie_replicacao`. A migração
+  `0006_alter_cadastrocategoriaempresa_status` acrescenta o estado Bloqueada às opções
+  do modelo. Publicação requer atualizar app e drenar/recriar `replicacao_worker`,
+  aplicar migrations e publicar estáticos. Não exige reiniciar os workers de sync.
+
 
 ### Inativar e reativar categorias
 
@@ -73,10 +115,16 @@ Contrato: https://api.omie.com.br/docs/apis/geral/categorias
 - O usuário pode escolher **Sobrescrever descrição** em um cadastro compatível ou
   **Ignorar nesta empresa**. Ignorar não renomeia nem cria uma categoria alternativa.
   Sobrescrever preserva código, natureza, tipo, DRE e dados contábeis do destino.
-  Se o próprio grupo superior for ambíguo, ele é resolvido antes dos filhos e uma
-  nova varredura apresenta as opções da hierarquia escolhida, ainda sem gravações.
-- Pais ausentes são criados antes dos filhos. Não se copiam códigos entre bases.
-  Nova leitura antes de cada escrita detecta mudanças posteriores à decisão.
+  Nas solicitações anteriores à regra estrita, um grupo superior ambíguo conserva
+  a revisão anterior. Nos novos cadastros avulsos, ele bloqueia aquela empresa.
+- No cadastro avulso novo, o grupo superior precisa existir uma única vez no destino,
+  ativo, com descrição literalmente igual e o mesmo tipo (receita/despesa) da matriz.
+  Grupo ausente, diferente ou ambíguo bloqueia somente aquela empresa, sem criar
+  ou renomear o grupo. Corrigido o grupo, Retomar processa as empresas bloqueadas
+  sem repetir os cadastros confirmados. Selecionar a raiz ainda permite criar um
+  novo grupo. Solicitações antigas mantêm a regra original para não alterar uma
+  decisão já registrada. Não se copiam códigos entre bases. Nova leitura antes de
+  cada escrita detecta mudanças posteriores à decisão.
 - A barra atualiza automaticamente, a cada três segundos, via endpoint autenticado
   sem cache. Ela conta etapas reais: consulta por empresa e conclusão por empresa.
   Mostra fase, empresa atual, quantidade concluída e resultado por base. 100% indica

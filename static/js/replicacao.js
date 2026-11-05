@@ -42,9 +42,10 @@
     const labels = {fila: 'Na fila', consultando: 'Verificando OMIEs', revisao: 'Aguardando sua decisão',
         enviando: 'Cadastrando no grupo', concluido: 'Processamento concluído', erro: 'Consulta não concluída',
         pendente: 'Aguardando consulta', pronta: 'Verificada', executando: 'Cadastrando', sucesso: 'Confirmado',
-        ignorada: 'Ignorada', incerto: 'Verificar resultado'};
+        bloqueada: 'Bloqueada', ignorada: 'Ignorada', incerto: 'Verificar resultado'};
     if (panel.dataset.repMode === 'inativar') labels.enviando = 'Inativando categorias';
     if (panel.dataset.repMode === 'reativar') labels.enviando = 'Reativando categorias';
+    if (panel.dataset.repMode === 'espelho') labels.enviando = 'Padronizando plano';
     let stopped = false;
     let state = panel.dataset.repState;
     const pollMessage = panel.querySelector('[data-rep-poll-message]');
@@ -64,7 +65,7 @@
             data.empresas.forEach(company => {
                 const row = document.querySelector(`[data-rep-company="${company.id}"]`);
                 if (!row) return;
-                row.querySelector('[data-rep-company-status]').textContent = labels[company.status] || company.status;
+                row.querySelector('[data-rep-company-status]').textContent = company.status === 'revisao' && ['espelho', 'inativar', 'reativar'].includes(panel.dataset.repMode) ? 'Aguardando confirmação' : labels[company.status] || company.status;
                 row.querySelector('[data-rep-company-message]').textContent = company.mensagem;
             });
             pollMessage.textContent = '';
