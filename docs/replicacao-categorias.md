@@ -8,6 +8,14 @@ diretamente no OMIE. Departamentos ficam para uma etapa posterior.
 
 ## Cadastro central e progresso
 
+- Na lista, **Excluir configuração** aparece somente quando não existe nenhuma
+  solicitação de cadastro, atualização de árvore ou comparação, nem vínculo de
+  categorias. Solicitações com erro também impedem exclusão. A ação exige uma
+  confirmação e POST com CSRF, respeita as permissões e o ambiente White Label,
+  registra auditoria e remove somente o plano e seus destinos. Configurações
+  pausadas sem uso também podem ser excluídas. O backend bloqueia o plano e
+  reconsulta o histórico, usando o mesmo lock da criação de solicitações.
+
 - A tela mostra a árvore local de pais/filhos da base PAI. **Atualizar árvore**
   consulta os OMIEs do grupo por worker e atualiza as categorias no PostgreSQL.
 - **Nova categoria** permite escolher um grupo superior ativo. Selecionar a raiz

@@ -1,0 +1,12 @@
+{% extends "replicacao/base.html" %}
+{% block heading %}Excluir configuração{% endblock %}
+{% block replicacao_content %}
+<form method="post" class="settings-card p-4 rep-config">{% csrf_token %}
+    <h2 class="h5">{{ plano.nome }}</h2>
+    <p class="mt-3 mb-2"><strong>Base PAI:</strong> {{ plano.matriz.nome_fantasia|default:plano.matriz.nome }}</p>
+    {% if plano.grupo %}<p><strong>Grupo:</strong> {{ plano.grupo }}</p>{% endif %}
+    <p>Esta configuração ainda não possui solicitações. A exclusão remove somente a configuração do BI; as empresas e suas categorias permanecem cadastradas.</p>
+    <label class="form-check mt-3"><input type="checkbox" class="form-check-input" name="confirmar" value="sim" required><span class="form-check-label">Confirmo a exclusão desta configuração.</span></label>
+    <div class="rep-actions mt-4"><a href="{% url 'replicacao:lista' %}" class="btn btn-white">Cancelar</a><button type="submit" class="btn btn-danger">Excluir configuração</button></div>
+</form>
+{% endblock %}

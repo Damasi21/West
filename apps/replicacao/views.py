@@ -20,7 +20,7 @@ from .models import CadastroCategoria, CadastroCategoriaEmpresa
 from . import central
 from .models import PlanoReplicacao, ComparacaoReplicacao, ItemReplicacao, DestinoReplicacao, VinculoCategoria
 from .permissions import empresas_gerenciaveis, planos_permitidos, conferir_acesso
-from .services import solicitar_comparacao, publicar, aprovar, resolver_item, candidatos_item, auditar
+from .services import solicitar_comparacao, publicar, aprovar, resolver_item, candidatos_item, auditar, disponibilidade_exclusao, excluir_configuracao
 from .comparacao import sugestoes_nome, compativel, dados
 
 
@@ -59,8 +59,27 @@ def voltar_comparacao(plano, comparacao_id):
 @ambiente_view
 @require_GET
 def lista(request):
-    planos = planos_permitidos(request.user).select_related("matriz").prefetch_related("destinos__empresa")
+    planos = disponibilidade_exclusao(planos_permitidos(request.user)).select_related("matriz").prefetch_related("destinos__empresa")
     return render(request, "replicacao/lista.html", {"planos": planos})
+
+
+@ambiente_view
+@require_http_methods(["GET", "POST"])
+def excluir(request, plano_id):
+    plano = get_object_or_404(disponibilidade_exclusao(planos_permitidos(request.user)).select_related("matriz"), pk=plano_id)
+    if request.method == "POST":
+        try:
+            if request.POST.get("confirmar") != "sim":
+                raise ValidationError("Confirme a exclusão da configuração.")
+            excluir_configuracao(plano, request.user)
+            messages.success(request, "Configuração excluída.")
+            return redirect("replicacao:lista")
+        except (ValidationError, PermissionDenied) as erro:
+            informar_erro(request, erro)
+    if not plano.pode_excluir:
+        messages.error(request, "Esta configuração já possui solicitações ou vínculos e não pode ser excluída. Você pode pausá-la.")
+        return redirect("replicacao:lista")
+    return render(request, "replicacao/excluir.html", {"plano": plano})
 
 
 @ambiente_view

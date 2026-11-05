@@ -6,6 +6,7 @@ urlpatterns = [
     path("", views.lista, name="lista"),
     path("nova/", views.novo, name="novo"),
     path("<int:plano_id>/", views.detalhe, name="detalhe"),
+    path("<int:plano_id>/excluir/", views.excluir, name="excluir"),
     path("<int:plano_id>/categorias/nova/", views.cadastrar, name="cadastrar"),
     path("<int:plano_id>/categorias/atualizar/", views.atualizar_arvore, name="atualizar_arvore"),
     path("<int:plano_id>/cadastros/<int:cadastro_id>/progresso/", views.progresso_cadastro, name="progresso_cadastro"),

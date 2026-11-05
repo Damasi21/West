@@ -12,13 +12,39 @@ from apps.empresas.omie import _salvar_categorias
 from apps.empresas.white_label_domains import _marca_host
 from . import omie
 from .comparacao import dados, gerar_linhas, compativel, equivalentes, normalizar, tipo, assinatura_semelhantes
-from .models import ComparacaoReplicacao, ItemReplicacao, VinculoCategoria
-from .permissions import conferir_acesso, contexto_plano
+from .models import ComparacaoReplicacao, ItemReplicacao, VinculoCategoria, CadastroCategoria, PlanoReplicacao
+from .permissions import conferir_acesso, contexto_plano, planos_permitidos
 
 
 def auditar(plano, usuario, descricao, **dados_log):
     registrar_acao(usuario=usuario, empresa=plano.matriz, tipo=AcaoUsuarioLog.Tipo.ALTERACAO,
         descricao=descricao, dados={"plano_replicacao": plano.pk, **dados_log})
+
+
+def disponibilidade_exclusao(planos):
+    from django.db.models import Exists, OuterRef
+    return planos.annotate(pode_excluir=(
+        ~Exists(ComparacaoReplicacao.objects.filter(plano_id=OuterRef("pk")))
+        & ~Exists(CadastroCategoria.objects.filter(plano_id=OuterRef("pk")))
+        & ~Exists(VinculoCategoria.objects.filter(destino__plano_id=OuterRef("pk")))
+    ))
+
+
+def excluir_configuracao(plano, usuario):
+    from django.db.models.deletion import ProtectedError
+    try:
+        with transaction.atomic():
+            # Creation of either kind of request also locks this same plan.
+            plano = planos_permitidos(usuario).select_for_update(of=("self",)).get(pk=plano.pk)
+            if plano.comparacoes.exists() or plano.cadastros.exists() or VinculoCategoria.objects.filter(destino__plano=plano).exists():
+                raise ValidationError("Esta configuração já possui solicitações ou vínculos e não pode ser excluída. Você pode pausá-la.")
+            auditar(plano, usuario, "Excluiu configuração de replicação sem solicitações",
+                nome=plano.nome, grupo=plano.grupo, destinos=list(plano.destinos.values_list("empresa_id", flat=True)))
+            plano.delete()
+    except PlanoReplicacao.DoesNotExist:
+        raise PermissionDenied("Você não tem acesso a esta configuração.")
+    except ProtectedError:
+        raise ValidationError("Esta configuração possui histórico vinculado e não pode ser excluída.")
 
 
 def identificar_aplicativos(plano):
