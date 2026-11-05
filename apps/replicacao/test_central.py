@@ -315,3 +315,15 @@ class CadastroCentralTests(TestCase):
             with outro.cursor() as cursor: cursor.execute("SELECT pg_advisory_unlock(%s)", [chave])
             outro.close()
         self.assertEqual(self.api.escritas, [])
+
+    def test_consulta_recusada_identifica_empresa_e_motivo_sem_gravar(self):
+        op=self.solicitar()
+        with patch('apps.replicacao.omie.listar',side_effect=central.omie.ConsultaRecusada('Limite diário de 100 requisições atingido.')):
+            self.executar(op)
+        self.assertEqual(op.status,'erro')
+        self.assertIn(self.matriz.nome_fantasia,op.mensagem)
+        self.assertIn('100 requisições',op.mensagem)
+        linha=op.empresas.get(empresa=self.matriz)
+        self.assertEqual(linha.status,'erro')
+        self.assertEqual(linha.mensagem,op.mensagem)
+        self.assertEqual(self.api.escritas,[])

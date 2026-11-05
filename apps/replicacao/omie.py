@@ -1,11 +1,13 @@
 """Contrato de categorias. Escritas sempre fazem uma única tentativa HTTP."""
 import json
+import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 
-from apps.empresas.omie import CATEGORIAS_URL, SSL_CONTEXT, _abrir_requisicao_omie
+from apps.empresas.omie import CATEGORIAS_URL, SSL_CONTEXT, _abrir_requisicao_omie, OmieAPIError, _eh_limite_diario_omie
 
 
 class OmieIncerta(Exception):
@@ -16,6 +18,26 @@ class OmieRecusada(Exception):
     pass
 
 
+class ConsultaRecusada(ValidationError):
+    """Safe, actionable read errors; never changes uncertain-write semantics."""
+
+
+def motivo_consulta(erro):
+    texto = str(erro)
+    if _eh_limite_diario_omie(texto):
+        numero = re.search(r"limite de (\d{1,6}) requisi", texto, re.IGNORECASE)
+        limite = f" de {numero.group(1)} requisições" if numero else ""
+        return (f"A OMIE informou que o limite diário{limite} deste aplicativo foi atingido. "
+            "Aguarde a renovação da cota informada pela OMIE ou verifique o plano do aplicativo. "
+            "Retomar a consulta agora não libera essa cota.")
+    if any(t in texto.casefold() for t in ("app_key", "app_secret", "autentic", "credencia")):
+        return "A OMIE não autorizou a consulta. Confira as credenciais e as permissões da integração desta empresa."
+    status = re.search(r"HTTP (\d{3})", texto)
+    if status:
+        return f"A OMIE recusou a consulta de categorias (HTTP {status.group(1)}). Confira a disponibilidade e as permissões do aplicativo."
+    return "A consulta de categorias não foi confirmada pela OMIE. Confira a integração e tente novamente mais tarde."
+
+
 def chamada(integracao, metodo, parametros):
     assert metodo in {"ListarCategorias", "IncluirCategoria", "IncluirGrupoCategoria", "AlterarCategoria", "AlterarGrupoCategoria"}
     corpo = {"call": metodo, "param": [parametros], "app_key": integracao.app_key, "app_secret": integracao.obter_app_secret()}
@@ -24,10 +46,14 @@ def chamada(integracao, metodo, parametros):
         abertura = _abrir_requisicao_omie(request, settings.OMIE_API_TIMEOUT) if metodo == "ListarCategorias" else urlopen(request, timeout=settings.OMIE_API_TIMEOUT, context=SSL_CONTEXT)
         with abertura as response:
             dados = json.loads(response.read().decode())
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError, OmieAPIError) as exc:
+        if metodo == "ListarCategorias":
+            raise ConsultaRecusada(motivo_consulta(exc)) from exc
         # HTTP failures, including 429, never trigger an automatic write replay.
         raise OmieIncerta("A OMIE não confirmou a comunicação. Consulte o resultado antes de repetir qualquer inclusão.") from exc
     if not isinstance(dados, dict) or "faultstring" in dados or "faultcode" in dados:
+        if metodo == "ListarCategorias":
+            raise ConsultaRecusada(motivo_consulta(dados.get("faultstring", "") if isinstance(dados, dict) else ""))
         raise OmieIncerta("Resposta OMIE sem confirmação. Nenhuma repetição automática será feita.")
     if metodo != "ListarCategorias":
         status = str(dados.get("codigo_status", "")).strip()

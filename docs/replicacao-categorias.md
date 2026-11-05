@@ -38,6 +38,14 @@ Contrato: https://api.omie.com.br/docs/apis/geral/categorias
 
 ### Configuração e cadastro
 
+- Falhas de consulta identificam a empresa e o motivo seguro na solicitação e na
+  linha da empresa. Cota diária esgotada não é tratada como erro genérico de
+  integração. O HTTP 429 por limite diário encerra a consulta sem novas tentativas
+  automáticas; limites por minuto e consumo redundante mantêm a espera existente.
+  A cota é controlada pela OMIE e não pode ser liberada pelo BI. Nenhuma credencial
+  ou resposta bruta da API é exibida na tela. Isso não altera a regra de escrita
+  única nem a verificação obrigatória de envios sem confirmação.
+
 - Na lista, **Excluir configuração** aparece somente quando não existe nenhuma
   solicitação de cadastro, atualização de árvore ou comparação, nem vínculo de
   categorias. Solicitações com erro também impedem exclusão. A ação exige uma

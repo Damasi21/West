@@ -220,8 +220,13 @@ def _executar_cadastro(pk):
                 continue
             if linha.status == "incerto":
                 raise ValidationError("Existe envio sem confirmação. Use Verificar resultado antes de retomar.")
-            with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
-                catalogo = catalogo_dados(linha.empresa, integracao)
+            try:
+                with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
+                    catalogo = catalogo_dados(linha.empresa, integracao)
+            except ValidationError as exc:
+                linha.status, linha.mensagem = "erro", " ".join(exc.messages)
+                linha.save()
+                raise
             if op.modo == "catalogo":
                 linha.status, linha.mensagem = "sucesso", "Categorias atualizadas no BI."
             else:

@@ -575,6 +575,41 @@ class ContratoOmieTests(TestCase):
         self.integracao=MagicMock(app_key='chave-teste')
         self.integracao.obter_app_secret.return_value='segredo-nao-exibir'
 
+    @override_settings(OMIE_API_RETRIES=3)
+    @patch('apps.empresas.omie.time.sleep')
+    @patch('apps.empresas.omie.urlopen')
+    def test_cota_diaria_interrompe_sem_retry_e_mostra_motivo_sem_segredos(self, abrir, dormir):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        texto='Aplicativo em avaliação com limite de 100 requisições por dia atingido. segredo-nao-exibir chave-teste'
+        abrir.side_effect=HTTPError('https://example.invalid',429,'Too Many Requests',None,BytesIO(json.dumps({'faultstring':texto}).encode()))
+        with self.assertRaises(omie.ConsultaRecusada) as erro:
+            omie.chamada(self.integracao,'ListarCategorias',{'pagina':1})
+        self.assertIn('100 requisições',str(erro.exception))
+        self.assertNotIn('segredo-nao-exibir',str(erro.exception))
+        self.assertNotIn('chave-teste',str(erro.exception))
+        self.assertEqual(abrir.call_count,1)
+        dormir.assert_not_called()
+
+    @patch('apps.replicacao.omie._abrir_requisicao_omie')
+    def test_falha_de_leitura_autenticacao_nao_expoe_resposta_bruta(self, abrir):
+        from apps.empresas.omie import OmieAPIError
+        abrir.side_effect=OmieAPIError('HTTP 500 credenciais invalidas: segredo-nao-exibir chave-teste')
+        with self.assertRaises(omie.ConsultaRecusada) as erro:
+            omie.chamada(self.integracao,'ListarCategorias',{'pagina':1})
+        self.assertIn('credenciais',str(erro.exception))
+        self.assertNotIn('segredo',str(erro.exception))
+        self.assertNotIn('chave-teste',str(erro.exception))
+
+    @patch('apps.replicacao.omie.urlopen')
+    def test_erro_http_na_escrita_continua_incerto_sem_retry(self, abrir):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        abrir.side_effect=HTTPError('https://example.invalid',429,'Too Many Requests',None,BytesIO(b'limite diario'))
+        with self.assertRaises(omie.OmieIncerta):
+            omie.chamada(self.integracao,'IncluirCategoria',{'descricao':'Nova','categoria_superior':'2.01'})
+        self.assertEqual(abrir.call_count,1)
+
     @patch('apps.replicacao.omie.urlopen')
     def test_escrita_uma_tentativa_status_vazio_e_resposta_vazia_nao_confirmam(self, abrir):
         abrir.return_value.__enter__.return_value.read.return_value=b'{}'

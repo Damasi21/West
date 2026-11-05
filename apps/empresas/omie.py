@@ -146,6 +146,11 @@ def _eh_consumo_redundante_omie(detalhe):
     )
 
 
+def _eh_limite_diario_omie(detalhe):
+    texto = str(detalhe or "").casefold()
+    return ("limite" in texto or "cota" in texto) and any(t in texto for t in ("por dia", "diário", "diario", "diária", "diaria"))
+
+
 def _eh_pagina_sem_registros_omie(detalhe):
     detalhe_normalizado = str(detalhe or "").casefold()
     return (
@@ -255,7 +260,7 @@ def _abrir_requisicao_omie(request, timeout):
                 ultimo_erro = OmieAPIError(
                     f"OMIE respondeu HTTP {exc.code}: {detalhe}"
                 )
-                if tentativa == tentativas:
+                if _eh_limite_diario_omie(detalhe) or tentativa == tentativas:
                     raise ultimo_erro from exc
                 time.sleep(_espera_limite_requisicoes_omie(exc))
                 continue

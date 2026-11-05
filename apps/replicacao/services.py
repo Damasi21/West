@@ -77,7 +77,12 @@ def aplicativo_livre(empresa, *, aguardar_sincronizacao=True):
 
 
 def atualizar_catalogo(empresa, integracao):
-    itens = omie.listar(integracao)
+    try:
+        itens = omie.listar(integracao)
+    except omie.ConsultaRecusada as exc:
+        raise ValidationError(f"{empresa.nome_fantasia or empresa.nome}: {' '.join(exc.messages)}") from exc
+    except omie.OmieIncerta as exc:
+        raise ValidationError(f"{empresa.nome_fantasia or empresa.nome}: a listagem de categorias está incompleta ou sem confirmação. Nenhum novo cadastro foi enviado nesta consulta.") from exc
     with transaction.atomic():
         _salvar_categorias(empresa, itens)
         CategoriaOmie.objects.filter(empresa=empresa).exclude(codigo__in=[str(i['codigo']) for i in itens]).update(ativo_omie=False)
