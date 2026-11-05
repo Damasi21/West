@@ -60,7 +60,7 @@
             panel.querySelector('[data-rep-bar]').style.width = `${data.percentual}%`;
             panel.querySelector('[role="progressbar"]').setAttribute('aria-valuenow', data.percentual);
             panel.querySelector('[data-rep-message]').textContent = data.mensagem;
-            panel.querySelector('[data-rep-status]').textContent = labels[data.status] || data.status;
+            panel.querySelector('[data-rep-status]').textContent = data.status === 'concluido' ? (data.rotulo || labels[data.status]) : (labels[data.status] || data.status);
             panel.querySelector('[data-rep-stages]').textContent = `${data.atual} de ${data.total} etapas concluídas`;
             data.empresas.forEach(company => {
                 const row = document.querySelector(`[data-rep-company="${company.id}"]`);

@@ -11,15 +11,33 @@ from apps.empresas.omie import CATEGORIAS_URL, SSL_CONTEXT, _abrir_requisicao_om
 
 
 class OmieIncerta(Exception):
-    pass
+    def __init__(self, mensagem="", *, detalhe=""):
+        super().__init__(mensagem)
+        self.detalhe = detalhe
 
 
 class OmieRecusada(Exception):
-    pass
+    def __init__(self, mensagem="", *, detalhe="", codigo=""):
+        super().__init__(mensagem)
+        self.detalhe = detalhe
+        self.codigo = codigo
 
 
 class ConsultaRecusada(ValidationError):
     """Safe, actionable read errors; never changes uncertain-write semantics."""
+
+
+def detalhe_envio(dados, integracao):
+    """Only structured provider messages, with known credentials redacted."""
+    if not isinstance(dados, dict):
+        return ""
+    valor = dados.get("faultstring") or dados.get("descricao_status") or ""
+    if not isinstance(valor, str):
+        return ""
+    for segredo in (integracao.app_key, integracao.obter_app_secret()):
+        if segredo:
+            valor = re.sub(re.escape(segredo), "[redigido]", valor, flags=re.IGNORECASE)
+    return valor.strip()[:1000]
 
 
 def motivo_consulta(erro):
@@ -50,16 +68,29 @@ def chamada(integracao, metodo, parametros):
         if metodo == "ListarCategorias":
             raise ConsultaRecusada(motivo_consulta(exc)) from exc
         # HTTP failures, including 429, never trigger an automatic write replay.
-        raise OmieIncerta("A OMIE não confirmou a comunicação. Consulte o resultado antes de repetir qualquer inclusão.") from exc
+        detalhe = ""
+        if isinstance(exc, HTTPError):
+            dados_erro = None
+            try:
+                dados_erro = json.loads(exc.read(16384).decode("utf-8"))
+                detalhe = detalhe_envio(dados_erro, integracao)
+            except (ValueError, OSError):
+                pass
+            if isinstance(dados_erro, dict):
+                status = str(dados_erro.get("codigo_status", "")).strip()
+                if status.isdigit() and int(status) > 0 and not dados_erro.get("codigo"):
+                    raise OmieRecusada("A OMIE recusou a operação.", detalhe=f"OMIE recusou a operação (código {status}): {detalhe}", codigo=status) from exc
+            detalhe = f"OMIE retornou HTTP {exc.code}" + (f": {detalhe}" if detalhe else ".")
+        raise OmieIncerta("A OMIE não confirmou a comunicação. Consulte o resultado antes de repetir qualquer inclusão.", detalhe=detalhe) from exc
     if not isinstance(dados, dict) or "faultstring" in dados or "faultcode" in dados:
         if metodo == "ListarCategorias":
             raise ConsultaRecusada(motivo_consulta(dados.get("faultstring", "") if isinstance(dados, dict) else ""))
-        raise OmieIncerta("Resposta OMIE sem confirmação. Nenhuma repetição automática será feita.")
+        raise OmieIncerta("Resposta OMIE sem confirmação. Nenhuma repetição automática será feita.", detalhe=detalhe_envio(dados, integracao))
     if metodo != "ListarCategorias":
         status = str(dados.get("codigo_status", "")).strip()
         if status and status.lstrip("0"):
             if status.isdigit():
-                raise OmieRecusada("A OMIE recusou a operação. Confira a compatibilidade do cadastro no aplicativo destino.")
+                raise OmieRecusada("A OMIE recusou a operação. Confira a compatibilidade do cadastro no aplicativo destino.", detalhe=detalhe_envio(dados, integracao), codigo=status)
             raise OmieIncerta("Status OMIE não reconhecido. Verifique antes de repetir.")
         if not status or not str(dados.get("codigo") or "").strip():
             raise OmieIncerta("Resposta sem código e confirmação de sucesso. Verifique na OMIE.")

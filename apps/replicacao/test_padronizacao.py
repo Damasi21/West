@@ -483,3 +483,77 @@ class PadronizacaoTests(TestCase):
         self.assertEqual(op.status,"erro")
         self.assertIn("regra anterior",op.mensagem)
         self.assertEqual(self.api.escritas, [])
+
+    def test_interrupcao_com_resultado_incerto_mostra_pendencias_e_preserva_motivo(self):
+        op = self.previa()
+        self.confirmar(op)
+        with patch('apps.replicacao.omie.chamada', side_effect=central.omie.OmieIncerta(detalhe="OMIE retornou HTTP 500: Regra de cadastro recusada.")) as envio:
+            self.executar(op)
+        linha = op.empresas.get()
+        self.assertEqual(linha.status,"incerto")
+        self.assertIn("HTTP 500",linha.mensagem)
+        self.assertIn("HTTP 500",linha.passos[1]["motivo_seguro"])
+        self.assertEqual(envio.call_count,1)
+        self.assertIn("pendências",op.get_status_display())
+        self.assertIn("pendências",central.situacao(op)["rotulo"])
+        self.assertIn("interrompida",op.mensagem)
+        self.assertLess(op.progresso_atual,op.progresso_total)
+        self.client.force_login(self.superuser)
+        response=self.client.get(reverse("replicacao:detalhe",args=[self.plano.pk]),{"cadastro":op.pk})
+        self.assertContains(response,"Processamento interrompido: há pendências")
+        with self.assertRaises(ValidationError): central.retomar(op,self.superuser)
+
+    def test_sucesso_confirmado_mantem_rotulo_de_conclusao(self):
+        op=self.previa()
+        op=self.executar(self.confirmar(op))
+        self.assertEqual(op.get_status_display(),"Processamento concluído")
+        self.assertEqual(central.situacao(op)["rotulo"],"Processamento concluído")
+
+    def validar_unicidade(self, integracao, metodo, payload):
+        if "descricao" in payload:
+            atuais=self.api.catalogos[integracao.empresa_id]
+            alvo=next((c for c in atuais if c["codigo"]==payload.get("codigo")),None)
+            pai=alvo["categoria_superior"] if alvo else payload.get("categoria_superior", "2")
+            if any(c["codigo"]!=payload.get("codigo") and c["categoria_superior"]==pai and c["descricao"].casefold()==payload["descricao"].casefold() for c in atuais):
+                raise central.omie.OmieRecusada("Descrição já existe",detalhe="Já existe uma categoria com essa descrição neste grupo.",codigo="102")
+        return self.api.chamada(integracao,metodo,payload)
+
+    def test_nome_ocupado_por_excedente_e_liberado_antes_da_reescrita(self):
+        self.api.catalogos[self.matriz.pk][-1]["descricao"]="Outras Receitas"
+        self.api.catalogos[self.destino.pk][-1]["descricao"]="13º Salário"
+        self.api.catalogos[self.destino.pk].append(categoria("2.08.95","Outras Receitas",pai="2.08"))
+        op=self.previa()
+        linha=op.empresas.get()
+        self.assertEqual(linha.passos[0]["acao"],"temporario")
+        self.assertEqual(linha.passos[0]["alvo"]["codigo"],"2.08.95")
+        self.assertEqual(self.api.escritas,[])
+        self.confirmar(op)
+        with patch('apps.replicacao.omie.chamada',side_effect=self.validar_unicidade): self.executar(op)
+        linha.refresh_from_db()
+        self.assertEqual(linha.status,"sucesso",linha.mensagem)
+        cs={c["codigo"]:c for c in self.api.catalogos[self.destino.pk]}
+        self.assertEqual(cs["2.08.07"]["descricao"],"Outras Receitas")
+        self.assertEqual(cs["2.08.95"]["conta_inativa"],"S")
+        self.assertTrue(cs["2.08.95"]["descricao"].startswith("Excedente 2.08.95"))
+        self.assertEqual(VinculoCategoria.objects.filter(destino=self.alvo).count(),2)
+
+    def test_troca_circular_de_nomes_mantem_codigos_e_nao_colide(self):
+        self.api.catalogos[self.matriz.pk][-1]["descricao"]="Nome B"
+        self.api.catalogos[self.matriz.pk].append(categoria("2.01.02","Nome A",pai="2.01"))
+        self.api.catalogos[self.destino.pk][-1]["descricao"]="Nome A"
+        self.api.catalogos[self.destino.pk].append(categoria("2.08.08","Nome B",pai="2.08"))
+        op=self.previa()
+        self.assertEqual(sum(p.get("temporario",False) for p in op.empresas.get().passos),2)
+        self.confirmar(op)
+        with patch('apps.replicacao.omie.chamada',side_effect=self.validar_unicidade): self.executar(op)
+        self.assertEqual(op.empresas.get().status,"sucesso",op.empresas.get().mensagem)
+        cs={c["codigo"]:c for c in self.api.catalogos[self.destino.pk]}
+        self.assertEqual(cs["2.08.07"]["descricao"],"Nome B")
+        self.assertEqual(cs["2.08.08"]["descricao"],"Nome A")
+
+    def test_previa_sem_tratamento_de_colisoes_exige_gerar_outra(self):
+        op=self.previa()
+        op.pedido.pop("versao_nomes")
+        op.save()
+        with self.assertRaises(ValidationError): self.confirmar(op)
+        self.assertEqual(self.api.escritas,[])

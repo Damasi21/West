@@ -125,6 +125,11 @@ class CadastroCategoria(models.Model):
     class Meta:
         ordering = ["-pk"]
 
+    def get_status_display(self):
+        if self.status == "concluido" and self.empresas.filter(status__in=["erro", "incerto", "bloqueada", "pendente", "pronta", "executando"]).exists():
+            return "Processamento interrompido: há pendências"
+        return dict(self._meta.get_field("status").choices).get(self.status, self.status)
+
 
 class CadastroCategoriaEmpresa(models.Model):
     cadastro = models.ForeignKey(CadastroCategoria, on_delete=models.CASCADE, related_name="empresas")

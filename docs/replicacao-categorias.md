@@ -48,6 +48,14 @@ tratá-lo como campo replicado. Envios antigos incertos que efetivamente incluí
   posição. Exige selecionar novamente as empresas e confirmar o impacto histórico:
   lançamentos anteriores conservam o código, mas passam a exibir a categoria
   reescrita e sua classificação. Pode encerrar a prévia sem novos envios.
+- Colisões de descrição no mesmo grupo são resolvidas na prévia: cadastros que
+  ocupam um nome necessário recebem primeiro um nome temporário único; depois
+  são aplicados os nomes finais. Um excedente que detenha um nome necessário
+  recebe nome próprio de excedente e é inativado. Os códigos continuam os mesmos.
+  Todas essas ações exigem a confirmação da prévia e aparecem no histórico. Em
+  falha parcial, nomes temporários podem permanecer até a conclusão dos passos
+  restantes; não existe rollback automático na OMIE. Prévias anteriores precisam
+  ser encerradas/refeitas para usar esse tratamento.
 - O worker recebe um plano congelado, não recalcula os pares depois de uma inclusão.
   Revalida matriz, destino, permissões e integrações. Alterações externas interrompem
   os novos envios; gere outra prévia. Cada intenção é persistida antes da única
@@ -315,3 +323,10 @@ Itens já correspondentes apenas confirmam o vínculo, sem escrita na OMIE.
 Testes: apps.replicacao.tests. São cobertos vínculos/parentesco, DRE local, isolamento
 por marca, autorização adulterada/revogada, idempotência, falha de broker, mudança
 remota/credenciais após aprovação, escrita sem repetição e verificação somente leitura.
+
+Resultados parciais exibem "Processamento interrompido: há pendências", inclusive
+no histórico e no polling. Erros de escrita guardam somente a mensagem estruturada
+do provedor, com credenciais redigidas. HTTP 500 com codigo_status não zero e código
+de cadastro vazio é recusa explícita; sem esse contrato continua incerto. Em ambos
+os casos não há repetição automática. Verificação de um resultado desconhecido
+continua obrigatoriamente somente de leitura.

@@ -533,7 +533,7 @@ def verificar_cadastro(linha_id, usuario_id, codigo=""):
 
 def situacao(op):
     linhas = list(op.empresas.select_related("empresa"))
-    return {"status": op.status, "mensagem": op.mensagem, "atual": op.progresso_atual, "total": op.progresso_total,
+    return {"status": op.status, "rotulo": op.get_status_display(), "mensagem": op.mensagem, "atual": op.progresso_atual, "total": op.progresso_total,
         "percentual": min(100, round(op.progresso_atual * 100 / max(1, op.progresso_total))),
         "ativo": op.status in OCUPADOS,
         "empresas": [{"id": l.pk, "nome": l.empresa.nome_fantasia or l.empresa.nome, "status": l.status, "mensagem": l.mensagem} for l in linhas]}

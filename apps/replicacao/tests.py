@@ -576,6 +576,42 @@ class ContratoOmieTests(TestCase):
         self.integracao=MagicMock(app_key='chave-teste')
         self.integracao.obter_app_secret.return_value='segredo-nao-exibir'
 
+    @patch('apps.replicacao.omie.urlopen')
+    def test_fault_http_de_escrita_registra_detalhe_sem_segredos_e_sem_retry(self, abrir):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        detalhe='Cadastro recusado CHAVE-TESTE SEGREDO-NAO-EXIBIR'
+        abrir.side_effect=HTTPError('https://example.invalid',500,'Business error',None,BytesIO(json.dumps({'faultstring':detalhe}).encode()))
+        with self.assertRaises(omie.OmieIncerta) as erro:
+            omie.chamada(self.integracao,'AlterarCategoria',{'codigo':'1.01.03','descricao':'Outras Receitas'})
+        self.assertIn('HTTP 500',erro.exception.detalhe)
+        self.assertIn('Cadastro recusado',erro.exception.detalhe)
+        self.assertNotIn('CHAVE-TESTE',erro.exception.detalhe)
+        self.assertNotIn('SEGREDO-NAO-EXIBIR',erro.exception.detalhe)
+        self.assertEqual(abrir.call_count,1)
+
+    @patch('apps.replicacao.omie.urlopen')
+    def test_recusa_102_estruturada_em_http_500_nao_vira_resultado_incerto(self, abrir):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        dados={'codigo':'','codigo_status':'102','descricao_status':'Já existe uma categoria com essa descrição neste grupo.'}
+        abrir.side_effect=HTTPError('https://example.invalid',500,'Business error',None,BytesIO(json.dumps(dados).encode()))
+        with self.assertRaises(omie.OmieRecusada) as erro:
+            omie.chamada(self.integracao,'AlterarCategoria',{'codigo':'1.01.03','descricao':'Outras Receitas'})
+        self.assertEqual(erro.exception.codigo,'102')
+        self.assertIn('Já existe',erro.exception.detalhe)
+        self.assertEqual(abrir.call_count,1)
+
+    @patch('apps.replicacao.omie.urlopen')
+    def test_resposta_html_nao_e_publicada_como_detalhe(self, abrir):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        abrir.side_effect=HTTPError('https://example.invalid',502,'Gateway error',None,BytesIO(b'<html>segredo-nao-exibir</html>'))
+        with self.assertRaises(omie.OmieIncerta) as erro:
+            omie.chamada(self.integracao,'AlterarCategoria',{'codigo':'1.01.03','descricao':'Outras Receitas'})
+        self.assertEqual(erro.exception.detalhe,'OMIE retornou HTTP 502.')
+        self.assertEqual(abrir.call_count,1)
+
     @override_settings(OMIE_API_RETRIES=3)
     @patch('apps.empresas.omie.time.sleep')
     @patch('apps.empresas.omie.urlopen')
