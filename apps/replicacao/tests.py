@@ -536,7 +536,8 @@ class ReplicacaoTests(TestCase):
             self.assertFalse(form.is_valid())
 
     def test_graph_rejeita_matriz_que_ja_e_destino(self):
-        form=PlanoForm({'nome':'Ciclo','matriz':self.destino.pk,'destinos':[self.fora.pk]},usuario=self.superuser)
+        Empresa.objects.filter(pk__in=[self.destino.pk,self.fora.pk]).update(grupo='Grupo ciclo')
+        form=PlanoForm({'nome':'Ciclo','grupo':'Grupo ciclo','matriz':self.destino.pk},usuario=self.superuser)
         self.assertTrue(form.is_valid(),form.errors)
         with self.assertRaises(ValidationError): form.salvar()
 

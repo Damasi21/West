@@ -27,3 +27,15 @@ def verificar_categoria(item_id, usuario_id, codigo=""):
         verificar_item(item, usuario, codigo)
     finally:
         _marca_host.reset(token)
+
+
+@shared_task(name="apps.replicacao.cadastrar_categoria", max_retries=0, acks_late=True)
+def cadastrar_categoria(cadastro_id):
+    from .central import executar_cadastro
+    executar_cadastro(cadastro_id)
+
+
+@shared_task(name="apps.replicacao.verificar_cadastro", max_retries=0)
+def verificar_cadastro(empresa_id, usuario_id, codigo=""):
+    from .central import verificar_cadastro as verificar
+    verificar(empresa_id, usuario_id, codigo)

@@ -62,6 +62,8 @@ def solicitar_comparacao(plano, usuario):
     with transaction.atomic():
         plano = type(plano).objects.select_for_update().get(pk=plano.pk)
         conferir_acesso(plano, usuario)
+        if plano.cadastros.filter(status__in=["fila", "consultando", "enviando", "revisao"]).exists():
+            raise ValidationError("Conclua o cadastro central em andamento antes de comparar.")
         if plano.comparacoes.filter(status__in=["fila", "comparando", "enviando"]).exists():
             raise ValidationError("Já há uma comparação ou envio em processamento neste plano.")
         comparacao = ComparacaoReplicacao.objects.create(plano=plano, solicitado_por=usuario, aplicativos=identificar_aplicativos(plano))
@@ -177,6 +179,8 @@ def aprovar(comparacao, usuario, ids):
         conferir_aplicativos(comparacao)
         if comparacao.plano.comparacoes.exclude(pk=comparacao.pk).filter(status__in=["fila", "comparando", "enviando"]).exists():
             raise ValidationError("Outra comparação ou envio está em processamento neste plano.")
+        if comparacao.plano.cadastros.filter(status__in=["fila", "consultando", "enviando", "revisao"]).exists():
+            raise ValidationError("Conclua o cadastro central em andamento antes de enviar.")
         if comparacao.status not in {"pronta", "concluida"}:
             raise ValidationError("A comparação não está disponível para envio.")
         itens = list(comparacao.itens.select_for_update(of=("self",)).filter(pk__in=ids).select_related("origem", "destino__empresa", "categoria"))

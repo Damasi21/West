@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}Replicar dados | {{ app_brand_name }}{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/replicacao.css' %}?v=20261104-1">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/replicacao.css' %}?v=20261104-central-1">{% endblock %}
 {% block public_content %}
 <section class="settings-heading"><div class="container py-4">
     <nav aria-label="breadcrumb"><ol class="breadcrumb small"><li class="breadcrumb-item"><a href="{% url 'empresas:lista' %}">Painel inicial</a></li><li class="breadcrumb-item"><a href="{% url 'replicacao:lista' %}">Replicar dados</a></li></ol></nav>
     <span class="eyebrow">CONFIGURAÇÕES</span><h1>{% block heading %}Replicar dados{% endblock %}</h1>
-    <p class="text-secondary mb-0">Padronize categorias entre a matriz e as empresas selecionadas, com revisão antes de aplicar na OMIE.</p>
+    <p class="text-secondary mb-0">Cadastre categorias para o grupo, confira semelhanças e acompanhe o resultado em cada OMIE.</p>
 </div></section>
 <section class="container pb-5 rep-page">{% block replicacao_content %}{% endblock %}</section>
 {% endblock %}

@@ -1,11 +1,15 @@
 {% extends "replicacao/base.html" %}
+{% load static %}
 {% block heading %}Nova configuração{% endblock %}
 {% block replicacao_content %}
 <form method="post" class="company-form-card rep-config" novalidate>{% csrf_token %}
     {% for erro in form.non_field_errors %}<div class="alert alert-danger">{{ erro }}</div>{% endfor %}
     <div class="row g-4">{% for field in form %}<div class="{% if field.name == 'destinos' %}col-12{% else %}col-md-6{% endif %}"><label class="form-label fw-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'destinos' %}<div class="rep-empresas">{{ field }}</div>{% else %}{{ field }}{% endif %}{% for erro in field.errors %}<div class="invalid-feedback d-block">{{ erro }}</div>{% endfor %}</div>{% endfor %}</div>
-    <div class="rep-notice mt-4"><strong>Como funciona</strong><p class="mb-0 mt-1">A matriz fornece os cadastros. Os destinos são escolhidos individualmente, sem alterar os grupos de consolidação dos gráficos. Salvar esta configuração não envia dados à OMIE.</p></div>
+    {{ form.mapa_empresas|json_script:"rep-grupo-empresas" }}
+    <div class="rep-notice mt-4"><strong>Empresas participantes</strong><p class="mb-0 mt-1" data-rep-members>Selecione o grupo e a base PAI. Todas as outras empresas ativas do grupo serão destinatárias.</p></div>
+    <p class="small text-secondary mt-3">O grupo é o informado no cadastro das empresas. É necessário administrar todas as empresas participantes. Salvar esta configuração não envia dados à OMIE.</p>
     <p class="small text-secondary mt-3">Nesta etapa serão comparados grupos e categorias ativas de receitas e despesas. Vínculos da DRE, dados contábeis, exclusões, inativações e lançamentos anteriores não são replicados.</p>
     <div class="form-actions"><a class="btn btn-light" href="{% url 'replicacao:lista' %}">Voltar</a><button class="btn btn-primary" type="submit">Salvar configuração</button></div>
 </form>
 {% endblock %}
+{% block extra_js %}<script src="{% static 'js/replicacao.js' %}?v=20261104-central-1" defer></script>{% endblock %}

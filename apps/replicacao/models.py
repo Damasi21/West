@@ -6,6 +6,7 @@ from django.db import models
 
 class PlanoReplicacao(models.Model):
     nome = models.CharField(max_length=120)
+    grupo = models.CharField(max_length=120, blank=True, default="", db_default="")
     matriz = models.ForeignKey("empresas.Empresa", on_delete=models.PROTECT, related_name="planos_matriz")
     marca = models.ForeignKey("empresas.AmbienteWhiteLabel", null=True, blank=True, on_delete=models.PROTECT)
     criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
@@ -103,3 +104,36 @@ class ItemReplicacao(models.Model):
     class Meta:
         ordering = ["destino_id", "origem__codigo", "pk"]
         constraints = [models.UniqueConstraint(fields=["comparacao", "destino", "origem"], name="rep_item_comparacao_origem")]
+
+
+class CadastroCategoria(models.Model):
+    """One explicit request, including the matrix; workers never replay writes."""
+    plano = models.ForeignKey(PlanoReplicacao, on_delete=models.PROTECT, related_name="cadastros")
+    solicitado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    modo = models.CharField(max_length=12, default="cadastro")
+    pedido = models.JSONField(default=dict)
+    aplicativos = models.JSONField(default=dict)
+    status = models.CharField(max_length=16, default="fila", choices=[("fila", "Na fila"), ("consultando", "Verificando OMIEs"), ("revisao", "Aguardando sua decisão"), ("enviando", "Cadastrando no grupo"), ("concluido", "Processamento concluído"), ("erro", "Consulta não concluída")])
+    mensagem = models.TextField(blank=True)
+    progresso_atual = models.PositiveIntegerField(default=0)
+    progresso_total = models.PositiveIntegerField(default=0)
+    criada_em = models.DateTimeField(auto_now_add=True)
+    atualizada_em = models.DateTimeField(auto_now=True)
+    iniciada_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-pk"]
+
+
+class CadastroCategoriaEmpresa(models.Model):
+    cadastro = models.ForeignKey(CadastroCategoria, on_delete=models.CASCADE, related_name="empresas")
+    empresa = models.ForeignKey("empresas.Empresa", on_delete=models.PROTECT)
+    status = models.CharField(max_length=16, default="pendente", choices=[("pendente", "Aguardando consulta"), ("pronta", "Verificada"), ("revisao", "Revisar semelhanças"), ("executando", "Cadastrando"), ("sucesso", "Confirmado"), ("ignorada", "Ignorada"), ("erro", "Pendente de conclusão"), ("incerto", "Verificar resultado")])
+    mensagem = models.TextField(blank=True)
+    passos = models.JSONField(default=list)
+    atualizada_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["pk"]
+        constraints = [models.UniqueConstraint(fields=["cadastro", "empresa"], name="rep_cadastro_empresa_unico")]

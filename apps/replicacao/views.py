@@ -7,6 +7,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
+from django.http import JsonResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -14,7 +15,9 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from apps.empresas.models import AmbienteWhiteLabel, Empresa, CategoriaOmie
 from apps.empresas.white_label_branding import SESSION_MARCA
 from apps.empresas.white_label_domains import _marca_host, marca_host_atual
-from .forms import PlanoForm
+from .forms import PlanoForm, NovaCategoriaForm
+from .models import CadastroCategoria, CadastroCategoriaEmpresa
+from . import central
 from .models import PlanoReplicacao, ComparacaoReplicacao, ItemReplicacao, DestinoReplicacao, VinculoCategoria
 from .permissions import empresas_gerenciaveis, planos_permitidos, conferir_acesso
 from .services import solicitar_comparacao, publicar, aprovar, resolver_item, candidatos_item, auditar
@@ -68,7 +71,7 @@ def novo(request):
         try:
             plano = form.salvar()
             auditar(plano, request.user, "Criou plano de replicação", destinos=list(plano.destinos.values_list("empresa_id", flat=True)))
-            messages.success(request, "Configuração salva. Compare os cadastros antes de escolher o que replicar.")
+            messages.success(request, "Configuração salva. Atualize a árvore de categorias da base PAI para começar.")
             return redirect("replicacao:detalhe", plano_id=plano.pk)
         except (ValidationError, PermissionDenied) as erro:
             form.add_error(None, erro)
@@ -79,6 +82,8 @@ def novo(request):
 @require_GET
 def detalhe(request, plano_id):
     plano = plano_request(request, plano_id)
+    if plano.grupo and not request.GET.get("historico"):
+        return painel_central(request, plano)
     comparacoes = plano.comparacoes.select_related("solicitado_por")
     comparacao_id = request.GET.get("comparacao")
     comparacao = get_object_or_404(comparacoes, pk=comparacao_id) if comparacao_id and comparacao_id.isascii() and comparacao_id.isdigit() else comparacoes.first()
@@ -234,6 +239,8 @@ def alternar(request, plano_id):
         with transaction.atomic():
             list(Empresa.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
             plano = PlanoReplicacao.objects.select_for_update().get(pk=plano.pk)
+            if plano.cadastros.filter(status__in=["fila", "consultando", "enviando", "revisao"]).exists() or plano.cadastros.filter(empresas__status__in=["executando", "incerto"]).exists():
+                raise ValidationError("Conclua ou verifique os cadastros centrais antes de pausar a configuração.")
             if plano.comparacoes.filter(status__in=["comparando", "enviando"]).exists():
                 raise ValidationError("Aguarde a conclusão do processamento antes de pausar este plano.")
             if plano.ativo and ItemReplicacao.objects.filter(comparacao__plano=plano, status__in=["incerto", "executando"]).exists():
@@ -249,3 +256,127 @@ def alternar(request, plano_id):
     except (ValidationError, PermissionDenied) as erro:
         informar_erro(request, erro)
     return redirect("replicacao:detalhe", plano_id=plano.pk)
+
+
+def painel_central(request, plano):
+    erro_grupo = ""
+    try:
+        central.conferir_grupo(plano, request.user)
+    except (ValidationError, PermissionDenied) as exc:
+        erro_grupo = " ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+    operacao = plano.cadastros.first()
+    if request.GET.get("cadastro", "").isdigit():
+        operacao = get_object_or_404(plano.cadastros, pk=request.GET["cadastro"])
+    categorias = list(CategoriaOmie.objects.filter(empresa=plano.matriz, ativo_omie=True).order_by("codigo"))
+    # The OMIE hierarchy is shallow, but keep the display independent of code
+    # numbering and show orphans instead of silently dropping a category.
+    por_pai = {}
+    codigos = {c.codigo for c in categorias}
+    for c in categorias:
+        por_pai.setdefault(c.categoria_superior if c.categoria_superior in codigos else "", []).append(c)
+    arvore, visitados = [], set()
+    def incluir(c, nivel):
+        if c.pk in visitados:
+            return
+        visitados.add(c.pk)
+        c.nivel_visual = min(nivel, 4)
+        arvore.append(c)
+        for filho in por_pai.get(c.codigo, []):
+            incluir(filho, nivel + 1)
+    for c in por_pai.get("", []):
+        incluir(c, 0)
+    for c in categorias:
+        incluir(c, 0)
+    linhas = list(operacao.empresas.select_related("empresa")) if operacao else []
+    for linha in linhas:
+        linha.precisa_codigo = any(p.get("status") in {"executando", "incerto"} and not p.get("codigo") and not p.get("alvo") for p in linha.passos)
+    ocupado = plano.cadastros.filter(status__in=central.OCUPADOS | {"revisao"}).exists()
+    return render(request, "replicacao/central.html", {"plano": plano, "arvore": arvore,
+        "erro_grupo": erro_grupo, "form": NovaCategoriaForm(plano=plano), "operacao": operacao,
+        "progresso": central.situacao(operacao) if operacao else None, "linhas": linhas,
+        "ocupado": ocupado, "historico": plano.cadastros.all()[:20]})
+
+
+@ambiente_view
+@require_POST
+def cadastrar(request, plano_id):
+    plano = plano_request(request, plano_id)
+    form = NovaCategoriaForm(request.POST, plano=plano)
+    try:
+        if request.POST.get("confirmar") != "sim":
+            raise ValidationError("Confirme o cadastro nos OMIEs do grupo.")
+        if not form.is_valid():
+            raise ValidationError([f"{form.fields[n].label}: {e}" for n, erros in form.errors.items() for e in erros])
+        op = central.solicitar(plano, request.user, form.cleaned_data["descricao"], form.cleaned_data["pai"])
+        transaction.on_commit(lambda: central.publicar_cadastro(op))
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    return redirect("replicacao:detalhe", plano_id=plano.pk)
+
+
+@ambiente_view
+@require_POST
+def atualizar_arvore(request, plano_id):
+    plano = plano_request(request, plano_id)
+    try:
+        op = central.solicitar(plano, request.user, catalogo=True)
+        transaction.on_commit(lambda: central.publicar_cadastro(op))
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    return redirect("replicacao:detalhe", plano_id=plano.pk)
+
+
+@ambiente_view
+@require_GET
+def progresso_cadastro(request, plano_id, cadastro_id):
+    plano = plano_request(request, plano_id)
+    op = get_object_or_404(plano.cadastros, pk=cadastro_id)
+    return JsonResponse(central.situacao(op))
+
+
+@ambiente_view
+@require_POST
+def resolver_cadastro(request, plano_id, cadastro_id):
+    plano = plano_request(request, plano_id)
+    op = get_object_or_404(plano.cadastros, pk=cadastro_id)
+    try:
+        if request.POST.get("confirmar") != "sim":
+            raise ValidationError("Confirme as decisões e o envio para o grupo.")
+        op = central.resolver_cadastro(op, request.user, request.POST)
+        transaction.on_commit(lambda: central.publicar_cadastro(op))
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
+
+
+@ambiente_view
+@require_POST
+def retomar_cadastro(request, plano_id, cadastro_id):
+    plano = plano_request(request, plano_id)
+    op = get_object_or_404(plano.cadastros, pk=cadastro_id)
+    try:
+        op = central.retomar(op, request.user)
+        transaction.on_commit(lambda: central.publicar_cadastro(op))
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
+
+
+@ambiente_view
+@require_POST
+def verificar_cadastro(request, plano_id, empresa_id):
+    from .tasks import verificar_cadastro as tarefa
+    plano = plano_request(request, plano_id)
+    linha = get_object_or_404(CadastroCategoriaEmpresa, pk=empresa_id, cadastro__plano=plano)
+    try:
+        central.conferir_grupo(plano, request.user)
+        codigo = request.POST.get("codigo", "").strip()
+        if linha.status != "incerto" or (codigo and (len(codigo) > 20 or any(c not in "0123456789." for c in codigo))):
+            raise ValidationError("Selecione um envio sem confirmação e informe um código válido.")
+        tarefa.apply_async(args=[linha.pk, request.user.pk, codigo], queue="omie_replicacao", retry=False)
+        messages.success(request, "Verificação solicitada; nenhuma inclusão ou alteração será repetida.")
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    except Exception:
+        messages.error(request, "Worker indisponível; tente verificar novamente.")
+    return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={linha.cadastro_id}")

@@ -1,9 +1,55 @@
 # Replicação de categorias entre aplicativos OMIE
 
 Entrada: Configurações > Replicar dados, inclusive no menu principal antes de escolher
-um CNPJ. Primeira versão manual: matriz, destinos explícitos, comparação atualizada
-na OMIE, revisão, seleção, aprovação e histórico por empresa/item. Não monitora
-automaticamente alterações na matriz. Departamentos ficam para uma etapa posterior.
+um CNPJ. A rotina atual é o cadastro central por grupo: escolha o grupo já informado
+nos cadastros das empresas e uma base PAI. Todas as outras empresas ativas desse
+grupo, no mesmo ambiente, participam. Não monitora automaticamente cadastros feitos
+diretamente no OMIE. Departamentos ficam para uma etapa posterior.
+
+## Cadastro central e progresso
+
+- A tela mostra a árvore local de pais/filhos da base PAI. **Atualizar árvore**
+  consulta os OMIEs do grupo por worker e atualiza as categorias no PostgreSQL.
+- **Nova categoria** permite escolher um grupo superior ativo. Selecionar a raiz
+  Receitas/Despesas cria um grupo; selecionar um grupo cria uma categoria filha.
+  A autorização inicial permite cadastrar em todos os OMIEs após a varredura.
+- O worker consulta TODAS as bases, incluindo a PAI, antes da primeira escrita.
+  Correspondências exatas e únicas, do mesmo tipo/hierarquia, são aproveitadas.
+  Semelhanças, duplicidades e nomes em outra hierarquia interrompem o envio para
+  decisão. A busca inclui categorias inativas ou de outro tipo, mas elas não podem
+  ser sobrescritas.
+- O usuário pode escolher **Sobrescrever descrição** em um cadastro compatível ou
+  **Ignorar nesta empresa**. Ignorar não renomeia nem cria uma categoria alternativa.
+  Sobrescrever preserva código, natureza, tipo, DRE e dados contábeis do destino.
+  Se o próprio grupo superior for ambíguo, ele é resolvido antes dos filhos e uma
+  nova varredura apresenta as opções da hierarquia escolhida, ainda sem gravações.
+- Pais ausentes são criados antes dos filhos. Não se copiam códigos entre bases.
+  Nova leitura antes de cada escrita detecta mudanças posteriores à decisão.
+- A barra atualiza automaticamente, a cada três segundos, via endpoint autenticado
+  sem cache. Ela conta etapas reais: consulta por empresa e conclusão por empresa.
+  Mostra fase, empresa atual, quantidade concluída e resultado por base. 100% indica
+  processamento encerrado; falhas e envios sem confirmação continuam discriminados.
+- Escritas fazem uma tentativa HTTP. Resultado perdido permanece incerto. A opção
+  **Verificar resultado sem reenviar** consulta o cadastro pelo código confirmado
+  na OMIE. Só depois é possível retomar passos não enviados; sucessos não se repetem.
+- O worker usa lock PostgreSQL por solicitação e o lock por aplicativo já existente.
+  Entregas duplicadas não iniciam um segundo processamento. Um worker vivo não é
+  recuperado somente por heartbeat antigo. Perda de worker converte intenções sem
+  confirmação em pendências de verificação, jamais em inclusões repetíveis.
+- Usuários, composição do grupo e aplicativos são revalidados durante o processo.
+  Para alterar os participantes, pause a configuração e crie outra. O histórico
+  anterior permanece acessível. Não existe varredura ou cadastro em bases externas
+  ao grupo/ambiente autorizado.
+
+Migração: `0005_planoreplicacao_grupo_cadastrocategoria_and_more`. Adiciona estruturas
+de cadastro e grupo com default persistente no banco (compatibilidade com versão
+anterior). Configurações anteriores só recebem grupo automaticamente quando sua
+matriz/destinos já correspondem exatamente a todas as empresas ativas daquele grupo.
+As demais continuam na rotina anterior e exibem instrução para criar uma configuração
+por grupo. No deploy, atualizar app e `replicacao_worker`; aguardar a drenagem do
+worker antes de recriá-lo. As novas tarefas permanecem na fila `omie_replicacao`.
+
+## Rotina anterior: comparação em lote e histórico
 
 ## Escopo e acesso
 
@@ -15,8 +61,9 @@ automaticamente alterações na matriz. Departamentos ficam para uma etapa poste
   item revalidam usuário ativo, papel, vínculos, CNPJs, marca e integração atuais.
 - Um plano do site geral não é exposto pelo domínio de uma marca, mesmo compartilhando
   CNPJs. Administração de outra marca não concede privilégios sobre a marca corrente.
-- O grupo de replicação é a lista explícita de destinos; não altera Empresa.grupo e
-  não inclui automaticamente os clientes de um parceiro/contabilidade.
+- Na rotina anterior os destinos eram escolhidos individualmente. Novas configurações
+  exigem Empresa.grupo e todos os integrantes ativos no ambiente; clientes de outros
+  grupos ou de outras marcas não são incluídos.
 - Os aplicativos OMIE devem ser distintos. Hashes das App Keys identificam os
   aplicativos da comparação, sem registrar chaves/segredos nos itens ou nas telas.
   Trocar aplicativo invalida a prévia/envio: exige nova comparação.
