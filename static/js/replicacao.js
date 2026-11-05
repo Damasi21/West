@@ -43,6 +43,8 @@
         enviando: 'Cadastrando no grupo', concluido: 'Processamento concluído', erro: 'Consulta não concluída',
         pendente: 'Aguardando consulta', pronta: 'Verificada', executando: 'Cadastrando', sucesso: 'Confirmado',
         ignorada: 'Ignorada', incerto: 'Verificar resultado'};
+    if (panel.dataset.repMode === 'inativar') labels.enviando = 'Inativando categorias';
+    if (panel.dataset.repMode === 'reativar') labels.enviando = 'Reativando categorias';
     let stopped = false;
     let state = panel.dataset.repState;
     const pollMessage = panel.querySelector('[data-rep-poll-message]');

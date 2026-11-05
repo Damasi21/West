@@ -8,6 +8,36 @@ diretamente no OMIE. Departamentos ficam para uma etapa posterior.
 
 ## Cadastro central e progresso
 
+### Inativar e reativar categorias
+
+- A árvore exibe **Inativar** para categorias filhas ativas e **Reativar** para
+  inativas. A ação abre uma tela para escolher as empresas participantes (inclusive
+  a base PAI). Apenas empresas da configuração podem ser selecionadas.
+- A primeira etapa apenas consulta os OMIEs e prepara uma prévia. Correspondências
+  usam vínculos existentes ou descrição exata e única no mesmo grupo superior e
+  tipo. Código igual ou nome semelhante sozinho nunca autoriza a alteração.
+- Na prévia, confira explicitamente cada empresa/código. Semelhanças e duplicidades
+  não são pré-selecionadas. É possível escolher uma categoria compatível, desmarcar
+  uma empresa ou encerrar a solicitação sem novos envios. Categorias ausentes nunca
+  são criadas por esta rotina.
+- Confirmada a prévia, o mesmo worker `omie_replicacao` aplica `AlterarCategoria`
+  com `conta_inativa=S/N`. Código, descrição, natureza, tipo e código DRE do destino
+  são preservados. Os lançamentos anteriores não são reclassificados nem excluídos.
+- O estado é confirmado por nova consulta antes de marcar sucesso. Mudanças nos
+  dados entre a prévia e o envio exigem nova confirmação. Estado já desejado não
+  gera escrita. Resultados incertos só admitem verificação de leitura; nunca retry
+  automático. O progresso e o histórico continuam por solicitação e empresa.
+- Reativação exige grupo superior ativo no destino. Grupos totalizadores e contas
+  de transferência não são alterados nesta etapa: o contrato documentado de
+  `AlterarGrupoCategoria` não expõe `conta_inativa`, ao contrário de `AlterarCategoria`.
+- Sem migração nova: utiliza modos `inativar/reativar` nas solicitações existentes.
+  No deploy é necessário atualizar **app e replicacao_worker**, drenando o worker
+  antes de recriá-lo; os demais workers podem permanecer em execução.
+
+Contrato: https://api.omie.com.br/docs/apis/geral/categorias
+
+### Configuração e cadastro
+
 - Na lista, **Excluir configuração** aparece somente quando não existe nenhuma
   solicitação de cadastro, atualização de árvore ou comparação, nem vínculo de
   categorias. Solicitações com erro também impedem exclusão. A ação exige uma

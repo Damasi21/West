@@ -306,14 +306,61 @@ def painel_central(request, plano):
         incluir(c, 0)
     for c in categorias:
         incluir(c, 0)
+    for categoria in arvore:
+        categoria.pode_alterar_situacao = not categoria.totalizadora and not categoria.transferencia and categoria.ativo_omie
     linhas = list(operacao.empresas.select_related("empresa")) if operacao else []
     for linha in linhas:
         linha.precisa_codigo = any(p.get("status") in {"executando", "incerto"} and not p.get("codigo") and not p.get("alvo") for p in linha.passos)
+        if operacao.modo in {"inativar", "reativar"} and linha.status == "revisao":
+            linha.rotulo_situacao = "Aguardando confirmação"
     ocupado = plano.cadastros.filter(status__in=central.OCUPADOS | {"revisao"}).exists()
     return render(request, "replicacao/central.html", {"plano": plano, "arvore": arvore,
         "erro_grupo": erro_grupo, "form": NovaCategoriaForm(plano=plano), "operacao": operacao,
         "progresso": central.situacao(operacao) if operacao else None, "linhas": linhas,
-        "ocupado": ocupado, "historico": plano.cadastros.all()[:20]})
+        "ocupado": ocupado, "historico": plano.cadastros.all()[:20],
+        "alteracao_situacao": operacao and operacao.modo in {"inativar", "reativar"}})
+
+
+@ambiente_view
+@require_http_methods(["GET", "POST"])
+def situacao_categoria(request, plano_id, categoria_id):
+    from . import estado
+    plano = plano_request(request, plano_id)
+    categoria = get_object_or_404(CategoriaOmie, pk=categoria_id, empresa=plano.matriz)
+    try:
+        empresas = central.conferir_grupo(plano, request.user)
+        estado.validar_categoria(categoria)
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+        return redirect("replicacao:detalhe", plano_id=plano.pk)
+    modo = request.POST.get("modo", "reativar" if categoria.conta_inativa else "inativar")
+    if request.method == "POST":
+        try:
+            valores = request.POST.getlist("empresas")
+            if any(not v.isascii() or not v.isdigit() for v in valores):
+                raise ValidationError("Seleção de empresas inválida.")
+            op = estado.solicitar(plano, request.user, categoria, modo, [int(v) for v in valores])
+            transaction.on_commit(lambda: central.publicar_cadastro(op))
+            return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
+        except (ValidationError, PermissionDenied) as exc:
+            informar_erro(request, exc)
+    return render(request, "replicacao/situacao_categoria.html", {"plano": plano, "categoria": categoria,
+        "empresas": empresas, "modo": modo, "selecionadas": request.POST.getlist("empresas") if request.method == "POST" else [str(e.pk) for e in empresas]})
+
+
+@ambiente_view
+@require_POST
+def confirmar_situacao(request, plano_id, cadastro_id):
+    from . import estado
+    plano = plano_request(request, plano_id)
+    op = get_object_or_404(plano.cadastros, pk=cadastro_id)
+    try:
+        op = estado.confirmar(op, request.user, request.POST)
+        if op.status == "fila":
+            transaction.on_commit(lambda: central.publicar_cadastro(op))
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
 
 
 @ambiente_view

@@ -1,0 +1,11 @@
+{% extends "replicacao/base.html" %}
+{% block heading %}Situação da categoria{% endblock %}
+{% block replicacao_content %}
+<form method="post" class="settings-card p-4 rep-config">{% csrf_token %}
+  <h2 class="h5">{{ categoria.descricao }}</h2><p class="text-secondary">Base PAI: {{ plano.matriz.nome_fantasia|default:plano.matriz.nome }} · Código {{ categoria.codigo }} · {% if categoria.conta_inativa %}Inativa{% else %}Ativa{% endif %}</p>
+  <label class="form-label fw-semibold" for="rep-modo-situacao">Ação desejada</label><select name="modo" id="rep-modo-situacao" class="form-select mb-4"><option value="inativar"{% if modo == 'inativar' %} selected{% endif %}>Inativar categoria</option><option value="reativar"{% if modo == 'reativar' %} selected{% endif %}>Reativar categoria</option></select>
+  <fieldset><legend class="h6">Empresas participantes</legend><div class="rep-empresas">{% for empresa in empresas %}<label class="form-check"><input type="checkbox" class="form-check-input" name="empresas" value="{{ empresa.pk }}"{% if empresa.pk|stringformat:'s' in selecionadas %} checked{% endif %}><span>{{ empresa.nome_fantasia|default:empresa.nome }} · {{ empresa.cnpj }}{% if empresa.pk == plano.matriz_id %} · Base PAI{% endif %}</span></label>{% endfor %}</div></fieldset>
+  <div class="rep-notice mt-4"><strong>Confira antes de aplicar</strong><p class="mb-0 mt-2">O worker localizará a categoria correspondente em cada empresa. Você verá os códigos e confirmará a alteração na próxima tela. Categorias ausentes não serão criadas. A inativação preserva os lançamentos anteriores; a reativação permite voltar a utilizar a categoria.</p></div>
+  <div class="rep-actions mt-4"><a class="btn btn-white" href="{% url 'replicacao:detalhe' plano.pk %}">Voltar</a><button class="btn btn-primary" type="submit">Consultar categorias e preparar prévia</button></div>
+</form>
+{% endblock %}

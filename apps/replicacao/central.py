@@ -208,6 +208,10 @@ def _executar_cadastro(pk):
     token = contexto_plano(op.plano)
     try:
         conferir_operacao(op)
+        if op.modo in {"inativar", "reativar"}:
+            from .estado import processar
+            processar(op)
+            return
         for linha in op.empresas.select_related("empresa"):
             progresso(op, f"Consultando categorias de {linha.empresa.nome_fantasia or linha.empresa.nome}.")
             conferir_operacao(op)
@@ -347,6 +351,9 @@ def aplicar_passo(op, linha, indice, integracao, pai_codigo):
 
 
 def confirmar_passo(linha, indice, integracao, codigo=""):
+    if linha.cadastro.modo in {"inativar", "reativar"}:
+        from .estado import confirmar_resultado
+        return confirmar_resultado(linha, indice, integracao, codigo)
     passo = linha.passos[indice]
     conhecido = passo.get("codigo") or (passo.get("alvo") or {}).get("codigo")
     if conhecido and codigo and codigo != conhecido:
@@ -372,6 +379,8 @@ def resolver_cadastro(op, usuario, escolhas):
     with transaction.atomic():
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
         conferir_grupo(op.plano, usuario)
+        if op.modo != "cadastro":
+            raise ValidationError("Use a confirmação de situação para inativar ou reativar categorias.")
         if op.status != "revisao":
             raise ValidationError("Esta solicitação não está aguardando revisão.")
         for linha in op.empresas.filter(status="revisao").select_for_update():

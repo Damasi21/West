@@ -1,0 +1,12 @@
+<form method="post" action="{% url 'replicacao:confirmar_situacao' plano.pk operacao.pk %}" class="settings-card p-4 mb-4">{% csrf_token %}
+  <h2 class="h5">Conferir categorias para {% if operacao.modo == 'inativar' %}inativar{% else %}reativar{% endif %}</h2>
+  <p class="text-secondary">Confirme os códigos de cada OMIE. Categorias semelhantes exigem sua escolha explícita. Desmarque as empresas que deseja ignorar.</p>
+  {% for linha in linhas %}{% if linha.status != 'sucesso' and linha.status != 'ignorada' and linha.status != 'incerto' %}
+  <fieldset class="rep-conflict mb-3"><legend class="h6">{{ linha.empresa.nome_fantasia|default:linha.empresa.nome }}{% if linha.empresa_id == plano.matriz_id %} · Base PAI{% endif %}</legend>
+    {% for passo in linha.passos %}<label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="aplicar_{{ linha.pk }}" value="sim"{% if passo.alvo %} checked{% endif %}><span class="form-check-label">{% if operacao.modo == 'inativar' %}Inativar{% else %}Reativar{% endif %} nesta empresa</span></label>
+    <label class="form-label" for="estado-categoria-{{ linha.pk }}">Categoria correspondente</label><select class="form-select" name="categoria_{{ linha.pk }}" id="estado-categoria-{{ linha.pk }}"><option value="">Selecione o cadastro correspondente</option>{% for candidato in passo.candidatos %}<option value="{{ candidato.dados.codigo }}"{% if passo.alvo.codigo == candidato.dados.codigo %} selected{% endif %}>{{ candidato.dados.codigo }} · {{ candidato.dados.descricao }} · {% if candidato.dados.conta_inativa %}Inativa{% else %}Ativa{% endif %}</option>{% endfor %}</select>
+    <p class="small text-secondary mt-2 mb-0">{{ linha.mensagem }}</p>{% endfor %}
+  </fieldset>{% endif %}{% endfor %}
+  <label class="form-check"><input class="form-check-input" type="checkbox" name="confirmar" value="sim" required><span class="form-check-label">Conferi os códigos e autorizo {% if operacao.modo == 'inativar' %}inativar{% else %}reativar{% endif %} as categorias marcadas nos OMIEs selecionados.</span></label>
+  <div class="rep-actions mt-3"><button type="submit" class="btn {% if operacao.modo == 'inativar' %}btn-danger{% else %}btn-primary{% endif %}">Confirmar {% if operacao.modo == 'inativar' %}inativação{% else %}reativação{% endif %}</button><button type="submit" name="cancelar" value="sim" class="btn btn-white" formnovalidate>Encerrar sem novos envios</button></div>
+</form>
