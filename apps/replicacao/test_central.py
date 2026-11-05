@@ -280,3 +280,38 @@ class CadastroCentralTests(TestCase):
             with outro.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", [chave])
             outro.close()
+
+    def test_cadastro_e_consulta_independentes_da_sincronizacao_geral(self):
+        from apps.empresas.models import SincronizacaoOmie
+        from .services import aplicativo_livre
+        syncs = [SincronizacaoOmie.objects.create(empresa=e, status="em_andamento", recurso="completa") for e in (self.matriz, self.destino)]
+        # The legacy comparison keeps its existing behavior.
+        with self.assertRaises(ValidationError):
+            with aplicativo_livre(self.matriz): pass
+        consulta = central.solicitar(self.plano, self.superuser, catalogo=True)
+        self.executar(consulta)
+        self.assertEqual(consulta.status, "concluido", consulta.mensagem)
+        op = self.executar(self.solicitar())
+        self.assertEqual(op.status, "concluido", op.mensagem)
+        self.assertEqual(set(op.empresas.values_list("status", flat=True)), {"sucesso"})
+        self.assertEqual(len(self.api.escritas), 2)
+        for sync in syncs:
+            sync.refresh_from_db()
+            self.assertEqual(sync.status, "em_andamento")
+
+    def test_independencia_da_sync_mantem_lock_exclusivo_de_replicacao(self):
+        import hashlib
+        from django.db import connection
+        from apps.empresas.models import IntegracaoOmie
+        from .services import aplicativo_livre
+        app_key = IntegracaoOmie.objects.get(empresa=self.matriz).app_key
+        chave = int.from_bytes(hashlib.blake2b(("rep-categoria:"+app_key).encode(),digest_size=8).digest(), "big", signed=True)
+        outro = connection.copy(alias="rep-app-lock-test")
+        try:
+            with outro.cursor() as cursor: cursor.execute("SELECT pg_advisory_lock(%s)", [chave])
+            with self.assertRaises(ValidationError):
+                with aplicativo_livre(self.matriz, aguardar_sincronizacao=False): pass
+        finally:
+            with outro.cursor() as cursor: cursor.execute("SELECT pg_advisory_unlock(%s)", [chave])
+            outro.close()
+        self.assertEqual(self.api.escritas, [])

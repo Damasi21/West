@@ -33,8 +33,8 @@ def conferir_aplicativos(comparacao):
 
 
 @contextmanager
-def aplicativo_livre(empresa):
-    if SincronizacaoOmie.objects.filter(empresa=empresa, status="em_andamento").exists():
+def aplicativo_livre(empresa, *, aguardar_sincronizacao=True):
+    if aguardar_sincronizacao and SincronizacaoOmie.objects.filter(empresa=empresa, status="em_andamento").exists():
         raise ValidationError("Há uma sincronização em andamento nesta empresa. Aguarde a conclusão e compare novamente.")
     integracao = IntegracaoOmie.objects.get(empresa=empresa, ativa=True)
     chave = int.from_bytes(hashlib.blake2b(("rep-categoria:"+integracao.app_key).encode(), digest_size=8).digest(), "big", signed=True)

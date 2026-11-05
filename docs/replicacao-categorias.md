@@ -33,6 +33,11 @@ diretamente no OMIE. Departamentos ficam para uma etapa posterior.
   **Verificar resultado sem reenviar** consulta o cadastro pelo código confirmado
   na OMIE. Só depois é possível retomar passos não enviados; sucessos não se repetem.
 - O worker usa lock PostgreSQL por solicitação e o lock por aplicativo já existente.
+  O cadastro central não espera a sincronização geral da empresa (que apenas lê os
+  dados da OMIE); atualizar a árvore, cadastrar e verificar resultados continuam
+  disponíveis enquanto aquela sincronização roda. O lock exclusivo entre
+  replicações e as proteções de envios incertos continuam obrigatórios. A comparação
+  antiga mantém sua regra anterior de aguardar a sincronização.
   Entregas duplicadas não iniciam um segundo processamento. Um worker vivo não é
   recuperado somente por heartbeat antigo. Perda de worker converte intenções sem
   confirmação em pendências de verificação, jamais em inclusões repetíveis.

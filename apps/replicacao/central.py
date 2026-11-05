@@ -216,7 +216,7 @@ def _executar_cadastro(pk):
                 continue
             if linha.status == "incerto":
                 raise ValidationError("Existe envio sem confirmação. Use Verificar resultado antes de retomar.")
-            with aplicativo_livre(linha.empresa) as integracao:
+            with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
                 catalogo = catalogo_dados(linha.empresa, integracao)
             if op.modo == "catalogo":
                 linha.status, linha.mensagem = "sucesso", "Categorias atualizadas no BI."
@@ -250,7 +250,7 @@ def _executar_cadastro(pk):
             try:
                 conferir_operacao(op)
                 conferir_sem_incerteza(linha.empresa, linha)
-                with aplicativo_livre(linha.empresa) as integracao:
+                with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
                     catalogo = catalogo_dados(linha.empresa, integracao)
                     linha.passos = montar_passos(op, catalogo, linha.passos)
                     if any(p["acao"] == "conflito" for p in linha.passos):
@@ -451,7 +451,7 @@ def verificar_cadastro(linha_id, usuario_id, codigo=""):
         conferir_grupo(op.plano, get_user_model().objects.get(pk=usuario_id))
         if op.aplicativos != identificar_aplicativos(op.plano):
             raise ValidationError("Integração alterada; confira o envio no aplicativo original.")
-        with aplicativo_livre(linha.empresa) as integracao:
+        with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
             linha.refresh_from_db()
             if linha.status != "incerto":
                 return
