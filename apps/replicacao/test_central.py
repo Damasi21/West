@@ -114,7 +114,7 @@ class CadastroCentralTests(TestCase):
         op = self.executar(self.solicitar())
         linha = op.empresas.get(empresa=self.destino)
         op = central.resolver_cadastro(op, self.superuser, {f"passo_{linha.pk}_1":"2.08.09"})
-        self.api.catalogos[self.destino.pk][-1]["natureza"] = "ALTERADA"
+        self.api.catalogos[self.destino.pk][-1]["tipo_categoria"] = "ALT"
         self.executar(op)
         self.assertEqual(op.status, "revisao")
         self.assertEqual(self.api.escritas, [])

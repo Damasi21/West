@@ -59,6 +59,11 @@ def dados(categoria):
     )}
 
 
+def sem_observacoes(registro):
+    """Observações continuam no snapshot de auditoria, fora do plano replicado."""
+    return {k: v for k, v in registro.items() if k != "natureza"} if registro is not None else None
+
+
 def tipo(item):
     if str(item["codigo"]).startswith("1") and not item["conta_despesa"]:
         return "R"

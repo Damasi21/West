@@ -116,13 +116,14 @@ class SituacaoCategoriaTests(TestCase):
         op=self.preparar(empresas=[self.destino.pk])
         linha=op.empresas.get()
         op=estado.confirmar(op,self.superuser,{"confirmar":"sim",f"aplicar_{linha.pk}":"sim",f"categoria_{linha.pk}":"2.08.07"})
-        self.api.catalogos[self.destino.pk][-1]["natureza"]="Nova natureza"
+        self.api.catalogos[self.destino.pk][-1]["tipo_categoria"]="ALT"
         central.executar_cadastro(op.pk);op.refresh_from_db()
         self.assertEqual(op.status,"revisao")
         self.assertEqual(self.api.escritas, [])
         op=self.confirmar(op)
         self.assertEqual(op.empresas.get().status,"sucesso")
-        self.assertEqual(self.api.escritas[0][2]["natureza"],"Nova natureza")
+        self.assertEqual(self.api.escritas[0][2]["tipo_categoria"],"ALT")
+        self.assertNotIn("natureza",self.api.escritas[0][2])
 
     def test_resposta_perdida_so_verifica_e_nao_repete_escrita(self):
         op=self.preparar()

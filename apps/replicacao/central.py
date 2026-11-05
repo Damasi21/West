@@ -11,7 +11,7 @@ from apps.empresas.models import Empresa, CategoriaOmie
 from apps.empresas.services import empresas_permitidas
 from apps.empresas.white_label_domains import _marca_host
 from . import omie
-from .comparacao import dados, normalizar, semelhanca, tipo
+from .comparacao import dados, normalizar, semelhanca, tipo, sem_observacoes
 from .models import CadastroCategoria, CadastroCategoriaEmpresa, ItemReplicacao
 from .permissions import conferir_acesso, contexto_plano, empresas_gerenciaveis
 from .services import aplicativo_livre, atualizar_catalogo, identificar_aplicativos, auditar
@@ -88,8 +88,8 @@ def solicitar(plano, usuario, descricao="", pai=None, catalogo=False, destinos_i
                 raise ValidationError("Este nível da hierarquia não é suportado pela OMIE nesta rotina.")
             if not tipo(dados(pai)):
                 raise ValidationError("O grupo superior deve ser de receita ou despesa.")
-            if len(pai.descricao) > 50 or len(pai.natureza) > 50:
-                raise ValidationError("A descrição e a natureza do grupo superior devem ter até 50 caracteres.")
+            if len(pai.descricao) > 50:
+                raise ValidationError("A descrição do grupo superior deve ter até 50 caracteres.")
             pedido = {"descricao": descricao, "pai": dados(pai), "destinos_ids": [e.pk for e in empresas if e.pk != plano.matriz_id]}
             if estrito:
                 pedido["estrito"] = True
@@ -141,7 +141,7 @@ def montar_passos(op, catalogo, antigos=()):
         anterior = deepcopy(antigos[indice]) if indice < len(antigos) else {}
         if anterior.get("status") == "sucesso":
             alvo = next((c for c in catalogo if c["codigo"] == anterior["codigo"]), None)
-            if alvo != anterior.get("confirmado"):
+            if sem_observacoes(alvo) != sem_observacoes(anterior.get("confirmado")):
                 raise ValidationError("Um cadastro já confirmado mudou na OMIE. Revise antes de continuar.")
             passos.append(anterior)
             pai_codigo = alvo["codigo"]
@@ -166,7 +166,7 @@ def montar_passos(op, catalogo, antigos=()):
             passo.update(acao="existente", alvo=exatos[0])
         elif candidatos:
             passo["acao"] = "conflito"
-            escolhido = next((c["dados"] for c in candidatos if c["compativel"] and c["dados"] == decisao.get("alvo")), None)
+            escolhido = next((c["dados"] for c in candidatos if c["compativel"] and sem_observacoes(c["dados"]) == sem_observacoes(decisao.get("alvo"))), None)
             if decisao.get("acao") == "sobrescrever" and escolhido:
                 passo.update(acao="sobrescrever", alvo=escolhido, decisao=decisao)
         passos.append(passo)
@@ -266,7 +266,7 @@ def _executar_cadastro(pk):
                 conferir_sem_incerteza(linha.empresa, linha)
                 if linha.empresa_id == op.plano.matriz_id:
                     pai = next((c for c in catalogo if c["codigo"] == op.pedido["pai"]["codigo"]), None)
-                    if pai != op.pedido["pai"]:
+                    if sem_observacoes(pai) != sem_observacoes(op.pedido["pai"]):
                         raise ValidationError("O grupo superior da base PAI mudou. Atualize a árvore e inicie um novo cadastro.")
                 try:
                     linha.passos = montar_passos(op, catalogo, linha.passos)
@@ -368,12 +368,12 @@ def aplicar_passo(op, linha, indice, integracao, pai_codigo):
         # Preserve accounting metadata and the existing code. Only the description
         # changes; the API's required fields retain their destination values.
         metodo = "AlterarGrupoCategoria" if grupo else "AlterarCategoria"
-        parametros = {"codigo": alvo["codigo"], "descricao": origem["descricao"], "natureza": alvo["natureza"]}
+        parametros = {"codigo": alvo["codigo"], "descricao": origem["descricao"]}
         if not grupo:
             parametros["tipo_categoria"] = alvo["tipo_categoria"]
     else:
         metodo = "IncluirGrupoCategoria" if grupo else "IncluirCategoria"
-        parametros = {"descricao": origem["descricao"], "natureza": origem["natureza"]}
+        parametros = {"descricao": origem["descricao"]}
         if grupo:
             parametros["tipo_grupo"] = tipo(origem)
         else:
@@ -419,7 +419,7 @@ def confirmar_passo(linha, indice, integracao, codigo=""):
     if not origem["totalizadora"] and alvo["categoria_superior"] != passo.get("pai_confirmado"):
         raise omie.OmieIncerta("Grupo superior divergente.")
     for campo in ["natureza", *([] if origem["totalizadora"] else ["tipo_categoria"])]:
-        if alvo[campo] != passo["parametros"][campo]:
+        if campo in passo["parametros"] and alvo[campo] != passo["parametros"][campo]:
             raise omie.OmieIncerta("Dados diferentes dos enviados.")
     passo.update(status="sucesso", codigo=codigo, confirmado=alvo)
     linha.save()

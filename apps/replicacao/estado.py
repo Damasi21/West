@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.empresas.models import CategoriaOmie
 from apps.empresas.omie import _salvar_categorias
 from . import omie
-from .comparacao import dados, normalizar, semelhanca, tipo
+from .comparacao import dados, normalizar, semelhanca, tipo, sem_observacoes
 from .models import PlanoReplicacao, CadastroCategoria, CadastroCategoriaEmpresa, VinculoCategoria
 from .services import aplicativo_livre, atualizar_catalogo, identificar_aplicativos, auditar
 
@@ -20,7 +20,7 @@ def snapshot(categoria):
 
 
 def identidade(registro):
-    return {k: v for k, v in registro.items() if k != "conta_inativa"}
+    return {k: v for k, v in registro.items() if k not in {"conta_inativa", "natureza"}}
 
 
 def validar_categoria(categoria):
@@ -167,7 +167,7 @@ def processar(op):
                 if atual["conta_inativa"] == desejado:
                     passo.update(status="sucesso", codigo=atual["codigo"], confirmado=atual)
                 else:
-                    payload = {k: atual[k] for k in ("codigo", "descricao", "natureza", "tipo_categoria", "codigo_dre")}
+                    payload = {k: atual[k] for k in ("codigo", "descricao", "tipo_categoria", "codigo_dre")}
                     payload["conta_inativa"] = "S" if desejado else "N"
                     passo.update(status="executando", codigo=atual["codigo"], metodo="AlterarCategoria", parametros=payload,
                         esperado={**atual, "conta_inativa": desejado})
@@ -253,7 +253,8 @@ def confirmar_resultado(linha, indice, integracao, codigo=""):
         _salvar_categorias(linha.empresa, [registro])
         categoria = CategoriaOmie.objects.get(empresa=linha.empresa, codigo=esperado["codigo"])
         confirmado = snapshot(categoria)
-        if confirmado != esperado:
+        comparar = (lambda c: c) if "natureza" in passo.get("parametros", {}) else sem_observacoes
+        if comparar(confirmado) != comparar(esperado):
             raise omie.OmieIncerta("Situação ou dados diferentes do aprovado. Verifique sem reenviar.")
         passo.update(status="sucesso", codigo=confirmado["codigo"], confirmado=confirmado)
         linha.save()

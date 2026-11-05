@@ -1,6 +1,6 @@
 <form method="post" action="{% url 'replicacao:confirmar_padronizacao' plano.pk operacao.pk %}" class="settings-card p-4 mb-4">{% csrf_token %}
   <h2 class="h5">Prévia do plano por sequência</h2>
-  <p>Receitas e despesas são tratadas separadamente. Cada grupo e seus filhos seguem a ordem dos códigos da OMIE. A descrição atual não determina a correspondência.</p>
+  <p>Receitas e despesas são tratadas separadamente. Cada grupo e seus filhos seguem a ordem dos códigos da OMIE. A descrição atual não determina a correspondência. As observações não são copiadas e permanecem próprias de cada empresa.</p>
   <div class="alert alert-warning"><strong>Atenção ao histórico:</strong> os códigos das categorias existentes no destino serão preservados. Os lançamentos antigos vinculados a esses códigos passarão a exibir os novos nomes e classificações. A configuração local do DRE no BI permanece; o código DRE da OMIE das categorias filhas acompanha a matriz. Grupos pais excedentes ou com situação incompatível exigem ajuste na OMIE e bloqueiam a empresa nesta prévia.</div>
   {% for linha in linhas %}
   <fieldset class="rep-conflict mb-4"><legend class="h6">{{ linha.empresa.nome_fantasia|default:linha.empresa.nome }}</legend>

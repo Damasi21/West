@@ -333,18 +333,18 @@ class PadronizacaoTests(TestCase):
         self.api.catalogos[self.matriz.pk][-1]["natureza"] = "N" * 54
         op = self.previa()
         self.assertEqual(op.status, "erro")
-        for trecho in ("Base PAI — Matriz", "2.01.01", descricao, "Campo Descrição: 51", "excede em 1", "Campo Natureza: 54", "excede em 4", "retome a consulta"):
+        for trecho in ("Base PAI — Matriz", "2.01.01", descricao, "Campo Descrição: 51", "excede em 1", "retome a consulta"):
             self.assertIn(trecho, op.mensagem)
         self.assertEqual(self.api.catalogos[self.matriz.pk][-1]["descricao"], descricao)
         self.assertEqual(self.api.escritas, [])
 
     def test_limite_na_filha_identifica_base_e_todos_os_cadastros(self):
-        self.api.catalogos[self.destino.pk][1]["natureza"] = "N" * 52
+        self.api.catalogos[self.destino.pk][1]["descricao"] = "G" * 52
         self.api.catalogos[self.destino.pk][-1]["descricao"] = "D" * 55
         op = self.previa()
         linha = op.empresas.get()
         self.assertEqual(linha.status, "bloqueada")
-        for trecho in ("Base FILHO — Destino B", "Grupo 2.08", "Campo Natureza: 52", "Categoria 2.08.07", "Campo Descrição: 55"):
+        for trecho in ("Base FILHO — Destino B", "Grupo 2.08", "Campo Descrição: 52", "Categoria 2.08.07", "Campo Descrição: 55"):
             self.assertIn(trecho, linha.mensagem)
         self.assertIn("\n", linha.mensagem)
         self.assertEqual(self.api.escritas, [])
@@ -362,3 +362,66 @@ class PadronizacaoTests(TestCase):
         self.assertContains(response, "&lt;script&gt;alert(1)&lt;/script&gt;")
         self.assertNotContains(response, "<script>alert(1)</script>")
         self.assertEqual(self.api.escritas, [])
+
+    def test_observacoes_longas_diferentes_nao_bloqueiam_nem_geram_alteracao(self):
+        for c in self.api.catalogos[self.matriz.pk]:
+            c["natureza"] = "Observação da matriz " * 30
+        for c in self.api.catalogos[self.destino.pk]:
+            c["natureza"] = "Observação local " * 40
+        self.api.catalogos[self.destino.pk][-1]["codigo_dre"] = "MATRIZ"
+        op = self.previa()
+        self.assertEqual(op.status, "revisao", op.mensagem)
+        self.assertTrue(all(p["acao"] == "manter" for p in op.empresas.get().passos))
+        self.executar(self.confirmar(op))
+        self.assertEqual(op.empresas.get().status, "sucesso", op.empresas.get().mensagem)
+        self.assertEqual(self.api.escritas, [])
+        self.assertEqual(self.api.catalogos[self.destino.pk][-1]["natureza"], "Observação local " * 40)
+
+    def test_renomear_e_inativar_preservam_observacoes_locais_sem_enviar_campo(self):
+        self.dois_grupos()
+        self.api.catalogos[self.matriz.pk] = deepcopy(self.api.catalogos[self.matriz.pk])
+        self.api.catalogos[self.destino.pk] = deepcopy(self.api.catalogos[self.destino.pk])
+        antes = {c["codigo"]:c["codigo"]+" nota local "*30 for c in self.api.catalogos[self.destino.pk]}
+        for c in self.api.catalogos[self.destino.pk]: c["natureza"] = antes[c["codigo"]]
+        for c in self.api.catalogos[self.matriz.pk]: c["natureza"] = "Nota matriz "*60
+        op = self.previa()
+        self.executar(self.confirmar(op))
+        self.assertEqual(op.empresas.get().status, "sucesso", op.empresas.get().mensagem)
+        self.assertTrue(self.api.escritas)
+        self.assertTrue(all("natureza" not in payload for _,_,payload in self.api.escritas))
+        for c in self.api.catalogos[self.destino.pk]:
+            self.assertEqual(c["natureza"], antes.get(c["codigo"], ""))
+
+    def test_novo_grupo_e_filha_nao_copiam_observacao_e_aceitam_padrao_da_omie(self):
+        self.api.catalogos[self.destino.pk] = [self.raiz]
+        for c in self.api.catalogos[self.matriz.pk]: c["natureza"] = "Notas da matriz "*50
+        op = self.previa()
+        self.confirmar(op)
+        chamada = self.api.chamada
+        def incluir(integracao, metodo, payload):
+            resultado = chamada(integracao, metodo, payload)
+            if metodo.startswith("Incluir"):
+                self.api.catalogos[integracao.empresa_id][-1]["natureza"] = "Padrão da OMIE "*50
+            return resultado
+        with patch('apps.replicacao.omie.chamada', side_effect=incluir): self.executar(op)
+        self.assertEqual(op.empresas.get().status, "sucesso", op.empresas.get().mensagem)
+        self.assertTrue(all("natureza" not in payload for _,_,payload in self.api.escritas))
+
+    def test_mudanca_apenas_em_observacoes_apos_previa_nao_interrompe_envio(self):
+        op = self.previa()
+        self.confirmar(op)
+        self.api.catalogos[self.matriz.pk][1]["natureza"] = "Mudou a nota PAI "*50
+        self.api.catalogos[self.destino.pk][-1]["natureza"] = "Mudou a nota FILHO "*50
+        self.executar(op)
+        self.assertEqual(op.empresas.get().status, "sucesso", op.empresas.get().mensagem)
+        self.assertEqual(self.api.catalogos[self.destino.pk][-1]["natureza"], "Mudou a nota FILHO "*50)
+
+    def test_avulso_grupo_com_observacao_longa_nao_bloqueia_e_nao_envia_observacoes(self):
+        self.pai.natureza = "Observação local PAI "*50
+        self.pai.save()
+        self.api.catalogos[self.matriz.pk][1]["natureza"] = self.pai.natureza
+        self.api.catalogos[self.destino.pk][1]["natureza"] = "Observação local FILHO "*50
+        op = central.solicitar(self.plano,self.superuser,"Aluguel",self.pai,destinos_ids=[self.destino.pk])
+        self.executar(op)
+        self.assertEqual(set(op.empresas.values_list("status",flat=True)), {"sucesso"})
+        self.assertTrue(all("natureza" not in payload for _,_,payload in self.api.escritas))

@@ -10,6 +10,14 @@ diretamente no OMIE. Departamentos ficam para uma etapa posterior.
 
 ### Padronização do plano por sequência
 
+Observações (`natureza` na API) ficam fora da padronização, do cadastro avulso e
+das novas alterações de situação. Não são enviadas nem validadas pelo limite de
+50 caracteres; não geram divergência entre matriz/destino nem exigem nova prévia
+quando mudam isoladamente. A OMIE mantém as observações existentes e define o
+padrão dos novos cadastros. Os snapshots guardam o texto para auditoria, sem
+tratá-lo como campo replicado. Envios antigos incertos que efetivamente incluíram
+`natureza` ainda conferem esse valor original na verificação somente de leitura.
+
 - **Preparar prévia do plano** é uma operação distinta de **Nova categoria ou grupo**.
   Escolha as empresas FILHO por solicitação, inicialmente desmarcadas. A matriz é
   somente origem: não recebe inclusões, alterações nem inativações neste modo.
@@ -19,7 +27,7 @@ diretamente no OMIE. Departamentos ficam para uma etapa posterior.
   mesma regra. Vínculos antigos e semelhanças não alteram essa correspondência.
 - Dentro de cada grupo: reescrever os pares existentes, criar os filhos faltantes e
   inativar os filhos excedentes. Preservar os IDs existentes no destino. Copiar
-  descrição/natureza e, nos filhos, tipo, código DRE OMIE e situação da matriz. O
+  descrição e, nos filhos, tipo, código DRE OMIE e situação da matriz. O
   vínculo personalizado `conta_dre` do BI permanece local. Raízes 1/2, contas de
   transferência e outros tipos não participam; posições `<Disponível>` da matriz
   não são categorias de negócio a incluir.
@@ -28,7 +36,7 @@ diretamente no OMIE. Departamentos ficam para uma etapa posterior.
   na prévia, com indicação para ajuste no OMIE. Não há promessa de espelhamento
   completo quando a API não permite essa etapa. Inclusão de filha inativa usa
   inclusão seguida de alteração de situação, ambas visíveis na prévia.
-- O limite de 50 caracteres em descrição e natureza é verificado antes dos envios.
+- O limite de 50 caracteres da descrição é verificado antes dos envios.
   O erro identifica a base PAI/FILHO e a empresa, cada grupo/categoria com seu código
   e descrição, o campo, o tamanho atual e quanto excede. Todos os excessos encontrados
   na base são listados em linhas separadas, sem truncar nem alterar os cadastros.

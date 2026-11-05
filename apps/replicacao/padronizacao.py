@@ -9,7 +9,7 @@ from django.utils import timezone
 from apps.empresas.models import CategoriaOmie
 from apps.empresas.omie import _salvar_categorias
 from . import omie
-from .comparacao import normalizar, tipo
+from .comparacao import normalizar, tipo, sem_observacoes
 from .estado import catalogo, snapshot
 from .models import PlanoReplicacao, CadastroCategoria, CadastroCategoriaEmpresa, VinculoCategoria
 from .services import aplicativo_livre, identificar_aplicativos, auditar
@@ -24,7 +24,7 @@ def estrutura(categorias, empresa=""):
     itens = [c for c in categorias if c["codigo"] not in {"1", "2"} and tipo(c) and not c["transferencia"]]
     erros = []
     for c in itens:
-        for campo, rotulo in (("descricao", "Descrição"), ("natureza", "Natureza")):
+        for campo, rotulo in (("descricao", "Descrição"),):
             tamanho = len(c[campo])
             if tamanho > 50:
                 cadastro = "Grupo" if c["totalizadora"] else "Categoria"
@@ -58,6 +58,7 @@ def planejar(fonte, destino, *, empresa_pai="", empresa_filho=""):
         else:
             esperado["codigo"] = ""
             esperado["categoria_superior"] = "" if not grupo else origem["categoria_superior"]
+        esperado["natureza"] = alvo["natureza"] if alvo else ""
         if grupo:
             esperado["codigo_dre"] = alvo["codigo_dre"] if alvo else ""
         if excedente:
@@ -67,7 +68,7 @@ def planejar(fonte, destino, *, empresa_pai="", empresa_filho=""):
             esperado["conta_inativa"] = False
         if grupo and esperado["conta_inativa"] != (alvo["conta_inativa"] if alvo else False):
             raise ValidationError("A situação de um grupo pai difere da matriz. A API de grupos não oferece ativação/inativação; ajuste esse grupo na OMIE e gere outra prévia.")
-        acao = "manter" if alvo == esperado else "inativar" if excedente else "reescrever" if alvo else "criar"
+        acao = "manter" if sem_observacoes(alvo) == sem_observacoes(esperado) else "inativar" if excedente else "reescrever" if alvo else "criar"
         passos.append({"origem": deepcopy(origem or alvo), "alvo": deepcopy(alvo), "esperado": esperado,
             "acao": acao, "grupo": grupo, "pai_indice": pai_indice, "excedente": excedente, "status": "pendente",
             "rotulo": ("Grupo" if grupo else "Categoria") + " · " + (origem or alvo)["descricao"]})
@@ -152,7 +153,7 @@ def confirmar(op, usuario, escolhas):
 
 
 def iguais(a, b):
-    return sorted(a, key=lambda c: c["codigo"]) == sorted(b, key=lambda c: c["codigo"])
+    return sorted(map(sem_observacoes, a), key=lambda c: c["codigo"]) == sorted(map(sem_observacoes, b), key=lambda c: c["codigo"])
 
 
 def esperado_catalogo(op, linha):
@@ -281,14 +282,14 @@ def aplicar(linha, indice, integracao):
         with transaction.atomic():
             _salvar_categorias(linha.empresa, [registro])
             atual = snapshot(CategoriaOmie.objects.get(empresa=linha.empresa, codigo=alvo["codigo"]))
-            if atual != alvo:
+            if sem_observacoes(atual) != sem_observacoes(alvo):
                 raise ValidationError("Os dados do destino mudaram. Gere outra prévia antes de continuar.")
-    if alvo == esperado:
-        passo.update(status="sucesso", codigo=alvo["codigo"], confirmado=alvo)
+    if sem_observacoes(alvo) == sem_observacoes(esperado):
+        passo.update(status="sucesso", codigo=alvo["codigo"], confirmado=atual)
         linha.save()
         return
     metodo = ("Alterar" if alvo else "Incluir") + ("GrupoCategoria" if passo["grupo"] else "Categoria")
-    payload = {k: esperado[k] for k in ("descricao", "natureza")}
+    payload = {"descricao": esperado["descricao"]}
     if alvo:
         payload["codigo"] = alvo["codigo"]
     elif passo["grupo"]:
@@ -341,7 +342,9 @@ def confirmar_resultado(linha, indice, integracao, codigo=""):
     with transaction.atomic():
         _salvar_categorias(linha.empresa, [registro])
         atual = snapshot(CategoriaOmie.objects.get(empresa=linha.empresa, codigo=codigo))
-        if atual != esperado:
+        # Old uncertain writes must still verify any observation actually sent.
+        comparar = (lambda c: c) if "natureza" in passo.get("parametros", {}) else sem_observacoes
+        if comparar(atual) != comparar(esperado):
             raise omie.OmieIncerta("Dados diferentes da prévia autorizada.")
         passo.update(status="sucesso", codigo=codigo, confirmado=atual)
         linha.save()
