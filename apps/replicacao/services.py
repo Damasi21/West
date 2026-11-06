@@ -47,6 +47,25 @@ def excluir_configuracao(plano, usuario):
         raise ValidationError("Esta configuração possui histórico vinculado e não pode ser excluída.")
 
 
+def arquivar_configuracao(plano, usuario):
+    """Hide the card while preserving requests, links and unresolved evidence."""
+    try:
+        with transaction.atomic():
+            plano = planos_permitidos(usuario).select_for_update(of=("self",)).get(pk=plano.pk)
+            if plano.cadastros.filter(status__in=["fila", "consultando", "enviando", "revisao"]).exists() or plano.comparacoes.filter(status__in=["fila", "comparando", "enviando"]).exists():
+                raise ValidationError("Conclua ou cancele a solicitação atual antes de remover esta configuração da lista.")
+            if plano.cadastros.filter(empresas__status__in=["executando", "incerto"]).exists() or ItemReplicacao.objects.filter(comparacao__plano=plano, status__in=["executando", "incerto"]).exists():
+                raise ValidationError("Verifique os envios sem confirmação antes de remover a configuração da lista.")
+            if not plano.arquivado:
+                plano.ativo = False
+                plano.arquivado = True
+                plano.save(update_fields=["ativo", "arquivado"])
+                auditar(plano, usuario, "Removeu configuração da lista preservando histórico", nome=plano.nome)
+            return plano
+    except PlanoReplicacao.DoesNotExist:
+        raise PermissionDenied("Você não tem acesso a esta configuração.")
+
+
 def identificar_aplicativos(plano):
     ids = [plano.matriz_id, *plano.destinos.values_list("empresa_id", flat=True)]
     return {str(pk): hashlib.sha256(chave.encode()).hexdigest()

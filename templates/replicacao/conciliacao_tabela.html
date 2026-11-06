@@ -1,0 +1,40 @@
+<section data-concil-lote class="mb-4">
+  <h3 class="h6">{{ titulo }}</h3>
+  <div class="rep-bulk-toolbar p-3 mb-2">
+    <strong class="small" data-concil-count>0 selecionados</strong>
+    <label class="visually-hidden" for="lote-{{ linha.pk }}-{{ secao }}">Ação para selecionados</label>
+    <select id="lote-{{ linha.pk }}-{{ secao }}" class="form-select" data-concil-bulk-action>
+      <option value="">Escolha uma ação em lote</option>
+      {% if secao == 'origem' %}
+      <option value="criar">Criar com os dados do PAI</option>
+      <option value="reaproveitar">Reaproveitar correspondência compatível única</option>
+      <option value="reativar">Reativar correspondência compatível única</option>
+      <option value="ignorar">Ignorar itens do PAI</option>
+      {% else %}<option value="manter">Manter cadastros atuais</option><option value="inativar">Inativar após conferir o novo plano</option>{% endif %}
+    </select>
+    <button type="button" class="btn btn-outline-primary" data-concil-apply disabled>Aplicar aos selecionados</button>
+    <button type="button" class="btn btn-white" data-concil-clear>Limpar seleção</button>
+    <p class="small mb-0 w-100" data-concil-feedback role="status" aria-live="polite"></p>
+  </div>
+  <p class="small text-secondary d-md-none mb-2">Deslize a tabela para o lado para visualizar a situação e escolher as ações.</p>
+  <div class="table-responsive rep-concil-scroll" tabindex="0" role="region" aria-label="{{ titulo }}">
+    <table class="table align-middle rep-concil-table">
+      <thead><tr><th><input type="checkbox" class="form-check-input" data-concil-all aria-label="Selecionar todas as linhas de {{ titulo }}"></th><th>{% if secao == 'origem' %}Categoria / grupo PAI{% else %}Cadastro atual do FILHO{% endif %}</th><th>Situação / classificação</th><th>Ação a executar</th></tr></thead>
+      <tbody>{% for item in linha.passos %}{% if item.secao == secao %}
+      <tr data-concil-row data-concil-codigo="{{ item.origem.codigo }}"{% if secao == 'origem' and not item.grupo %} data-concil-pai="{{ item.pai_indice }}"{% endif %}>
+        <td><input type="checkbox" class="form-check-input" data-concil-check aria-label="Selecionar {{ item.origem.codigo }} · {{ item.origem.descricao }}"></td>
+        <td><strong>{{ item.origem.descricao }}</strong><div class="small text-secondary">{{ item.origem.codigo }} · {% if item.grupo %}Grupo{% else %}Categoria{% endif %}{% if secao == 'destino' %} · {% if item.origem.conta_inativa %}Inativa{% else %}Ativa{% endif %}{% endif %}</div></td>
+        <td><div class="small">{{ item.situacao }}</div>{% if not item.grupo %}<div class="small text-secondary mt-1">DRE {{ item.origem.codigo_dre|default:'sem vínculo' }} · Tipo {{ item.origem.tipo_categoria|default:'não informado' }} · Grupo {{ item.origem.categoria_superior }}</div>{% endif %}</td>
+        <td>
+          <label class="visually-hidden" for="decisao-{{ linha.pk }}-{{ forloop.counter0 }}">Ação para {{ item.origem.descricao }}</label>
+          <select class="form-select" data-concil-action name="decisao_{{ linha.pk }}_{{ forloop.counter0 }}" id="decisao-{{ linha.pk }}-{{ forloop.counter0 }}"{% if secao == 'origem' and item.grupo %} data-concil-grupo="{{ forloop.counter0 }}"{% endif %} required>
+            <option value="">Selecione uma ação</option>
+            {% for opcao in item.opcoes %}<option value="{{ opcao.valor }}" data-concil-compativel="{{ opcao.compativel|yesno:'sim,nao' }}"{% if opcao.alvo %} data-concil-inativa="{{ opcao.alvo.conta_inativa|yesno:'sim,nao' }}"{% endif %}{% if secao == 'origem' and not item.grupo and opcao.alvo %} data-concil-grupo-destino="{{ opcao.alvo.categoria_superior }}"{% endif %}{% if item.escolha == opcao.valor %} selected{% endif %}>{{ opcao.rotulo }}</option>{% endfor %}
+          </select>
+          {% if item.tem_divergencias %}<label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="aceitar_{{ linha.pk }}_{{ forloop.counter0 }}" value="sim"{% if item.aceitar %} checked{% endif %}><span class="form-check-label small">Ao reaproveitar dados diferentes, aceito preservar o nome e a classificação do FILHO.</span></label>{% endif %}
+          <span class="small text-warning-emphasis" data-concil-row-feedback></span>
+        </td>
+      </tr>{% endif %}{% endfor %}</tbody>
+    </table>
+  </div>
+</section>

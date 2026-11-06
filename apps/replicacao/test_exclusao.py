@@ -90,3 +90,62 @@ class ExcluirConfiguracaoTests(TestCase):
         self.assertEqual(self.client.get(url, HTTP_HOST="excluir.example.com").status_code, 200)
         self.client.post(url, {"confirmar":"sim"}, HTTP_HOST="excluir.example.com")
         self.assertFalse(PlanoReplicacao.objects.filter(pk=self.plano.pk).exists())
+
+
+class ArquivarConfiguracaoTests(TestCase):
+    def setUp(self):
+        fixtures.ReplicacaoTests.setUp(self)
+
+    def test_arquiva_com_historico_sem_apagar_registros_ou_alterar_omie(self):
+        from .services import arquivar_configuracao
+        op = CadastroCategoria.objects.create(plano=self.plano, solicitado_por=self.superuser, status="cancelada")
+        self.client.force_login(self.gestor)
+        self.assertContains(self.client.get(reverse("replicacao:lista")), "Remover da lista")
+        arquivar_configuracao(self.plano, self.gestor)
+        self.plano.refresh_from_db()
+        self.assertTrue(self.plano.arquivado)
+        self.assertFalse(self.plano.ativo)
+        self.assertTrue(CadastroCategoria.objects.filter(pk=op.pk).exists())
+        self.assertTrue(DestinoReplicacao.objects.filter(plano=self.plano).exists())
+        self.assertEqual(self.api.escritas, [])
+        self.assertNotContains(self.client.get(reverse("replicacao:lista")), self.plano.nome)
+        self.assertContains(self.client.get(reverse("replicacao:lista")+"?arquivadas=1"), self.plano.nome)
+        self.assertEqual(self.client.get(reverse("replicacao:detalhe",args=[self.plano.pk])).status_code, 200)
+
+    def test_bloqueia_processamentos_revisao_e_envios_incertos(self):
+        from .services import arquivar_configuracao
+        from .models import CadastroCategoriaEmpresa
+        for status in ["fila","consultando","enviando","revisao"]:
+            op=CadastroCategoria.objects.create(plano=self.plano, solicitado_por=self.superuser, status=status)
+            with self.assertRaises(ValidationError):arquivar_configuracao(self.plano,self.superuser)
+            op.delete()
+        op=CadastroCategoria.objects.create(plano=self.plano, solicitado_por=self.superuser, status="cancelada")
+        linha=CadastroCategoriaEmpresa.objects.create(cadastro=op,empresa=self.destino,status="incerto")
+        with self.assertRaises(ValidationError):arquivar_configuracao(self.plano,self.superuser)
+        self.plano.refresh_from_db();self.assertFalse(self.plano.arquivado)
+        self.assertTrue(self.plano.ativo)
+
+    def test_arquivar_exige_permissao_confirmacao_e_csrf(self):
+        from .services import arquivar_configuracao
+        for usuario in [self.lider,self.viewer]:
+            with self.assertRaises(PermissionDenied):arquivar_configuracao(self.plano,usuario)
+        self.client.force_login(self.superuser)
+        url=reverse("replicacao:arquivar",args=[self.plano.pk])
+        self.client.post(url,{})
+        self.plano.refresh_from_db();self.assertFalse(self.plano.arquivado)
+        client=Client(enforce_csrf_checks=True);client.force_login(self.superuser)
+        self.assertEqual(client.post(url,{"confirmar":"sim"}).status_code,403)
+        self.assertRedirects(self.client.post(url,{"confirmar":"sim"}),reverse("replicacao:lista"))
+        self.client.post(reverse("replicacao:alternar",args=[self.plano.pk]))
+        self.plano.refresh_from_db();self.assertFalse(self.plano.ativo)
+
+    @override_settings(ALLOWED_HOSTS=["testserver", "arquivo.example.com"])
+    def test_arquivar_respeita_escopo_white_label(self):
+        marca=AmbienteWhiteLabel.objects.create(nome="Arquivo",slug="arquivo",dominio="arquivo.example.com",dominio_ativo=True)
+        marca.empresas.add(self.matriz,self.destino)
+        self.plano.marca=marca;self.plano.save()
+        self.client.force_login(self.superuser)
+        url=reverse("replicacao:arquivar",args=[self.plano.pk])
+        self.assertEqual(self.client.post(url,{"confirmar":"sim"}).status_code,404)
+        self.assertRedirects(self.client.post(url,{"confirmar":"sim"},HTTP_HOST="arquivo.example.com"),reverse("replicacao:lista"),fetch_redirect_response=False)
+        self.plano.refresh_from_db();self.assertTrue(self.plano.arquivado)

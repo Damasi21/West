@@ -76,3 +76,17 @@
     .rep-preview td { display: block; border: 0; padding: .4rem 0; }
     .rep-preview td::before { content: attr(data-label); display: block; font-weight: 600; color: var(--muted, #64748b); font-size: .75rem; margin-bottom: .2rem; }
 }
+
+.rep-delete-panel { border-top: 1px solid var(--border, #dae2ef); padding-top: 1rem; }
+.rep-delete-panel summary { cursor: pointer; width: fit-content; }
+.rep-bulk-toolbar { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; background: var(--blue-light, #eef5ff); border-radius: 10px; }
+.rep-bulk-toolbar .form-select { width: auto; max-width: 100%; }
+.rep-concil-scroll { max-height: 650px; width: 100%; max-width: 100%; overflow: auto; position: relative; }
+.rep-concil-table { min-width: 1000px; margin-bottom: 0; }
+.rep-concil-table thead th { position: sticky; top: 0; background: var(--bs-body-bg, #fff); z-index: 1; }
+.rep-concil-table td { vertical-align: top; padding: .9rem; overflow-wrap: anywhere; }
+.rep-concil-table td:first-child { width: 40px; }
+.rep-concil-table td:nth-child(2) { width: 25%; }
+.rep-concil-table td:nth-child(3) { width: 27%; }
+.rep-concil-table td:last-child { min-width: 350px; }
+.rep-concil-table tr:has([data-concil-check]:checked) td { background: var(--blue-light, #eef5ff); }

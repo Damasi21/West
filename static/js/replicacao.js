@@ -58,6 +58,75 @@
         refresh();
     });
 
+    document.querySelectorAll('[data-concil-lote]').forEach(section => {
+        const rows = Array.from(section.querySelectorAll('[data-concil-row]'));
+        const all = section.querySelector('[data-concil-all]');
+        const action = section.querySelector('[data-concil-bulk-action]');
+        const apply = section.querySelector('[data-concil-apply]');
+        const feedback = section.querySelector('[data-concil-feedback]');
+        const eligible = row => !row.querySelector('[data-concil-action]').disabled;
+        const selected = () => rows.filter(row => eligible(row) && row.querySelector('[data-concil-check]').checked);
+        const refresh = () => {
+            rows.forEach(row => {
+                const check = row.querySelector('[data-concil-check]');
+                check.disabled = !eligible(row);
+                if (check.disabled) check.checked = false;
+            });
+            const available = rows.filter(eligible).length;
+            const count = selected().length;
+            section.querySelector('[data-concil-count]').textContent = `${count} selecionado(s)`;
+            all.checked = count > 0 && count === available;
+            all.indeterminate = count > 0 && count < available;
+            all.disabled = available === 0;
+            apply.disabled = count === 0 || !action.value;
+        };
+        all.addEventListener('change', () => {
+            rows.forEach(row => { row.querySelector('[data-concil-check]').checked = eligible(row) && all.checked; });
+            refresh();
+        });
+        section.addEventListener('change', event => {
+            if (event.target.matches('[data-concil-action]')) event.target.closest('[data-concil-row]').querySelector('[data-concil-row-feedback]').textContent = '';
+            refresh();
+        });
+        // Group decisions can disable children in this section.
+        section.closest('fieldset').addEventListener('change', refresh);
+        section.querySelector('[data-concil-clear]').addEventListener('click', () => {
+            rows.forEach(row => { row.querySelector('[data-concil-check]').checked = false; });
+            feedback.textContent = ''; refresh();
+        });
+        apply.addEventListener('click', () => {
+            let applied = 0, skipped = 0;
+            selected().forEach(row => {
+                const select = row.querySelector('[data-concil-action]');
+                const note = row.querySelector('[data-concil-row-feedback]');
+                note.textContent = '';
+                if (select.disabled) { skipped++; return; }
+                const options = Array.from(select.options).filter(option => option.value && !option.disabled);
+                let matches;
+                if (['reaproveitar', 'reativar'].includes(action.value)) {
+                    matches = options.filter(option => option.value.startsWith('usar:')
+                        && option.dataset.concilCompativel === 'sim'
+                        && option.dataset.concilInativa === (action.value === 'reativar' ? 'sim' : 'nao'));
+                } else matches = options.filter(option => option.value === action.value);
+                // A reused record must stay active, including when selecting retirement in bulk.
+                const used = action.value === 'inativar' && Array.from(section.closest('fieldset').querySelectorAll('[data-concil-lote]'))
+                    .filter(other => other !== section).some(other => Array.from(other.querySelectorAll('[data-concil-action]'))
+                        .some(source => !source.disabled && source.value === `usar:${row.dataset.concilCodigo}`));
+                if (matches.length !== 1 || used) {
+                    skipped++;
+                    note.textContent = used ? 'Categoria reaproveitada: deve permanecer ativa.' : 'Ação indisponível ou ambígua: revise esta linha.';
+                    return;
+                }
+                select.value = matches[0].value;
+                select.dispatchEvent(new Event('change', {bubbles: true}));
+                applied++;
+            });
+            feedback.textContent = `${applied} ação(ões) preenchida(s); ${skipped} linha(s) não aplicada(s). Revise as decisões antes de confirmar o envio.`;
+            refresh();
+        });
+        refresh();
+    });
+
     const panel = document.querySelector('[data-rep-progress]');
     if (!panel) return;
     const labels = {fila: 'Na fila', consultando: 'Verificando OMIEs', revisao: 'Aguardando sua decisão',

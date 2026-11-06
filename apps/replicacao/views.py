@@ -20,7 +20,7 @@ from .models import CadastroCategoria, CadastroCategoriaEmpresa
 from . import central
 from .models import PlanoReplicacao, ComparacaoReplicacao, ItemReplicacao, DestinoReplicacao, VinculoCategoria
 from .permissions import empresas_gerenciaveis, planos_permitidos, conferir_acesso
-from .services import solicitar_comparacao, publicar, aprovar, resolver_item, candidatos_item, auditar, disponibilidade_exclusao, excluir_configuracao
+from .services import solicitar_comparacao, publicar, aprovar, resolver_item, candidatos_item, auditar, disponibilidade_exclusao, excluir_configuracao, arquivar_configuracao
 from .comparacao import sugestoes_nome, compativel, dados
 
 
@@ -60,7 +60,8 @@ def voltar_comparacao(plano, comparacao_id):
 @require_GET
 def lista(request):
     planos = disponibilidade_exclusao(planos_permitidos(request.user)).select_related("matriz").prefetch_related("destinos__empresa")
-    return render(request, "replicacao/lista.html", {"planos": planos})
+    arquivadas = request.GET.get("arquivadas") == "1"
+    return render(request, "replicacao/lista.html", {"planos": planos.filter(arquivado=arquivadas), "arquivadas": arquivadas})
 
 
 @ambiente_view
@@ -80,6 +81,22 @@ def excluir(request, plano_id):
         messages.error(request, "Esta configuração já possui solicitações ou vínculos e não pode ser excluída. Você pode pausá-la.")
         return redirect("replicacao:lista")
     return render(request, "replicacao/excluir.html", {"plano": plano})
+
+
+@ambiente_view
+@require_http_methods(["GET", "POST"])
+def arquivar(request, plano_id):
+    plano = plano_request(request, plano_id)
+    if request.method == "POST":
+        try:
+            if request.POST.get("confirmar") != "sim":
+                raise ValidationError("Confirme a remoção da lista.")
+            arquivar_configuracao(plano, request.user)
+            messages.success(request, "Configuração removida da lista. O histórico foi preservado nas configurações arquivadas.")
+            return redirect("replicacao:lista")
+        except (ValidationError, PermissionDenied) as erro:
+            informar_erro(request, erro)
+    return render(request, "replicacao/arquivar.html", {"plano": plano})
 
 
 @ambiente_view
@@ -264,6 +281,8 @@ def alternar(request, plano_id):
                 raise ValidationError("Aguarde a conclusão do processamento antes de pausar este plano.")
             if plano.ativo and ItemReplicacao.objects.filter(comparacao__plano=plano, status__in=["incerto", "executando"]).exists():
                 raise ValidationError("Verifique os envios sem confirmação antes de pausar ou substituir este fluxo.")
+            if plano.arquivado:
+                raise ValidationError("Esta configuração está arquivada e permanece somente para consulta.")
             plano.ativo = not plano.ativo
             plano.save()
             if plano.ativo:

@@ -41,7 +41,7 @@ def conferir_acesso(plano, usuario):
     usuario.refresh_from_db(fields=["is_active", "is_superuser"])
     if not planos_permitidos(usuario).filter(pk=plano.pk).exists():
         raise PermissionDenied("Acesso à matriz ou a um dos destinos foi revogado.")
-    if not PlanoReplicacao.objects.filter(pk=plano.pk, ativo=True).exists():
+    if not PlanoReplicacao.objects.filter(pk=plano.pk, ativo=True, arquivado=False).exists():
         raise PermissionDenied("Este plano está pausado.")
     if plano.marca_id and not AmbienteWhiteLabel.objects.filter(pk=plano.marca_id, ativa=True).exists():
         raise PermissionDenied("O ambiente White Label está inativo.")

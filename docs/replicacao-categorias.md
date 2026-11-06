@@ -356,3 +356,12 @@ decodifica somente o filtro; respostas e snapshots continuam intactos para
 comparação e auditoria. As posições disponíveis da origem são excluídas do plano
 tanto na forma literal quanto codificada. Isso evita interpretar uma consulta
 vazia causada pelo filtro como alteração ou remoção do cadastro no destino.
+
+
+### Tabela de revisão e ações em lote
+
+A prévia de conciliação apresenta o plano PAI e os cadastros atuais do FILHO em tabelas separadas, com seleção por linha ou de toda a tabela. As ações em lote preenchem apenas opções disponíveis: criar, reaproveitar correspondência compatível única, reativar correspondência compatível única, ignorar, manter ou inativar. Itens incompatíveis ou ambíguos são sinalizados para revisão. Divergências nunca recebem aceite automático. Preencher a tabela não envia nada: a confirmação final permanece obrigatória, com as mesmas verificações no servidor. No celular a tabela possui rolagem horizontal.
+
+### Painel de exclusão e configurações arquivadas
+
+Cada card possui um painel de exclusão. Configurações sem solicitações ou vínculos podem ser excluídas após confirmação. Configurações com histórico podem ser removidas da lista por arquivamento, mantendo solicitações, evidências, resultados e vínculos. Arquivar pausa o plano e não altera dados na OMIE. Solicitações em fila, consulta, revisão ou envio, bem como envios sem confirmação, precisam ser resolvidos antes do arquivamento. As configurações arquivadas continuam disponíveis para consulta por meio do link na listagem, com as mesmas permissões de administração e isolamento White Label; não podem ser reativadas pela ação de pausar/ativar.

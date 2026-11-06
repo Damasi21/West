@@ -1,11 +1,18 @@
 {% extends "replicacao/base.html" %}
 {% block replicacao_content %}
 <div class="rep-toolbar mb-4"><div><h2 class="h5 mb-1">Configurações de replicação</h2><p class="text-secondary mb-0">Cada configuração possui uma matriz e seus próprios destinos.</p></div><a href="{% url 'replicacao:novo' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-2"></i>Nova configuração</a></div>
+<p class="text-end"><a href="{% url 'replicacao:lista' %}{% if not arquivadas %}?arquivadas=1{% endif %}">{% if arquivadas %}Voltar às configurações atuais{% else %}Configurações arquivadas{% endif %}</a></p>
 <div class="row g-4">{% for plano in planos %}<div class="col-lg-6"><article class="settings-card p-4 h-100">
-    <div class="rep-toolbar"><h2 class="h5 mb-0">{{ plano.nome }}</h2><span class="rep-badge">{% if plano.ativo %}Ativa{% else %}Pausada{% endif %}</span></div>
+    <div class="rep-toolbar"><h2 class="h5 mb-0">{{ plano.nome }}</h2><span class="rep-badge">{% if plano.arquivado %}Arquivada{% elif plano.ativo %}Ativa{% else %}Pausada{% endif %}</span></div>
     <p class="mt-3 mb-2"><strong>Base PAI:</strong> {{ plano.matriz.nome_fantasia }}</p><p class="small text-secondary">{% if plano.cadastro_central %}Cadastro central · Empresas selecionadas{% else %}Configuração anterior · Comparações e histórico{% endif %}</p>
     <ul class="rep-destinos">{% for destino in plano.destinos.all %}<li>{{ destino.empresa.nome_fantasia }} <small class="text-secondary">{{ destino.empresa.cnpj }}</small></li>{% endfor %}</ul>
     <a href="{% url 'replicacao:detalhe' plano.pk %}" class="btn btn-outline-primary mt-3">{% if plano.cadastro_central %}Categorias da configuração{% else %}Comparação e histórico{% endif %} <i class="bi bi-arrow-right ms-2"></i></a>
-    {% if plano.pode_excluir %}<a href="{% url 'replicacao:excluir' plano.pk %}" class="btn btn-outline-danger mt-3 ms-2">Excluir configuração</a>{% endif %}
+    {% if not plano.arquivado %}<details class="rep-delete-panel mt-3">
+      <summary class="text-danger"><i class="bi bi-trash me-1" aria-hidden="true"></i>Excluir configuração</summary>
+      <div class="pt-3">
+        {% if plano.pode_excluir %}<p class="small">Remove somente esta configuração do BI. As empresas e as categorias na OMIE permanecem cadastradas.</p><a href="{% url 'replicacao:excluir' plano.pk %}" class="btn btn-outline-danger">Continuar para confirmação</a>
+        {% else %}<p class="small mb-2">Esta configuração possui histórico. Você pode removê-la da lista, preservando as solicitações e os resultados.</p><a href="{% url 'replicacao:detalhe' plano.pk %}" class="btn btn-white btn-sm">Consultar histórico</a> <a href="{% url 'replicacao:arquivar' plano.pk %}" class="btn btn-outline-danger btn-sm">Remover da lista</a>{% endif %}
+      </div>
+    </details>{% endif %}
 </article></div>{% empty %}<div class="col-12"><div class="settings-card empty-state"><i class="bi bi-diagram-3"></i><h2>Nenhuma configuração cadastrada</h2><p>Escolha a base matriz e as empresas que receberão as categorias.</p><a class="btn btn-primary" href="{% url 'replicacao:novo' %}">Criar configuração</a></div></div>{% endfor %}</div>
 {% endblock %}

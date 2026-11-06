@@ -6,33 +6,9 @@
   {% for linha in linhas %}
   <fieldset class="rep-conflict mb-4"><legend class="h6">{{ linha.empresa.nome_fantasia|default:linha.empresa.nome }}</legend>
     {% if linha.status == 'revisao' %}
-    <h3 class="h6">1 · Itens do plano PAI</h3>
-    <p class="small text-secondary">Escolha os grupos primeiro. Uma categoria só pode ser reaproveitada se pertencer ao grupo selecionado. Ao ignorar um grupo, seus itens do PAI também serão ignorados.</p>
-    {% for item in linha.passos %}{% if item.secao == 'origem' %}
-    <div class="rep-conflict mb-3"{% if not item.grupo %} data-concil-pai="{{ item.pai_indice }}"{% endif %}>
-      <p class="mb-1"><strong>{% if item.grupo %}Grupo{% else %}Categoria{% endif %} · {{ item.origem.codigo }} · {{ item.origem.descricao }}</strong></p>
-      <p class="small text-secondary mb-2">{{ item.situacao }}{% if not item.grupo %}<br>PAI: DRE {{ item.origem.codigo_dre|default:'sem vínculo' }} · Tipo {{ item.origem.tipo_categoria|default:'não informado' }} · Grupo {{ item.origem.categoria_superior }}{% endif %}</p>
-      <label class="form-label" for="decisao-{{ linha.pk }}-{{ forloop.counter0 }}">Ação aprovada</label>
-      <select class="form-select" name="decisao_{{ linha.pk }}_{{ forloop.counter0 }}" id="decisao-{{ linha.pk }}-{{ forloop.counter0 }}"{% if item.grupo %} data-concil-grupo="{{ forloop.counter0 }}"{% endif %} required>
-        <option value="">Selecione uma ação</option>
-        {% for opcao in item.opcoes %}<option value="{{ opcao.valor }}"{% if not item.grupo and opcao.alvo %} data-concil-grupo-destino="{{ opcao.alvo.categoria_superior }}"{% endif %}{% if item.escolha == opcao.valor %} selected{% endif %}>{{ opcao.rotulo }}</option>{% endfor %}
-      </select>
-      {% if item.tem_divergencias %}<label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="aceitar_{{ linha.pk }}_{{ forloop.counter0 }}" value="sim"{% if item.aceitar %} checked{% endif %}><span class="form-check-label small">Se eu escolher um cadastro com dados diferentes, aceito vincular o item do PAI preservando o nome e a classificação atuais do FILHO.</span></label>{% endif %}
-    </div>
-    {% endif %}{% endfor %}
-    <h3 class="h6 mt-4">2 · Cadastros atuais do FILHO</h3>
-    <p class="small text-secondary">Decida quais manter ou inativar. Não é permitido inativar uma categoria usada no novo plano. Nenhuma categoria será excluída.</p>
-    {% for item in linha.passos %}{% if item.secao == 'destino' %}
-    <div class="rep-conflict mb-3">
-      <p class="mb-1"><strong>{{ item.origem.codigo }} · {{ item.origem.descricao }}</strong> · {% if item.origem.conta_inativa %}Inativa{% else %}Ativa{% endif %}</p>
-      <p class="small text-secondary mb-2">{{ item.situacao }}{% if not item.grupo %}<br>DRE {{ item.origem.codigo_dre|default:'sem vínculo' }} · Tipo {{ item.origem.tipo_categoria|default:'não informado' }}{% endif %}</p>
-      <label class="form-label" for="decisao-{{ linha.pk }}-{{ forloop.counter0 }}">Tratamento deste cadastro</label>
-      <select class="form-select" name="decisao_{{ linha.pk }}_{{ forloop.counter0 }}" id="decisao-{{ linha.pk }}-{{ forloop.counter0 }}" required>
-        <option value="">Selecione uma ação</option>
-        {% for opcao in item.opcoes %}<option value="{{ opcao.valor }}"{% if item.escolha == opcao.valor %} selected{% endif %}>{{ opcao.rotulo }}</option>{% endfor %}
-      </select>
-    </div>
-    {% endif %}{% endfor %}
+    <p class="small text-secondary">Escolha os grupos primeiro. Ignorar um grupo também ignora seus itens do PAI. Marque as linhas e aplique uma ação em lote; somente opções compatíveis serão preenchidas.</p>
+    {% include "replicacao/conciliacao_tabela.html" with secao="origem" titulo="1 · Itens do plano PAI" %}
+    {% include "replicacao/conciliacao_tabela.html" with secao="destino" titulo="2 · Cadastros atuais do FILHO" %}
     {% else %}<p class="text-danger">{{ linha.mensagem }}</p>{% endif %}
   </fieldset>
   {% endfor %}

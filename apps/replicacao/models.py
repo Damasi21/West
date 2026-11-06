@@ -8,6 +8,7 @@ class PlanoReplicacao(models.Model):
     nome = models.CharField(max_length=120)
     grupo = models.CharField(max_length=120, blank=True, default="", db_default="")
     selecao_livre = models.BooleanField(default=False)
+    arquivado = models.BooleanField(default=False, db_default=False)
     matriz = models.ForeignKey("empresas.Empresa", on_delete=models.PROTECT, related_name="planos_matriz")
     marca = models.ForeignKey("empresas.AmbienteWhiteLabel", null=True, blank=True, on_delete=models.PROTECT)
     criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)

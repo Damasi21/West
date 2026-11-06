@@ -1,0 +1,11 @@
+{% extends "replicacao/base.html" %}
+{% block heading %}Remover configuração da lista{% endblock %}
+{% block replicacao_content %}
+<form method="post" class="settings-card p-4">{% csrf_token %}
+<h2 class="h5">{{ plano.nome }}</h2>
+<p>A configuração será arquivada e pausada. Solicitações, resultados e vínculos permanecerão disponíveis para consulta em “Configurações arquivadas”. Nenhuma categoria ou lançamento na OMIE será alterado.</p>
+<p>Se houver uma solicitação em andamento ou um envio sem confirmação, conclua, cancele ou verifique o resultado antes de continuar.</p>
+<label class="form-check"><input class="form-check-input" type="checkbox" name="confirmar" value="sim" required><span class="form-check-label">Confirmo a remoção da lista, preservando o histórico.</span></label>
+<div class="rep-actions mt-3"><a href="{% url 'replicacao:lista' %}" class="btn btn-white">Voltar</a><button type="submit" class="btn btn-danger">Remover da lista</button></div>
+</form>
+{% endblock %}
