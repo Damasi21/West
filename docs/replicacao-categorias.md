@@ -48,17 +48,31 @@ tratá-lo como campo replicado. Envios antigos incertos que efetivamente incluí
   posição. Exige selecionar novamente as empresas e confirmar o impacto histórico:
   lançamentos anteriores conservam o código, mas passam a exibir a categoria
   reescrita e sua classificação. Pode encerrar a prévia sem novos envios.
-- Quando outra posição no FILHO ocupa o nome necessário, a prévia acrescenta uma
-  etapa para diferenciar esse cadastro com ponto no início (`.Nome`, `..Nome` se
-  necessário). Não ignora a posição nem troca seus IDs. As etapas por sequência
-  passam a receber os nomes exatos do PAI; excedentes ficam inativos e conservam o
-  ponto. O ponto não precisa ser removido depois. A etapa auxiliar altera somente
-  a descrição, preservando observações, situação e classificação.
-  O nome com ponto respeita 50 caracteres: se não couber, a empresa fica bloqueada
-  na prévia, com o código que precisa de ajuste na OMIE, sem cortar texto.
-  Uma colisão nova após a prévia interrompe os envios dessa empresa e exige nova
+- A preparação tem duas etapas de revisão, sem escrita na OMIE:
+  1. **Nomes duplicados:** quando outra posição do FILHO ocupa o nome necessário,
+     cada ocorrência exige uma escolha explícita, sem opção pré-selecionada:
+     adicionar ponto ou ignorar. A tela identifica a empresa, o código que ocupa
+     o nome e a posição de origem/destino afetada. Aplicar escolhas apenas prepara
+     o plano final; não publica tarefa nem autoriza envios.
+  2. **Plano final de substituição:** mostra renomeações, inclusões, inativações e
+     posições preservadas. Exige marcar os FILHOs e confirmar o impacto histórico.
+     Só essa confirmação publica o worker de envio.
+- Adicionar ponto libera o nome ocupado (`.Nome`, `..Nome` se necessário). As
+  renomeações autorizadas ocorrem antes das substituições. Os pares recebem os
+  nomes do PAI; excedentes ficam inativos e conservam o ponto. A etapa auxiliar
+  altera somente a descrição, preservando observações, situação e classificação.
+  Se o ponto não couber nos 50 caracteres, essa opção fica indisponível: é possível
+  ignorar ou ajustar o cadastro na OMIE e gerar outra consulta, sem cortar texto.
+- Ignorar preserva integralmente o dono do nome e pula a posição que precisaria
+  dele. Também preserva dependências: filhos de grupos ignorados e posições cujo
+  nome continua ocupado por um cadastro preservado. A prévia final identifica
+  todas essas exceções. Não cria vínculos para posições ignoradas, não promete
+  espelhamento integral e verifica o catálogo final contra o plano autorizado.
+- Uma colisão nova após a prévia interrompe os envios dessa empresa e exige nova
   consulta; não autoriza alterações extras. Prévias antigas devem ser refeitas
-  (`versao_nomes=4`). Etapas confirmadas não são repetidas em retomadas.
+  (`versao_nomes=5`). As decisões são guardadas com autor, data e trilha de auditoria.
+  A segunda confirmação revalida acessos e integrações; o worker volta a consultar
+  origem e destino antes dos envios. Etapas confirmadas não são repetidas.
 - O worker recebe um plano congelado, não recalcula os pares depois de uma inclusão.
   Revalida matriz, destino, permissões e integrações. Alterações externas interrompem
   os novos envios; gere outra prévia. Cada intenção é persistida antes da única

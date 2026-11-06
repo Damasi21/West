@@ -191,7 +191,7 @@ class CadastroCentralTests(TestCase):
         url = reverse("replicacao:detalhe", args=[self.plano.pk])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        for texto in ["Categorias da base PAI", "Nova categoria", "data-rep-progress", "Operacionais", "Energia elétrica"]:
+        for texto in ["Categorias da conta principal", "Nova categoria", "data-rep-progress", "Operacionais", "Energia elétrica"]:
             self.assertContains(response, texto)
         endpoint = reverse("replicacao:progresso_cadastro", args=[self.plano.pk, op.pk])
         data = self.client.get(endpoint).json()

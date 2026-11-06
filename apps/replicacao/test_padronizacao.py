@@ -25,6 +25,9 @@ class PadronizacaoTests(TestCase):
         return self.executar(padronizacao.solicitar(self.plano, self.superuser, [self.destino.pk]))
 
     def confirmar(self, op):
+        if op.pedido.get("etapa") == "conflitos" and op.pedido.get("versao_nomes") == 5:
+            escolhas = {f'nome_{l.pk}_{p["alvo"]["codigo"]}': "ponto" for l in op.empresas.all() for p in l.passos if p["acao"] == "prefixar"}
+            op = padronizacao.resolver_nomes(op, self.superuser, escolhas)
         linha = op.empresas.get(empresa=self.destino)
         return padronizacao.confirmar(op, self.superuser, {"confirmar": "sim", f"aplicar_{linha.pk}": "sim"})
 
@@ -212,7 +215,7 @@ class PadronizacaoTests(TestCase):
         op = self.previa()
         self.client.force_login(self.superuser)
         resposta = self.client.get(reverse("replicacao:detalhe",args=[self.plano.pk]),{"cadastro":op.pk})
-        self.assertContains(resposta,"Prévia do plano por sequência")
+        self.assertContains(resposta,"Etapa 2 · Plano final de substituição")
         self.assertContains(resposta,"Destino atual")
         self.assertContains(resposta,"lançamentos antigos")
         self.assertContains(resposta,"grupo não será criado automaticamente")
@@ -583,9 +586,11 @@ class PadronizacaoTests(TestCase):
         self.api.catalogos[self.destino.pk].append(categoria("2.08.95",nome,pai="2.08"))
         op=self.previa()
         linha=op.empresas.get()
-        self.assertEqual(linha.status,"bloqueada")
-        self.assertIn("2.08.95",linha.mensagem)
-        self.assertIn("50 caracteres",linha.mensagem)
+        self.assertEqual(op.pedido["etapa"],"conflitos")
+        self.assertEqual(linha.status,"revisao")
+        self.assertFalse(linha.passos[0]["pode_prefixar"])
+        self.assertIn("50 caracteres",linha.passos[0]["motivo_bloqueio"])
+        with self.assertRaises(ValidationError): self.confirmar(op)
         self.assertEqual(self.api.escritas,[])
         self.assertEqual(self.api.catalogos[self.destino.pk][-1]["descricao"],nome)
 
@@ -608,3 +613,128 @@ class PadronizacaoTests(TestCase):
         with patch('apps.replicacao.omie.listar') as consulta:
             central.executar_cadastro(999999999)
         consulta.assert_not_called()
+
+    def duplicado_para_decisao(self, nome="Outras Receitas"):
+        self.api.catalogos[self.matriz.pk][-1]["descricao"] = nome
+        self.api.catalogos[self.destino.pk][-1]["descricao"] = "Nome anterior"
+        self.api.catalogos[self.destino.pk].append(categoria("2.08.95", nome, pai="2.08"))
+        return self.previa()
+
+    def escolher_nome(self, op, acao):
+        linha = op.empresas.get()
+        return padronizacao.resolver_nomes(op, self.superuser,
+            {f'nome_{linha.pk}_{p["alvo"]["codigo"]}': acao for p in linha.passos if p["acao"] == "prefixar"})
+
+    def test_nomes_duplicados_exigem_decisao_antes_da_confirmacao_final(self):
+        op = self.duplicado_para_decisao()
+        self.assertEqual(op.pedido["etapa"], "conflitos")
+        linha = op.empresas.get()
+        with self.assertRaises(ValidationError):
+            padronizacao.confirmar(op, self.superuser, {"confirmar":"sim", f"aplicar_{linha.pk}":"sim"})
+        self.assertEqual(self.api.escritas, [])
+        self.assertEqual(self.api.catalogos[self.destino.pk][-1]["descricao"], "Outras Receitas")
+
+    def test_decidir_ponto_so_prepara_plano_e_exige_segunda_confirmacao(self):
+        op = self.duplicado_para_decisao()
+        self.escolher_nome(op, "ponto")
+        op.refresh_from_db()
+        self.assertEqual(op.status, "revisao")
+        self.assertEqual(op.pedido["etapa"], "consulta")
+        self.assertEqual(self.api.escritas, [])
+        self.executar(op)
+        self.assertEqual(self.api.escritas, [])
+        self.executar(self.confirmar(op))
+        self.assertEqual(op.empresas.get().status, "sucesso")
+        self.assertEqual(self.api.escritas[0][2], {"codigo":"2.08.95", "descricao":".Outras Receitas"})
+
+    def test_ignorar_preserva_dono_e_posicao_mas_processa_demais(self):
+        op = self.duplicado_para_decisao()
+        antes = deepcopy(self.api.catalogos[self.destino.pk])
+        op = self.escolher_nome(op, "ignorar")
+        linha = op.empresas.get()
+        self.assertEqual(sum(p["acao"] == "ignorar" for p in linha.passos), 2)
+        self.assertFalse(any(p["acao"] == "prefixar" for p in linha.passos))
+        self.assertEqual(self.api.escritas, [])
+        self.executar(self.confirmar(op))
+        linha.refresh_from_db()
+        self.assertEqual(linha.status, "sucesso", linha.mensagem)
+        self.assertIn("ignoradas", linha.mensagem)
+        depois = {c["codigo"]:c for c in self.api.catalogos[self.destino.pk]}
+        self.assertEqual(depois["2.08.07"], antes[-2])
+        self.assertEqual(depois["2.08.95"], antes[-1])
+        self.assertFalse(any(p.get("codigo") in {"2.08.07", "2.08.95"} for _,_,p in self.api.escritas))
+        self.assertEqual(VinculoCategoria.objects.filter(destino=self.alvo).count(), 1)
+        self.assertEqual(op.progresso_atual, op.progresso_total)
+
+    def test_escolha_vazia_invalida_ou_de_outra_linha_nao_avanca(self):
+        op = self.duplicado_para_decisao()
+        linha = op.empresas.get()
+        chave = f"nome_{linha.pk}_2.08.95"
+        for escolhas in ({}, {chave:""}, {chave:"excluir"}, {chave:"ponto", "nome_999_2.08.95":"ponto"}):
+            with self.assertRaises(ValidationError): padronizacao.resolver_nomes(op, self.superuser, escolhas)
+            op.refresh_from_db();linha.refresh_from_db()
+            self.assertEqual(op.pedido["etapa"], "conflitos")
+            self.assertEqual(linha.status, "revisao")
+        self.assertEqual(self.api.escritas, [])
+
+    def test_ignorar_troca_circular_preserva_os_dois_codigos(self):
+        self.api.catalogos[self.matriz.pk][-1]["descricao"] = "Nome B"
+        self.api.catalogos[self.matriz.pk].append(categoria("2.01.02", "Nome A", pai="2.01"))
+        self.api.catalogos[self.destino.pk][-1]["descricao"] = "Nome A"
+        self.api.catalogos[self.destino.pk].append(categoria("2.08.08", "Nome B", pai="2.08"))
+        op = self.previa();linha = op.empresas.get()
+        op = padronizacao.resolver_nomes(op, self.superuser, {f"nome_{linha.pk}_2.08.07":"ignorar", f"nome_{linha.pk}_2.08.08":"ponto"})
+        self.executar(self.confirmar(op))
+        self.assertEqual(op.empresas.get().status, "sucesso", op.empresas.get().mensagem)
+        self.assertFalse(any(m == "AlterarCategoria" for _,m,_ in self.api.escritas))
+        self.assertEqual(self.api.catalogos[self.destino.pk][-2]["descricao"], "Nome A")
+        self.assertEqual(self.api.catalogos[self.destino.pk][-1]["descricao"], "Nome B")
+
+    def test_ignorar_grupo_preserva_filhos_e_demais_grupos_dependentes(self):
+        self.api.catalogos[self.matriz.pk][1]["descricao"] = "Grupo ocupado"
+        self.api.catalogos[self.matriz.pk].append(categoria("2.02", "Outro grupo", grupo=True, pai="2"))
+        self.api.catalogos[self.destino.pk] += [categoria("2.09", "Grupo ocupado", grupo=True, pai="2"), categoria("2.09.01", "Filho preservado", pai="2.09")]
+        antes = deepcopy(self.api.catalogos[self.destino.pk])
+        op = self.previa()
+        op = self.escolher_nome(op, "ignorar")
+        self.executar(self.confirmar(op))
+        self.assertEqual(op.empresas.get().status, "sucesso", op.empresas.get().mensagem)
+        self.assertEqual(self.api.escritas, [])
+        self.assertEqual(self.api.catalogos[self.destino.pk], antes)
+
+    def test_nome_com_cinquenta_caracteres_permite_ignorar_sem_cortar(self):
+        op = self.duplicado_para_decisao("X" * 50)
+        linha = op.empresas.get()
+        with self.assertRaises(ValidationError): self.escolher_nome(op, "ponto")
+        op = self.escolher_nome(op, "ignorar")
+        self.executar(self.confirmar(op))
+        self.assertEqual(op.empresas.get().status, "sucesso", op.empresas.get().mensagem)
+        self.assertEqual(self.api.catalogos[self.destino.pk][-1]["descricao"], "X"*50)
+
+    def test_decisoes_nao_podem_ser_trocadas_depois_de_ver_plano_final(self):
+        op = self.duplicado_para_decisao()
+        op = self.escolher_nome(op, "ponto")
+        with self.assertRaises(ValidationError): self.escolher_nome(op, "ignorar")
+        self.assertEqual(self.api.escritas, [])
+
+    def test_empresa_mudou_apos_decisoes_interrompe_antes_de_escrever(self):
+        op = self.escolher_nome(self.duplicado_para_decisao(), "ponto")
+        self.api.catalogos[self.destino.pk][-1]["descricao"] = "Alterado externamente"
+        self.executar(self.confirmar(op))
+        self.assertEqual(op.empresas.get().status, "erro")
+        self.assertEqual(self.api.escritas, [])
+
+    def test_decidir_nomes_por_http_nao_publica_worker_e_mantem_escopo(self):
+        op = self.duplicado_para_decisao();linha = op.empresas.get()
+        client = Client();client.force_login(self.superuser)
+        url = reverse("replicacao:resolver_nomes_padronizacao", args=[self.plano.pk, op.pk])
+        with patch('apps.replicacao.tasks.cadastrar_categoria.apply_async') as publicar:
+            resposta = client.post(url, {f"nome_{linha.pk}_2.08.95":"ponto"})
+        self.assertEqual(resposta.status_code, 302)
+        publicar.assert_not_called()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "revisao")
+        self.assertEqual(op.pedido["etapa"], "consulta")
+        client.force_login(self.lider)
+        self.assertEqual(client.post(url, {}).status_code, 403)
+        self.assertEqual(self.api.escritas, [])

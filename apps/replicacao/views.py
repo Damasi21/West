@@ -427,6 +427,19 @@ def confirmar_padronizacao(request, plano_id, cadastro_id):
 
 
 @ambiente_view
+@require_POST
+def resolver_nomes_padronizacao(request, plano_id, cadastro_id):
+    from . import padronizacao
+    plano = plano_request(request, plano_id)
+    op = get_object_or_404(plano.cadastros, pk=cadastro_id)
+    try:
+        padronizacao.resolver_nomes(op, request.user, request.POST)
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
+
+
+@ambiente_view
 @require_GET
 def progresso_cadastro(request, plano_id, cadastro_id):
     plano = plano_request(request, plano_id)

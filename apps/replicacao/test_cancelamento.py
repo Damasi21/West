@@ -98,6 +98,8 @@ class CancelamentoTests(TestCase):
         op=padronizacao.solicitar(self.plano,self.superuser,[self.destino.pk])
         central.executar_cadastro(op.pk);op.refresh_from_db()
         linha=op.empresas.get()
+        if op.pedido.get('etapa')=='conflitos':
+            op=padronizacao.resolver_nomes(op,self.superuser,{f'nome_{linha.pk}_{p["alvo"]["codigo"]}':'ponto' for p in linha.passos if p['acao']=='prefixar'})
         op=padronizacao.confirmar(op,self.superuser,{'confirmar':'sim',f'aplicar_{linha.pk}':'sim'})
         def escrever(i,m,p):
             if p.get('descricao')=='Energia elétrica':
@@ -121,6 +123,8 @@ class CancelamentoTests(TestCase):
         linha=op.empresas.get()
         self.assertEqual(linha.passos[0]['acao'],'prefixar')
         self.assertEqual(linha.passos[0]['esperado']['descricao'],'.Grupo já existente')
+        if op.pedido.get('etapa')=='conflitos':
+            op=padronizacao.resolver_nomes(op,self.superuser,{f'nome_{linha.pk}_{p["alvo"]["codigo"]}':'ponto' for p in linha.passos if p['acao']=='prefixar'})
         op=padronizacao.confirmar(op,self.superuser,{'confirmar':'sim',f'aplicar_{linha.pk}':'sim'})
         central.executar_cadastro(op.pk)
         self.assertTrue(self.api.escritas)
@@ -134,6 +138,8 @@ class CancelamentoTests(TestCase):
         op=padronizacao.solicitar(self.plano,self.superuser,[self.destino.pk])
         central.executar_cadastro(op.pk);op.refresh_from_db()
         linha=op.empresas.get()
+        if op.pedido.get('etapa')=='conflitos':
+            op=padronizacao.resolver_nomes(op,self.superuser,{f'nome_{linha.pk}_{p["alvo"]["codigo"]}':'ponto' for p in linha.passos if p['acao']=='prefixar'})
         op=padronizacao.confirmar(op,self.superuser,{'confirmar':'sim',f'aplicar_{linha.pk}':'sim'})
         self.api.falha='apos_gravar'
         central.executar_cadastro(op.pk)

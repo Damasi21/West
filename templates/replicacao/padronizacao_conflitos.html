@@ -1,0 +1,28 @@
+<form method="post" action="{% url 'replicacao:resolver_nomes_padronizacao' plano.pk operacao.pk %}" class="settings-card p-4 mb-4">{% csrf_token %}
+  <span class="eyebrow">ETAPA 1 · NOMES DUPLICADOS</span>
+  <h2 class="h5 mt-2">Decida como tratar os nomes existentes</h2>
+  <p>Alguns nomes do PAI já estão ocupados por outra posição no FILHO. Escolha uma ação para cada ocorrência. Depois, você verá o plano final de substituição antes de autorizar qualquer envio à OMIE.</p>
+  <div class="alert alert-info"><strong>Adicionar ponto:</strong> diferencia o cadastro que ocupa o nome para liberar a posição correta. O ponto pode permanecer nos excedentes inativados.<br><strong>Ignorar:</strong> preserva o cadastro existente e pula a posição que precisaria do nome. Posições dependentes também serão preservadas e aparecerão na próxima prévia. Um grupo preservado mantém seus filhos.</div>
+  {% for linha in linhas %}
+  <fieldset class="rep-conflict mb-4"><legend class="h6">{{ linha.empresa.nome_fantasia|default:linha.empresa.nome }}</legend>
+    {% if linha.status == 'revisao' %}
+      {% for passo in linha.passos %}{% if passo.acao == 'prefixar' %}
+      <div class="border-bottom pb-3 mb-3">
+        <p class="mb-1"><strong>{% if passo.grupo %}Grupo{% else %}Categoria{% endif %} no FILHO: {{ passo.alvo.codigo }} · {{ passo.alvo.descricao }}</strong>{% if passo.alvo.conta_inativa %}<span class="badge text-bg-secondary ms-2">Inativa</span>{% endif %}</p>
+        <ul class="small text-secondary mb-2">{% for posicao in passo.posicoes_afetadas %}<li>PAI {{ posicao.origem.codigo }} · {{ posicao.origem.descricao }} → {% if posicao.alvo %}posição {{ posicao.alvo.codigo }} no FILHO{% else %}nova posição no FILHO{% endif %}</li>{% endfor %}</ul>
+        <label class="form-label" for="nome-{{ linha.pk }}-{{ forloop.counter0 }}">Ação para este nome duplicado</label>
+        <select class="form-select" id="nome-{{ linha.pk }}-{{ forloop.counter0 }}" name="nome_{{ linha.pk }}_{{ passo.alvo.codigo }}" required>
+          <option value="">Selecione uma ação</option>
+          <option value="ponto"{% if not passo.pode_prefixar %} disabled{% endif %}>Adicionar ponto: {{ passo.esperado.descricao }}</option>
+          <option value="ignorar">Ignorar: preservar cadastro e pular a substituição conflitante</option>
+        </select>
+        {% if passo.motivo_bloqueio %}<p class="small text-danger mt-2 mb-0">{{ passo.motivo_bloqueio }}</p>{% endif %}
+      </div>
+      {% endif %}{% endfor %}
+      <p class="small text-secondary mb-0">As posições sem conflito desta empresa serão apresentadas no plano final.</p>
+    {% else %}<div class="alert alert-secondary mb-0"><strong>Empresa bloqueada.</strong> {{ linha.mensagem }}</div>{% endif %}
+  </fieldset>
+  {% endfor %}
+  <button type="submit" class="btn btn-primary">Aplicar escolhas e ver plano final</button>
+  <p class="small text-secondary mt-2 mb-0">Este botão apenas prepara a prévia. Nenhuma categoria será alterada agora.</p>
+</form>
