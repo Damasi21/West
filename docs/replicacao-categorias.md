@@ -19,8 +19,13 @@ tratá-lo como campo replicado. Envios antigos incertos que efetivamente incluí
 `natureza` ainda conferem esse valor original na verificação somente de leitura.
 
 - **Preparar prévia do plano** é uma operação distinta de **Nova categoria ou grupo**.
-  Escolha as empresas FILHO por solicitação, inicialmente desmarcadas. A matriz é
+  Escolha uma única empresa FILHO por solicitação, inicialmente sem seleção. A matriz é
   somente origem: não recebe inclusões, alterações nem inativações neste modo.
+- A padronização completa aceita somente um FILHO por vez. O formulário usa
+  seleção única; o servidor recusa múltiplos valores e o worker bloqueia pedidos
+  antigos com vários destinos antes de consultar ou escrever na OMIE. Para outro
+  FILHO, conclua a solicitação atual e abra uma nova. A configuração do grupo e o
+  cadastro avulso de categoria/grupo continuam admitindo várias empresas.
 - A prévia lê categorias atualizadas das APIs, separa receitas e despesas e ordena
   grupos e filhos numericamente pelos códigos OMIE. O primeiro grupo corresponde ao
   primeiro grupo do mesmo tipo, independentemente de nome; seus filhos seguem a
@@ -224,6 +229,15 @@ worker antes de recriá-lo. As novas tarefas permanecem na fila `omie_replicacao
 Endpoint fixo: https://app.omie.com.br/api/v1/geral/categorias/
 
 - ListarCategorias: paginação completa, contagem/duplicidade e envelope validados.
+  O retorno HTTP 500 com envelope estruturado `proto=CLIENT_ACK_SERVER_ERROR`
+  permite até três tentativas da mesma página, esperando 5 e 10 segundos, sem
+  reiniciar as páginas anteriores nem aceitar uma listagem parcial. Ao esgotar,
+  o erro identifica método, página e código seguro; o corpo bruto não é exposto.
+  Outros HTTP 500 não recebem essa repetição específica, pois podem ser erros de
+  negócio/autenticação. Inclusões e alterações continuam com uma única tentativa,
+  inclusive quando recebem esse mesmo protocolo. Falhas 5xx de leitura deixam de
+  sugerir permissões como causa sem evidência.
+
 - IncluirGrupoCategoria: descrição, natureza, tipo_grupo R/D. Código atribuído pela OMIE.
 - IncluirCategoria: categoria_superior DO DESTINO, descrição, natureza, tipo_categoria.
 - AlterarGrupoCategoria: código DO DESTINO, descrição, natureza.

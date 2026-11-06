@@ -1,6 +1,7 @@
 """Contrato de categorias. Escritas sempre fazem uma única tentativa HTTP."""
 import json
 import re
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -58,8 +59,39 @@ def motivo_consulta(erro):
         return "A OMIE não autorizou a consulta. Confira as credenciais e as permissões da integração desta empresa."
     status = re.search(r"HTTP (\d{3})", texto)
     if status:
+        if status.group(1).startswith("5"):
+            return f"A consulta de categorias não foi concluída pela OMIE (HTTP {status.group(1)}). Tente novamente mais tarde; se persistir, consulte os logs de integração da OMIE."
         return f"A OMIE recusou a consulta de categorias (HTTP {status.group(1)}). Confira a disponibilidade e as permissões do aplicativo."
     return "A consulta de categorias não foi confirmada pela OMIE. Confira a integração e tente novamente mais tarde."
+
+
+def falha_ack_servidor(erro):
+    # Only this structured protocol error is retryable here. Generic HTTP 500
+    # may represent business validation, authentication or malformed parameters.
+    resultado = re.search(r"HTTP 500:\s*(\{.*\})\s*$", str(erro), re.DOTALL)
+    if not resultado:
+        return False
+    try:
+        dados = json.loads(resultado.group(1))
+    except ValueError:
+        return False
+    return isinstance(dados, dict) and dados.get("proto") == "CLIENT_ACK_SERVER_ERROR"
+
+
+def abrir_consulta_categorias(request, pagina):
+    for tentativa in range(1, 4):
+        try:
+            return _abrir_requisicao_omie(request, settings.OMIE_API_TIMEOUT)
+        except OmieAPIError as exc:
+            if not falha_ack_servidor(exc):
+                raise
+            if tentativa == 3:
+                raise ConsultaRecusada(
+                    f"ListarCategorias: página {pagina}. A OMIE retornou CLIENT_ACK_SERVER_ERROR "
+                    "e não confirmou esta leitura após 3 tentativas. A lista incompleta não será usada. "
+                    "Tente retomar a consulta mais tarde; se persistir, informe esse código ao suporte da OMIE."
+                ) from exc
+            time.sleep(5 * tentativa)
 
 
 def chamada(integracao, metodo, parametros):
@@ -67,12 +99,12 @@ def chamada(integracao, metodo, parametros):
     corpo = {"call": metodo, "param": [parametros], "app_key": integracao.app_key, "app_secret": integracao.obter_app_secret()}
     request = Request(CATEGORIAS_URL, data=json.dumps(corpo).encode(), headers={"Content-Type": "application/json"}, method="POST")
     try:
-        abertura = _abrir_requisicao_omie(request, settings.OMIE_API_TIMEOUT) if metodo == "ListarCategorias" else urlopen(request, timeout=settings.OMIE_API_TIMEOUT, context=SSL_CONTEXT)
+        abertura = abrir_consulta_categorias(request, parametros.get("pagina", 1)) if metodo == "ListarCategorias" else urlopen(request, timeout=settings.OMIE_API_TIMEOUT, context=SSL_CONTEXT)
         with abertura as response:
             dados = json.loads(response.read().decode())
     except (HTTPError, URLError, TimeoutError, OSError, ValueError, OmieAPIError) as exc:
         if metodo == "ListarCategorias":
-            raise ConsultaRecusada(motivo_consulta(exc)) from exc
+            raise ConsultaRecusada(f'ListarCategorias: página {parametros.get("pagina", 1)}. {motivo_consulta(exc)}') from exc
         # HTTP failures, including 429, never trigger an automatic write replay.
         detalhe = ""
         if isinstance(exc, HTTPError):

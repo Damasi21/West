@@ -676,3 +676,56 @@ class ContratoOmieTests(TestCase):
         self.assertEqual(len(omie.listar(self.integracao,descricao='Nov')),2)
         self.assertEqual(chamada.call_args_list[1].args[2]['pagina'],2)
         self.assertEqual(chamada.call_args_list[1].args[2]['descricao'],'Nov')
+
+    @patch('apps.replicacao.omie.time.sleep')
+    @patch('apps.replicacao.omie._abrir_requisicao_omie')
+    def test_ack_server_error_repete_apenas_pagina_que_falhou(self, abrir, dormir):
+        from apps.empresas.omie import OmieAPIError
+        def resposta(codigo):
+            response=MagicMock()
+            response.__enter__.return_value.read.return_value=json.dumps({'pagina':int(codigo),'total_de_paginas':4,'total_de_registros':4,'categoria_cadastro':[categoria('2.01.'+codigo,'Categoria '+codigo,pai='2.01')]}).encode()
+            return response
+        abrir.side_effect=[resposta('1'),resposta('2'),resposta('3'),OmieAPIError('OMIE respondeu HTTP 500: {"proto":"CLIENT_ACK_SERVER_ERROR","proto_seq":"202"}'),resposta('4')]
+        itens=omie.listar(self.integracao)
+        self.assertEqual(len(itens),4)
+        paginas=[json.loads(c.args[0].data)['param'][0]['pagina'] for c in abrir.call_args_list]
+        self.assertEqual(paginas,[1,2,3,4,4])
+        dormir.assert_called_once_with(5)
+
+    @patch('apps.replicacao.omie.time.sleep')
+    @patch('apps.replicacao.omie._abrir_requisicao_omie')
+    def test_ack_persistente_limita_tentativas_e_identifica_pagina_sem_segredos(self, abrir, dormir):
+        from apps.empresas.omie import OmieAPIError
+        abrir.side_effect=OmieAPIError('OMIE respondeu HTTP 500: {"proto":"CLIENT_ACK_SERVER_ERROR","detalhe":"segredo-nao-exibir chave-teste"}')
+        with self.assertRaises(omie.ConsultaRecusada) as erro:
+            omie.chamada(self.integracao,'ListarCategorias',{'pagina':4,'registros_por_pagina':50})
+        self.assertEqual(abrir.call_count,3)
+        self.assertEqual([c.args[0] for c in dormir.call_args_list],[5,10])
+        self.assertIn('página 4',str(erro.exception))
+        self.assertIn('CLIENT_ACK_SERVER_ERROR',str(erro.exception))
+        self.assertNotIn('segredo-nao-exibir',str(erro.exception))
+        self.assertNotIn('chave-teste',str(erro.exception))
+
+    @patch('apps.replicacao.omie.time.sleep')
+    @patch('apps.replicacao.omie._abrir_requisicao_omie')
+    def test_http_500_generico_na_consulta_nao_e_repetido_nem_classificado_como_permissao(self, abrir, dormir):
+        from apps.empresas.omie import OmieAPIError
+        abrir.side_effect=OmieAPIError('OMIE respondeu HTTP 500: erro interno segredo-nao-exibir')
+        with self.assertRaises(omie.ConsultaRecusada) as erro:
+            omie.chamada(self.integracao,'ListarCategorias',{'pagina':4})
+        self.assertEqual(abrir.call_count,1)
+        dormir.assert_not_called()
+        self.assertIn('página 4',str(erro.exception))
+        self.assertNotIn('permiss',str(erro.exception))
+        self.assertNotIn('segredo',str(erro.exception))
+
+    @patch('apps.replicacao.omie.time.sleep')
+    @patch('apps.replicacao.omie.urlopen')
+    def test_ack_em_alteracao_nao_e_repetido(self, abrir, dormir):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        abrir.side_effect=HTTPError('https://example.invalid',500,'Server Error',None,BytesIO(b'{"proto":"CLIENT_ACK_SERVER_ERROR","proto_seq":"202"}'))
+        with self.assertRaises(omie.OmieIncerta):
+            omie.chamada(self.integracao,'AlterarCategoria',{'codigo':'2.01.01','descricao':'Nova'})
+        self.assertEqual(abrir.call_count,1)
+        dormir.assert_not_called()

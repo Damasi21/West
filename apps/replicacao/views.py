@@ -402,8 +402,8 @@ def padronizar(request, plano_id):
     form = PadronizacaoForm(request.POST, plano=plano)
     try:
         if not form.is_valid():
-            raise ValidationError("Selecione as empresas FILHO desta configuração.")
-        op = padronizacao.solicitar(plano, request.user, list(form.cleaned_data["destinos"].values_list("pk", flat=True)))
+            raise ValidationError("Selecione uma única empresa FILHO desta configuração.")
+        op = padronizacao.solicitar(plano, request.user, [form.cleaned_data["destinos"].pk])
         transaction.on_commit(lambda: central.publicar_cadastro(op))
         return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
     except (ValidationError, PermissionDenied) as exc:

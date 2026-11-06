@@ -79,9 +79,14 @@ class NovaCategoriaForm(forms.Form):
 
 
 class PadronizacaoForm(forms.Form):
-    destinos = DestinosChoice(label="Empresas FILHO que receberão o plano", queryset=Empresa.objects.none(), widget=forms.CheckboxSelectMultiple)
+    destinos = EmpresaChoice(label="Empresa FILHO que receberá o plano", queryset=Empresa.objects.none(), widget=forms.RadioSelect, empty_label=None)
 
     def __init__(self, *args, plano, **kwargs):
         kwargs.setdefault("auto_id", "id_padronizacao_%s")
         super().__init__(*args, **kwargs)
         self.fields["destinos"].queryset = Empresa.objects.filter(pk__in=plano.destinos.values("empresa_id"), ativa=True).order_by("nome_fantasia", "pk")
+
+    def clean_destinos(self):
+        if hasattr(self.data, "getlist") and len(self.data.getlist("destinos")) != 1:
+            raise ValidationError("Escolha uma única empresa FILHO para esta padronização.")
+        return self.cleaned_data["destinos"]

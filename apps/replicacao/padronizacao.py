@@ -185,8 +185,8 @@ def solicitar(plano, usuario, destinos_ids):
     with transaction.atomic():
         plano = PlanoReplicacao.objects.select_for_update().get(pk=plano.pk)
         conferir_grupo(plano, usuario)
-        if not isinstance(destinos_ids, list) or not destinos_ids or any(type(pk) is not int for pk in destinos_ids) or len(destinos_ids) != len(set(destinos_ids)):
-            raise ValidationError("Selecione ao menos uma empresa FILHO, sem repetições.")
+        if not isinstance(destinos_ids, list) or len(destinos_ids) != 1 or type(destinos_ids[0]) is not int:
+            raise ValidationError("Selecione uma única empresa FILHO para esta padronização.")
         if not set(destinos_ids).issubset(set(plano.destinos.values_list("empresa_id", flat=True))):
             raise PermissionDenied("Escolha somente empresas FILHO desta configuração.")
         if plano.cadastros.filter(status__in=OCUPADOS | {"revisao"}).exists() or plano.comparacoes.filter(status__in=["fila", "comparando", "enviando"]).exists():
@@ -200,6 +200,13 @@ def solicitar(plano, usuario, destinos_ids):
         return op
 
 
+def conferir_destino_unico(op):
+    destinos = op.pedido.get("destinos_ids")
+    if (not isinstance(destinos, list) or len(destinos) != 1 or type(destinos[0]) is not int
+            or list(op.empresas.values_list("empresa_id", flat=True)) != destinos):
+        raise ValidationError("A padronização deve ter uma única empresa FILHO. Crie uma nova solicitação para cada destino; as alterações anteriores serão preservadas.")
+
+
 def resolver_nomes(op, usuario, escolhas):
     """Freeze explicit decisions and show the final plan, without publishing a task."""
     from .central import conferir_grupo, conferir_operacao, operacao_livre, progresso
@@ -208,6 +215,7 @@ def resolver_nomes(op, usuario, escolhas):
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
         conferir_grupo(op.plano, usuario)
         conferir_operacao(op)
+        conferir_destino_unico(op)
         if op.modo != "espelho" or op.status != "revisao" or op.pedido.get("etapa") != "conflitos" or op.pedido.get("versao_nomes") != 5:
             raise ValidationError("Esta solicitação não está aguardando decisões sobre nomes duplicados.")
         linhas = list(op.empresas.select_for_update())
@@ -241,6 +249,8 @@ def confirmar(op, usuario, escolhas):
         if op.modo != "espelho" or op.status != "revisao" or op.pedido.get("etapa") != "consulta":
             raise ValidationError("Esta prévia não está disponível para confirmação.")
         cancelar = escolhas.get("cancelar") == "sim"
+        if not cancelar:
+            conferir_destino_unico(op)
         if not cancelar and not op.pedido.get("somente_ativas"):
             raise ValidationError("Encerre esta prévia anterior sem novos envios e gere outra com apenas as contas ativas da base PAI.")
         if not cancelar and op.pedido.get("versao_nomes") != 5:
@@ -282,6 +292,7 @@ def esperado_catalogo(op, linha):
 def processar(op):
     from .central import conferir_operacao, conferir_sem_incerteza, progresso
     empresas = conferir_operacao(op)
+    conferir_destino_unico(op)
     linhas = list(op.empresas.select_related("empresa"))
     ids = {l.empresa_id for l in linhas}
     if not ids or ids != set(op.pedido["destinos_ids"]) or not ids.issubset({e.pk for e in empresas} - {op.plano.matriz_id}):

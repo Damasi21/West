@@ -279,23 +279,47 @@ class PadronizacaoTests(TestCase):
         self.assertEqual(linha.status,"sucesso",linha.mensagem)
         self.assertEqual(len(self.api.escritas), 1)
 
-    def test_falha_de_um_destino_nao_interrompe_outro_e_pai_nunca_escrito(self):
+    def test_padronizacao_recusa_duas_empresas_mesmo_pertencendo_ao_grupo(self):
         Empresa.objects.filter(pk=self.fora.pk).update(grupo=self.plano.grupo)
-        DestinoReplicacao.objects.create(plano=self.plano,empresa=self.fora)
-        self.api.catalogos[self.fora.pk] = [deepcopy(self.raiz),deepcopy(self.grupo_destino),deepcopy(self.filha_destino)]
-        for e in (self.destino,self.fora): self.api.catalogos[e.pk][-1]["descricao"]="Nome antigo"
-        op = self.executar(padronizacao.solicitar(self.plano,self.superuser,[self.destino.pk,self.fora.pk]))
-        escolhas = {"confirmar":"sim", **{f"aplicar_{l.pk}":"sim" for l in op.empresas.all()}}
-        padronizacao.confirmar(op,self.superuser,escolhas)
-        original = self.api.chamada
-        def escrita(integracao, metodo, payload):
-            if integracao.empresa_id == self.destino.pk:
-                raise central.omie.OmieRecusada()
-            return original(integracao,metodo,payload)
-        with patch('apps.replicacao.omie.chamada',side_effect=escrita): self.executar(op)
-        self.assertEqual(op.empresas.get(empresa=self.destino).status,"erro")
-        self.assertEqual(op.empresas.get(empresa=self.fora).status,"sucesso")
-        self.assertTrue(all(pk==self.fora.pk for pk,_,_ in self.api.escritas))
+        DestinoReplicacao.objects.create(plano=self.plano, empresa=self.fora)
+        antes = self.plano.cadastros.count()
+        with self.assertRaises(ValidationError):
+            padronizacao.solicitar(self.plano, self.superuser, [self.destino.pk, self.fora.pk])
+        self.assertEqual(self.plano.cadastros.count(), antes)
+        self.assertEqual(self.api.escritas, [])
+
+    def test_http_nao_aceita_multiplos_valores_no_campo_de_destino(self):
+        Empresa.objects.filter(pk=self.fora.pk).update(grupo=self.plano.grupo)
+        DestinoReplicacao.objects.create(plano=self.plano, empresa=self.fora)
+        self.client.force_login(self.superuser)
+        url = reverse("replicacao:padronizar", args=[self.plano.pk])
+        with patch('apps.replicacao.tasks.cadastrar_categoria.apply_async') as publicar:
+            resposta = self.client.post(url, {"destinos":[self.destino.pk, self.fora.pk]})
+        self.assertEqual(resposta.status_code, 302)
+        self.assertFalse(self.plano.cadastros.exists())
+        publicar.assert_not_called()
+        from .forms import PadronizacaoForm
+        form = PadronizacaoForm(plano=self.plano)
+        self.assertIn('type="radio"', str(form['destinos']))
+        self.assertNotIn('type="checkbox"', str(form['destinos']))
+
+    def test_worker_barra_solicitacao_antiga_com_dois_destinos_antes_da_api(self):
+        op = padronizacao.solicitar(self.plano, self.superuser, [self.destino.pk])
+        op.pedido["destinos_ids"].append(self.fora.pk)
+        op.save()
+        with patch('apps.replicacao.omie.listar') as consultar:
+            self.executar(op)
+        self.assertEqual(op.status, "erro")
+        self.assertIn("única empresa FILHO", op.mensagem)
+        consultar.assert_not_called()
+        self.assertEqual(self.api.escritas, [])
+
+    def test_confirmacao_barra_previa_antiga_com_varios_destinos(self):
+        op = self.previa()
+        op.pedido["destinos_ids"].append(self.fora.pk)
+        op.save()
+        with self.assertRaises(ValidationError): self.confirmar(op)
+        self.assertEqual(self.api.escritas, [])
 
     def test_empresa_desmarcada_nao_e_consultada_nem_recebe_linha(self):
         Empresa.objects.filter(pk=self.fora.pk).update(grupo=self.plano.grupo)
