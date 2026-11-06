@@ -277,14 +277,16 @@ def alternar(request, plano_id):
     return redirect("replicacao:detalhe", plano_id=plano.pk)
 
 
-def painel_central(request, plano):
+def painel_central(request, plano, operacao_id=None):
     erro_grupo = ""
     try:
         central.conferir_empresas(plano, request.user)
     except (ValidationError, PermissionDenied) as exc:
         erro_grupo = " ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
     operacao = plano.cadastros.first()
-    if request.GET.get("cadastro", "").isdigit():
+    if operacao_id is not None:
+        operacao = get_object_or_404(plano.cadastros, pk=operacao_id)
+    elif request.GET.get("cadastro", "").isdigit():
         operacao = get_object_or_404(plano.cadastros, pk=request.GET["cadastro"])
     categorias = list(CategoriaOmie.objects.filter(empresa=plano.matriz, ativo_omie=True).order_by("codigo"))
     # The OMIE hierarchy is shallow, but keep the display independent of code
@@ -311,8 +313,13 @@ def painel_central(request, plano):
     linhas = list(operacao.empresas.select_related("empresa")) if operacao else []
     for linha in linhas:
         linha.precisa_codigo = any(p.get("status") in {"executando", "incerto"} and not p.get("codigo") and not p.get("alvo") for p in linha.passos)
-        if operacao.modo in {"inativar", "reativar", "espelho"} and linha.status == "revisao":
+        if operacao.modo in {"inativar", "reativar", "espelho", "conciliacao"} and linha.status == "revisao":
             linha.rotulo_situacao = "Aguardando confirmação"
+        if operacao.modo == "conciliacao" and operacao.status == "revisao" and request.method == "POST":
+            for indice,item in enumerate(linha.passos):
+                valor=request.POST.get(f"decisao_{linha.pk}_{indice}")
+                if valor in {o["valor"] for o in item.get("opcoes",[])}:item["escolha"]=valor
+                item["aceitar"]=request.POST.get(f"aceitar_{linha.pk}_{indice}")=="sim"
     ocupado = plano.cadastros.filter(status__in=central.OCUPADOS | {"revisao"}).exists()
     return render(request, "replicacao/central.html", {"plano": plano, "arvore": arvore,
         "erro_grupo": erro_grupo, "form": NovaCategoriaForm(plano=plano), "form_padronizacao": PadronizacaoForm(plano=plano), "operacao": operacao,
@@ -397,13 +404,13 @@ def atualizar_arvore(request, plano_id):
 @ambiente_view
 @require_POST
 def padronizar(request, plano_id):
-    from . import padronizacao
+    from . import conciliacao
     plano = plano_request(request, plano_id)
     form = PadronizacaoForm(request.POST, plano=plano)
     try:
         if not form.is_valid():
             raise ValidationError("Selecione uma única empresa FILHO desta configuração.")
-        op = padronizacao.solicitar(plano, request.user, [form.cleaned_data["destinos"].pk])
+        op = conciliacao.solicitar(plano, request.user, [form.cleaned_data["destinos"].pk])
         transaction.on_commit(lambda: central.publicar_cadastro(op))
         return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
     except (ValidationError, PermissionDenied) as exc:
@@ -414,14 +421,18 @@ def padronizar(request, plano_id):
 @ambiente_view
 @require_POST
 def confirmar_padronizacao(request, plano_id, cadastro_id):
-    from . import padronizacao
+    from . import conciliacao
     plano = plano_request(request, plano_id)
     op = get_object_or_404(plano.cadastros, pk=cadastro_id)
     try:
-        op = padronizacao.confirmar(op, request.user, request.POST)
+        op = conciliacao.confirmar(op, request.user, request.POST)
         if op.status == "fila":
             transaction.on_commit(lambda: central.publicar_cadastro(op))
-    except (ValidationError, PermissionDenied) as exc:
+    except ValidationError as exc:
+        informar_erro(request, exc)
+        if op.modo == "conciliacao":
+            return painel_central(request, plano, op.pk)
+    except PermissionDenied as exc:
         informar_erro(request, exc)
     return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
 
@@ -429,13 +440,9 @@ def confirmar_padronizacao(request, plano_id, cadastro_id):
 @ambiente_view
 @require_POST
 def resolver_nomes_padronizacao(request, plano_id, cadastro_id):
-    from . import padronizacao
     plano = plano_request(request, plano_id)
     op = get_object_or_404(plano.cadastros, pk=cadastro_id)
-    try:
-        padronizacao.resolver_nomes(op, request.user, request.POST)
-    except (ValidationError, PermissionDenied) as exc:
-        informar_erro(request, exc)
+    messages.error(request, "A regra de pontos foi substituída pela conciliação sem renomeações. Prepare uma nova prévia.")
     return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
 
 

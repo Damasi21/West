@@ -6,7 +6,7 @@ from django.db import connection
 from django.test import TestCase, Client
 from django.urls import reverse
 
-from . import central, test_central as fixtures, padronizacao
+from . import central, test_central as fixtures, conciliacao
 from .tests import categoria
 from apps.empresas.models import AmbienteWhiteLabel
 from apps.empresas.white_label_domains import _marca_host
@@ -91,67 +91,33 @@ class CancelamentoTests(TestCase):
         IntegracaoOmie.objects.filter(empresa=self.matriz).update(ativa=False)
         self.assertEqual(central.cancelar(op,self.superuser).status,"cancelada")
 
-    def test_nova_colisao_102_apos_previa_exige_nova_previa_sem_repetir(self):
-        self.api.catalogos[self.destino.pk][-1]['descricao']='Nome antigo 1'
-        self.api.catalogos[self.matriz.pk].append(categoria('2.01.02','Seguro',pai='2.01'))
-        self.api.catalogos[self.destino.pk].append(categoria('2.08.08','Nome antigo 2',pai='2.08'))
-        op=padronizacao.solicitar(self.plano,self.superuser,[self.destino.pk])
+    def test_recusa_na_inclusao_interrompe_sem_renomear_ou_inativar(self):
+        from .test_conciliacao import decisoes_padrao
+        self.api.catalogos[self.destino.pk][-1]['descricao']='Cadastro antigo'
+        op=conciliacao.solicitar(self.plano,self.superuser,[self.destino.pk])
         central.executar_cadastro(op.pk);op.refresh_from_db()
-        linha=op.empresas.get()
-        if op.pedido.get('etapa')=='conflitos':
-            op=padronizacao.resolver_nomes(op,self.superuser,{f'nome_{linha.pk}_{p["alvo"]["codigo"]}':'ponto' for p in linha.passos if p['acao']=='prefixar'})
-        op=padronizacao.confirmar(op,self.superuser,{'confirmar':'sim',f'aplicar_{linha.pk}':'sim'})
-        def escrever(i,m,p):
-            if p.get('descricao')=='Energia elétrica':
-                raise central.omie.OmieRecusada(codigo='102',detalhe='Nome já existente')
-            return self.api.chamada(i,m,p)
-        with patch('apps.replicacao.omie.chamada',side_effect=escrever) as envio:
-            central.executar_cadastro(op.pk)
-        linha.refresh_from_db()
-        self.assertEqual(linha.status,'erro',linha.mensagem)
-        self.assertEqual(linha.passos[1]['status'],'erro')
-        self.assertEqual(linha.passos[2]['status'],'pendente')
-        self.assertEqual(envio.call_count,1)
-
-    def test_grupo_duplicado_recebe_ponto_e_preserva_hierarquia_dos_filhos(self):
-        self.api.catalogos[self.matriz.pk][1]['descricao']='Grupo já existente'
-        self.api.catalogos[self.destino.pk].append(categoria('2.09','Grupo já existente',grupo=True,pai='2'))
-        # Equal group counts: a second source group maps to the protected target.
-        self.api.catalogos[self.matriz.pk].append(categoria('2.02','Outro grupo',grupo=True,pai='2'))
-        op=padronizacao.solicitar(self.plano,self.superuser,[self.destino.pk])
-        central.executar_cadastro(op.pk);op.refresh_from_db()
-        linha=op.empresas.get()
-        self.assertEqual(linha.passos[0]['acao'],'prefixar')
-        self.assertEqual(linha.passos[0]['esperado']['descricao'],'.Grupo já existente')
-        if op.pedido.get('etapa')=='conflitos':
-            op=padronizacao.resolver_nomes(op,self.superuser,{f'nome_{linha.pk}_{p["alvo"]["codigo"]}':'ponto' for p in linha.passos if p['acao']=='prefixar'})
-        op=padronizacao.confirmar(op,self.superuser,{'confirmar':'sim',f'aplicar_{linha.pk}':'sim'})
+        op=conciliacao.confirmar(op,self.superuser,decisoes_padrao(op))
+        self.api.falha='recusada'
         central.executar_cadastro(op.pk)
-        self.assertTrue(self.api.escritas)
-        cs={c['codigo']:c for c in self.api.catalogos[self.destino.pk]}
-        self.assertEqual(cs['2.08']['descricao'],'Grupo já existente')
-        self.assertEqual(cs['2.09']['descricao'],'Outro grupo')
-        self.assertEqual(cs['2.08.07']['categoria_superior'],'2.08')
+        self.assertEqual(op.empresas.get().status,'erro')
+        self.assertEqual([m for _,m,_ in self.api.escritas],['IncluirCategoria'])
 
-    def test_cancelada_com_envio_incerto_pode_verificar_sem_reabrir_ou_reenviar(self):
-        self.api.catalogos[self.destino.pk][-1]['descricao']='Nome antigo'
-        op=padronizacao.solicitar(self.plano,self.superuser,[self.destino.pk])
+    def test_cancelada_com_inclusao_incerta_pode_verificar_sem_reabrir(self):
+        from .test_conciliacao import decisoes_padrao
+        self.api.catalogos[self.destino.pk][-1]['descricao']='Cadastro antigo'
+        op=conciliacao.solicitar(self.plano,self.superuser,[self.destino.pk])
         central.executar_cadastro(op.pk);op.refresh_from_db()
-        linha=op.empresas.get()
-        if op.pedido.get('etapa')=='conflitos':
-            op=padronizacao.resolver_nomes(op,self.superuser,{f'nome_{linha.pk}_{p["alvo"]["codigo"]}':'ponto' for p in linha.passos if p['acao']=='prefixar'})
-        op=padronizacao.confirmar(op,self.superuser,{'confirmar':'sim',f'aplicar_{linha.pk}':'sim'})
-        self.api.falha='apos_gravar'
-        central.executar_cadastro(op.pk)
-        linha.refresh_from_db();self.assertEqual(linha.status,'incerto')
+        op=conciliacao.confirmar(op,self.superuser,decisoes_padrao(op))
+        self.api.falha='apos_gravar';central.executar_cadastro(op.pk)
+        linha=op.empresas.get();self.assertEqual(linha.status,'incerto')
+        codigo=self.api.catalogos[self.destino.pk][-1]['codigo']
         op=central.cancelar(op,self.superuser)
-        central.verificar_cadastro(linha.pk,self.superuser.pk)
+        central.verificar_cadastro(linha.pk,self.superuser.pk,codigo)
         linha.refresh_from_db();op.refresh_from_db()
-        self.assertEqual(op.status,'cancelada')
-        self.assertEqual(linha.status,'ignorada',linha.mensagem)
+        self.assertEqual(op.status,'cancelada');self.assertEqual(linha.status,'ignorada',linha.mensagem)
         self.assertEqual(len(self.api.escritas),1)
         central.conferir_sem_incerteza(self.destino)
-        with self.assertRaises(ValidationError): central.retomar(op,self.superuser)
+        with self.assertRaises(ValidationError):central.retomar(op,self.superuser)
 
     def test_sucesso_total_nao_pode_ser_cancelado(self):
         op=central.solicitar(self.plano,self.superuser,catalogo=True)

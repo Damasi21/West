@@ -40,6 +40,24 @@
         refresh();
     }
 
+    document.querySelectorAll('[data-concil-grupo]').forEach(group => {
+        const fieldset = group.closest('fieldset');
+        const refresh = () => {
+            fieldset.querySelectorAll(`[data-concil-pai="${group.dataset.concilGrupo}"] select`).forEach(select => {
+                const ignored = group.value === 'ignorar';
+                select.disabled = ignored;
+                if (ignored) { select.value = 'ignorar'; return; }
+                const code = group.value.startsWith('usar:') ? group.value.slice(5) : null;
+                Array.from(select.options).forEach(option => {
+                    if (option.dataset.concilGrupoDestino) option.disabled = option.dataset.concilGrupoDestino !== code;
+                });
+                if (select.selectedOptions[0]?.disabled) select.value = '';
+            });
+        };
+        group.addEventListener('change', refresh);
+        refresh();
+    });
+
     const panel = document.querySelector('[data-rep-progress]');
     if (!panel) return;
     const labels = {fila: 'Na fila', consultando: 'Verificando OMIEs', revisao: 'Aguardando sua decisão',
@@ -49,6 +67,7 @@
     if (panel.dataset.repMode === 'inativar') labels.enviando = 'Inativando categorias';
     if (panel.dataset.repMode === 'reativar') labels.enviando = 'Reativando categorias';
     if (panel.dataset.repMode === 'espelho') labels.enviando = 'Padronizando plano';
+    if (panel.dataset.repMode === 'conciliacao') labels.enviando = 'Conciliando plano';
     let stopped = false;
     let state = panel.dataset.repState;
     const pollMessage = panel.querySelector('[data-rep-poll-message]');
@@ -68,7 +87,7 @@
             data.empresas.forEach(company => {
                 const row = document.querySelector(`[data-rep-company="${company.id}"]`);
                 if (!row) return;
-                row.querySelector('[data-rep-company-status]').textContent = company.status === 'revisao' && ['espelho', 'inativar', 'reativar'].includes(panel.dataset.repMode) ? 'Aguardando confirmação' : labels[company.status] || company.status;
+                row.querySelector('[data-rep-company-status]').textContent = company.status === 'revisao' && ['espelho', 'conciliacao', 'inativar', 'reativar'].includes(panel.dataset.repMode) ? 'Aguardando confirmação' : labels[company.status] || company.status;
                 row.querySelector('[data-rep-company-message]').textContent = company.mensagem;
             });
             pollMessage.textContent = '';

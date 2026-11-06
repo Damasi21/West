@@ -1,7 +1,7 @@
 <div class="row g-3 mb-4">
   <div class="col-lg-6"><section class="settings-card p-4 h-100">
-    <span class="eyebrow">1 · PLANO COMPLETO</span><h2 class="h5 mt-2">Padronizar pela base PAI</h2>
-    <p class="small text-secondary">Padroniza uma única empresa FILHO por solicitação, usando somente grupos e categorias ativos da base PAI. Segue a sequência dos códigos OMIE, separando receitas e despesas. Cria as categorias faltantes e inativa as excedentes dentro de cada grupo.</p>
+    <span class="eyebrow">1 · PLANO COMPLETO</span><h2 class="h5 mt-2">Conciliar com a base PAI</h2>
+    <p class="small text-secondary">Compara uma única empresa FILHO com o PAI. Você decide o que reaproveitar, criar, reativar, manter ou inativar. O novo plano é preparado e conferido antes das inativações. Os nomes e classificações existentes são preservados.</p>
     <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#rep-padronizar"{% if ocupado or erro_grupo or not plano.ativo %} disabled{% endif %}>Preparar prévia do plano</button>
   </section></div>
   <div class="col-lg-6"><section class="settings-card p-4 h-100">
@@ -12,10 +12,10 @@
 </div>
 <div class="modal fade" id="rep-padronizar" tabindex="-1" aria-labelledby="rep-padronizar-titulo" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered"><form method="post" action="{% url 'replicacao:padronizar' plano.pk %}" class="modal-content">{% csrf_token %}
-    <div class="modal-header"><h2 class="modal-title h5" id="rep-padronizar-titulo">Prévia de padronização</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+    <div class="modal-header"><h2 class="modal-title h5" id="rep-padronizar-titulo">Prévia de conciliação</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
     <div class="modal-body"><p>Origem: <strong>{{ plano.matriz.nome_fantasia|default:plano.matriz.nome }}</strong>. A base PAI será apenas consultada.</p>
       <label class="form-label">{{ form_padronizacao.destinos.label }}</label><div class="rep-empresas rep-category-destinations">{{ form_padronizacao.destinos }}</div>
-      <p class="small text-secondary mt-2 mb-0">Escolha apenas uma empresa FILHO. Para padronizar outra empresa, faça uma nova solicitação após concluir esta.</p>
+      <p class="small text-secondary mt-2 mb-0">Escolha apenas uma empresa FILHO. A prévia mostrará todos os itens e as decisões possíveis antes de qualquer envio.</p>
       <p class="small text-secondary mt-3 mb-0">O worker consultará as bases e mostrará cada alteração antes da confirmação. Nenhuma categoria será alterada nesta etapa.</p>
     </div><div class="modal-footer"><button type="button" class="btn btn-white" data-bs-dismiss="modal">Voltar</button><button class="btn btn-primary">Consultar e preparar prévia</button></div>
   </form></div>

@@ -26,93 +26,46 @@ a rota de comparações dos planos antigos sem cadastro central.
 
 ## Cadastro central e progresso
 
-### Padronização do plano por sequência
+### Conciliação do plano sem renomear cadastros
 
-Observações (`natureza` na API) ficam fora da padronização, do cadastro avulso e
-das novas alterações de situação. Não são enviadas nem validadas pelo limite de
-50 caracteres; não geram divergência entre matriz/destino nem exigem nova prévia
-quando mudam isoladamente. A OMIE mantém as observações existentes e define o
-padrão dos novos cadastros. Os snapshots guardam o texto para auditoria, sem
-tratá-lo como campo replicado. Envios antigos incertos que efetivamente incluíram
-`natureza` ainda conferem esse valor original na verificação somente de leitura.
+A ação **Conciliar com a base PAI** substitui a reescrita por sequência. Solicitações
+antigas `modo=espelho` não executam novos envios: devem ser canceladas e refeitas.
+A verificação somente de leitura dos envios antigos continua disponível. Não há
+novas renomeações com ponto, sobrescrita de classificação nem pareamento por posição.
 
-- **Preparar prévia do plano** é uma operação distinta de **Nova categoria ou grupo**.
-  Escolha uma única empresa FILHO por solicitação, inicialmente sem seleção. A matriz é
-  somente origem: não recebe inclusões, alterações nem inativações neste modo.
-- A padronização completa aceita somente um FILHO por vez. O formulário usa
-  seleção única; o servidor recusa múltiplos valores e o worker bloqueia pedidos
-  antigos com vários destinos antes de consultar ou escrever na OMIE. Para outro
-  FILHO, conclua a solicitação atual e abra uma nova. A configuração do grupo e o
-  cadastro avulso de categoria/grupo continuam admitindo várias empresas.
-- A prévia lê categorias atualizadas das APIs, separa receitas e despesas e ordena
-  grupos e filhos numericamente pelos códigos OMIE. O primeiro grupo corresponde ao
-  primeiro grupo do mesmo tipo, independentemente de nome; seus filhos seguem a
-  mesma regra. Vínculos antigos e semelhanças não alteram essa correspondência.
-- Somente grupos/categorias ativos da matriz entram na sequência; filhos de grupos
-  inativos também são ignorados. Os inativos não ocupam posições nem geram inclusões,
-  alterações ou vínculos como origem. Prévias anteriores devem ser encerradas e
-  refeitas antes de novos envios.
-- Dentro de cada grupo: reescrever os pares existentes, criar os filhos faltantes e
-  inativar os filhos excedentes. Preservar os IDs existentes no destino. Copiar
-  descrição e, nos filhos, tipo, código DRE OMIE e situação da matriz. O
-  vínculo personalizado `conta_dre` do BI permanece local. Raízes 1/2, contas de
-  transferência e outros tipos não participam; posições `<Disponível>` da matriz
-  não são categorias de negócio a incluir.
-- O contrato da API de grupos não oferece `conta_inativa`. Grupos excedentes no
-  destino ou grupos com situação diferente da matriz bloqueiam a empresa inteira
-  na prévia, com indicação para ajuste no OMIE. Não há promessa de espelhamento
-  completo quando a API não permite essa etapa. Não há inclusão de categorias inativas da origem.
-- O limite de 50 caracteres da descrição é verificado antes dos envios.
-  O erro identifica a base PAI/FILHO e a empresa, cada grupo/categoria com seu código
-  e descrição, o campo, o tamanho atual e quanto excede. Todos os excessos encontrados
-  na base são listados em linhas separadas, sem truncar nem alterar os cadastros.
-  Após corrigir na OMIE, Retomar consulta refaz a leitura e atualiza o diagnóstico.
-- A prévia mostra código/nome anterior, descrição/situação desejada e ação de cada
-  posição. Exige selecionar novamente as empresas e confirmar o impacto histórico:
-  lançamentos anteriores conservam o código, mas passam a exibir a categoria
-  reescrita e sua classificação. Pode encerrar a prévia sem novos envios.
-- A preparação tem duas etapas de revisão, sem escrita na OMIE:
-  1. **Nomes duplicados:** quando outra posição do FILHO ocupa o nome necessário,
-     cada ocorrência exige uma escolha explícita, sem opção pré-selecionada:
-     adicionar ponto ou ignorar. A tela identifica a empresa, o código que ocupa
-     o nome e a posição de origem/destino afetada. Aplicar escolhas apenas prepara
-     o plano final; não publica tarefa nem autoriza envios.
-  2. **Plano final de substituição:** mostra renomeações, inclusões, inativações e
-     posições preservadas. Exige marcar os FILHOs e confirmar o impacto histórico.
-     Só essa confirmação publica o worker de envio.
-- Adicionar ponto libera o nome ocupado (`.Nome`, `..Nome` se necessário). As
-  renomeações autorizadas ocorrem antes das substituições. Os pares recebem os
-  nomes do PAI; excedentes ficam inativos e conservam o ponto. A etapa auxiliar
-  altera somente a descrição, preservando observações, situação e classificação.
-  Se o ponto não couber nos 50 caracteres, essa opção fica indisponível: é possível
-  ignorar ou ajustar o cadastro na OMIE e gerar outra consulta, sem cortar texto.
-- Ignorar preserva integralmente o dono do nome e pula a posição que precisaria
-  dele. Também preserva dependências: filhos de grupos ignorados e posições cujo
-  nome continua ocupado por um cadastro preservado. A prévia final identifica
-  todas essas exceções. Não cria vínculos para posições ignoradas, não promete
-  espelhamento integral e verifica o catálogo final contra o plano autorizado.
-- Uma colisão nova após a prévia interrompe os envios dessa empresa e exige nova
-  consulta; não autoriza alterações extras. Prévias antigas devem ser refeitas
-  (`versao_nomes=5`). As decisões são guardadas com autor, data e trilha de auditoria.
-  A segunda confirmação revalida acessos e integrações; o worker volta a consultar
-  origem e destino antes dos envios. Etapas confirmadas não são repetidas.
-- O worker recebe um plano congelado, não recalcula os pares depois de uma inclusão.
-  Revalida matriz, destino, permissões e integrações. Alterações externas interrompem
-  os novos envios; gere outra prévia. Cada intenção é persistida antes da única
-  chamada de escrita e confirmada por consulta. Incluídos sem resposta ficam incertos
-  e precisam do código encontrado na OMIE para verificação somente de leitura.
-- Retomadas pulam ações já confirmadas. Nenhuma ação incerta é reenviada. Uma falha
-  em um FILHO não interrompe os demais. A barra conta ações confirmadas, com nome da
-  empresa e categoria atual; pendências aparecem no resultado por empresa. A leitura
-  final também confirma que os códigos atribuídos pela OMIE mantiveram a sequência.
-- Vínculos anteriores do destino são auditados e invalidados antes da reescrita,
-  evitando reutilizar correspondências antigas numa execução parcial. Ao concluir,
-  os vínculos são refeitos conforme os pares confirmados do plano.
-- Usa `CadastroCategoria.modo=espelho` e a mesma fila `omie_replicacao`. A migração
-  `0006_alter_cadastrocategoriaempresa_status` acrescenta o estado Bloqueada às opções
-  do modelo. Publicação requer atualizar app e drenar/recriar `replicacao_worker`,
-  aplicar migrations e publicar estáticos. Não exige reiniciar os workers de sync.
+1. Consultar PAI e um FILHO, guardando snapshots completos. Mostrar na prévia todos
+   os grupos/categorias ativos de origem e todos os cadastros elegíveis do destino.
+   Excluir origens inativas, descendentes de grupos inativos, posições disponíveis,
+   transferências e raízes do plano. Observações não são copiadas.
+2. O usuário decide cada item: reaproveitar, criar, reativar ou ignorar. Nomes iguais
+   só sugerem reaproveitamento automático quando grupo, natureza receita/despesa,
+   tipo e código DRE também correspondem. Ambiguidades não escolhem um código.
+   Semelhanças e divergências permitem vincular um cadastro existente apenas com
+   confirmação adicional, preservando todos os dados do FILHO. Nenhum lançamento
+   histórico é transferido, reclassificado ou renomeado.
+3. O usuário decide manter ou inativar cada categoria atual. Grupos são preservados:
+   não se automatiza sua inativação/reativação. Nome de grupo inativo não autoriza
+   criação duplicada. Categoria inativa de mesmo nome oferece reaproveitamento com
+   reativação explícita ou ignorar, nunca assume que o nome ficou livre.
+4. Confirmar todas as decisões. O servidor recusa códigos fora da prévia, vínculo
+   com grupo errado, múltiplas origens no mesmo destino, inativação de categoria
+   reutilizada e inativação sem ao menos um item ativo preparado do mesmo tipo.
+   Ignorar um grupo ignora suas origens filhas; não inativa seus cadastros existentes.
+5. O worker revalida permissões, integrações e snapshots, prepara os itens aprovados
+   e consulta novamente a matriz e o catálogo inteiro do FILHO. Só então começa as
+   inativações autorizadas. Falha de criação, drift ou envio incerto impede começar
+   as inativações. Retomadas conferem o estado atual e pulam envios já confirmados.
+6. Ações incertas nunca são reenviadas automaticamente. O resultado é consultado por
+   código; inclusões sem resposta exigem identificar o código na OMIE. Cancelar não
+   desfaz as alterações confirmadas nem declara sucesso de um resultado incerto.
 
+O modo `conciliacao` usa a fila dedicada `omie_replicacao`, o controle de um FILHO por
+solicitação e os mesmos locks/auditorias. Cada intenção é salva antes da única chamada
+HTTP de escrita. Ações de situação enviam somente código, descrição atual e situação,
+sem alterar nome, DRE, tipo ou observações. As novas inclusões usam os dados da matriz.
+Vínculos PAI→FILHO refletem apenas itens confirmados. Cadastros aposentados mantêm seus
+códigos e seus lançamentos originais. Comparações históricas entre códigos antigos e
+novos não são automaticamente consolidadas nos dashboards.
 
 ### Inativar e reativar categorias
 

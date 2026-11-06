@@ -217,7 +217,9 @@ def _executar_cadastro(pk):
             processar(op)
             return
         if op.modo == "espelho":
-            from .padronizacao import processar
+            raise ValidationError("A padronização por sequência foi substituída pela conciliação sem renomeações. Cancele esta solicitação e prepare uma nova prévia. Envios anteriores permanecem preservados.")
+        if op.modo == "conciliacao":
+            from .conciliacao import processar
             processar(op)
             return
         if op.modo == "cadastro" and "destinos_ids" in op.pedido:
@@ -392,7 +394,7 @@ def aplicar_passo(op, linha, indice, integracao, pai_codigo):
 
 
 def confirmar_passo(linha, indice, integracao, codigo=""):
-    if linha.cadastro.modo == "espelho":
+    if linha.cadastro.modo in {"espelho", "conciliacao"}:
         from .padronizacao import confirmar_resultado
         return confirmar_resultado(linha, indice, integracao, codigo)
     if linha.cadastro.modo in {"inativar", "reativar"}:
@@ -517,7 +519,7 @@ def verificar_cadastro(linha_id, usuario_id, codigo=""):
                     break
             linha.status = "sucesso" if all(p.get("status") in {"sucesso", "ignorada"} for p in linha.passos) else "erro"
             linha.mensagem = "Resultado confirmado. Retome a consulta para concluir os passos restantes." if linha.status == "erro" else "Cadastro confirmado na OMIE."
-            if op.modo == "espelho":
+            if op.modo in {"espelho", "conciliacao"}:
                 linha.status = "erro"
                 linha.mensagem = "Resultado confirmado sem reenviar. Retome para concluir os passos restantes e validar a sequência final."
             if op.status == "cancelada":
