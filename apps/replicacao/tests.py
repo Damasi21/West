@@ -538,7 +538,7 @@ class ReplicacaoTests(TestCase):
 
     def test_graph_rejeita_matriz_que_ja_e_destino(self):
         Empresa.objects.filter(pk__in=[self.destino.pk,self.fora.pk]).update(grupo='Grupo ciclo')
-        form=PlanoForm({'nome':'Ciclo','grupo':'Grupo ciclo','matriz':self.destino.pk},usuario=self.superuser)
+        form=PlanoForm({'nome':'Ciclo','matriz':self.destino.pk,'destinos':[self.fora.pk]},usuario=self.superuser)
         self.assertTrue(form.is_valid(),form.errors)
         with self.assertRaises(ValidationError): form.salvar()
 
@@ -729,3 +729,21 @@ class ContratoOmieTests(TestCase):
             omie.chamada(self.integracao,'AlterarCategoria',{'codigo':'2.01.01','descricao':'Nova'})
         self.assertEqual(abrir.call_count,1)
         dormir.assert_not_called()
+
+    @patch('apps.replicacao.omie.chamada')
+    def test_filtro_decodifica_entidades_sem_modificar_snapshot_recebido(self, chamada):
+        for descricao, filtro in [('&lt;Disponível&gt;', '<Disponível>'), ('Manutenção &amp; Reformas', 'Manutenção & Reformas'), ('Serviço &quot;A&quot;', 'Serviço "A"')]:
+            registro=categoria('1.02.95',descricao,pai='1.02',conta_inativa='S')
+            chamada.return_value={'categoria_cadastro':[registro],'total_de_paginas':1,'total_de_registros':1}
+            resultado=omie.listar(self.integracao,descricao=descricao)
+            self.assertEqual(chamada.call_args.args[2]['descricao'],filtro)
+            self.assertEqual(resultado[0]['descricao'],descricao)
+            self.assertEqual(resultado[0]['codigo'],'1.02.95')
+
+    @patch('apps.replicacao.omie.chamada')
+    def test_filtro_codificado_nao_confunde_existencia_de_disponivel(self, chamada):
+        def simular_api(integracao,metodo,parametros):
+            itens=[categoria('1.02.95','&lt;Disponível&gt;',pai='1.02',conta_inativa='S')] if parametros['descricao']=='<Disponível>' else []
+            return {'categoria_cadastro':itens,'total_de_paginas':1,'total_de_registros':len(itens)}
+        chamada.side_effect=simular_api
+        self.assertEqual(omie.listar(self.integracao,descricao='&lt;Disponível&gt;')[0]['codigo'],'1.02.95')

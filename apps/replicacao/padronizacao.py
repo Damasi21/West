@@ -1,6 +1,7 @@
 """Plano por posição: prévia congelada, IDs do destino e escritas reconciliáveis."""
 import re
 from copy import deepcopy
+from html import unescape
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
@@ -170,7 +171,7 @@ def planejar(fonte, destino, *, empresa_pai="", empresa_filho="", decisoes=None)
             alvo = destino_grupos[posicao] if posicao < len(destino_grupos) else None
             gi = adicionar(grupo, alvo)
             filhos = sorted([c for c in itens_pai if c["categoria_superior"] == grupo["codigo"]
-                and not c["totalizadora"] and normalizar(c["descricao"]) != "<disponivel>"], key=ordem)
+                and not c["totalizadora"] and normalizar(unescape(c["descricao"])) != "<disponivel>"], key=ordem)
             alvos = sorted([c for c in itens_filho if alvo and c["categoria_superior"] == alvo["codigo"] and not c["totalizadora"]], key=ordem)
             for n, filho in enumerate(filhos):
                 atual = alvos[n] if n < len(alvos) else None
@@ -181,10 +182,10 @@ def planejar(fonte, destino, *, empresa_pai="", empresa_filho="", decisoes=None)
 
 
 def solicitar(plano, usuario, destinos_ids):
-    from .central import conferir_grupo, OCUPADOS
+    from .central import conferir_empresas, OCUPADOS
     with transaction.atomic():
         plano = PlanoReplicacao.objects.select_for_update().get(pk=plano.pk)
-        conferir_grupo(plano, usuario)
+        conferir_empresas(plano, usuario)
         if not isinstance(destinos_ids, list) or len(destinos_ids) != 1 or type(destinos_ids[0]) is not int:
             raise ValidationError("Selecione uma única empresa FILHO para esta padronização.")
         if not set(destinos_ids).issubset(set(plano.destinos.values_list("empresa_id", flat=True))):
@@ -209,11 +210,11 @@ def conferir_destino_unico(op):
 
 def resolver_nomes(op, usuario, escolhas):
     """Freeze explicit decisions and show the final plan, without publishing a task."""
-    from .central import conferir_grupo, conferir_operacao, operacao_livre, progresso
+    from .central import conferir_empresas, conferir_operacao, operacao_livre, progresso
     with operacao_livre(op.pk), transaction.atomic():
         PlanoReplicacao.objects.select_for_update().get(pk=op.plano_id)
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
-        conferir_grupo(op.plano, usuario)
+        conferir_empresas(op.plano, usuario)
         conferir_operacao(op)
         conferir_destino_unico(op)
         if op.modo != "espelho" or op.status != "revisao" or op.pedido.get("etapa") != "conflitos" or op.pedido.get("versao_nomes") != 5:
@@ -240,11 +241,11 @@ def resolver_nomes(op, usuario, escolhas):
 
 
 def confirmar(op, usuario, escolhas):
-    from .central import conferir_grupo, conferir_operacao
+    from .central import conferir_empresas, conferir_operacao
     with transaction.atomic():
         PlanoReplicacao.objects.select_for_update().get(pk=op.plano_id)
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
-        conferir_grupo(op.plano, usuario)
+        conferir_empresas(op.plano, usuario)
         conferir_operacao(op)
         if op.modo != "espelho" or op.status != "revisao" or op.pedido.get("etapa") != "consulta":
             raise ValidationError("Esta prévia não está disponível para confirmação.")

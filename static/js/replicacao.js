@@ -17,23 +17,26 @@
     items.forEach(item => item.addEventListener('change', update));
     update();
 
-    const group = document.querySelector('[data-rep-grupo]');
     const matrix = document.getElementById('id_matriz');
-    const groupData = document.getElementById('rep-grupo-empresas');
-    if (group && matrix && groupData) {
-        const companies = JSON.parse(groupData.textContent);
+    const destinations = document.querySelector('[data-rep-config-destinos]');
+    if (matrix && destinations) {
+        const choices = Array.from(destinations.querySelectorAll('input[type="checkbox"]'));
         const members = document.querySelector('[data-rep-members]');
         const refresh = () => {
-            const selected = matrix.value;
-            const participants = companies.filter(company => company.grupo.toLocaleLowerCase('pt-BR') === group.value.toLocaleLowerCase('pt-BR'));
-            matrix.replaceChildren(new Option('Selecione a base PAI', ''));
-            participants.forEach(company => matrix.add(new Option(company.nome, String(company.id))));
-            if (participants.some(company => String(company.id) === selected)) matrix.value = selected;
-            if (members) members.textContent = participants.length
-                ? participants.map(company => company.nome).join(' • ')
-                : 'Selecione um grupo com ao menos duas empresas ativas.';
+            choices.forEach(choice => {
+                const isMatrix = choice.value === matrix.value;
+                if (isMatrix) choice.checked = false;
+                choice.disabled = isMatrix;
+                const row = choice.closest('label')?.parentElement;
+                if (row) row.hidden = isMatrix;
+            });
+            const selected = choices.filter(choice => choice.checked && !choice.disabled);
+            if (members) members.textContent = selected.length
+                ? `${selected.length} ${selected.length === 1 ? 'empresa FILHO selecionada' : 'empresas FILHO selecionadas'}. A padronização completa será feita em uma por solicitação.`
+                : 'Escolha a base PAI e marque ao menos uma empresa FILHO.';
         };
-        group.addEventListener('change', refresh);
+        matrix.addEventListener('change', refresh);
+        choices.forEach(choice => choice.addEventListener('change', refresh));
         refresh();
     }
 

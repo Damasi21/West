@@ -1,4 +1,4 @@
-"""Cadastro central por grupo. Consultas antes de escritas, sem reenvio incerto."""
+"""Cadastro central por empresas selecionadas. Consultas antes de escritas, sem reenvio incerto."""
 import re
 from contextlib import contextmanager
 from copy import deepcopy
@@ -7,8 +7,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction, connection
 from django.utils import timezone
 
-from apps.empresas.models import Empresa, CategoriaOmie
-from apps.empresas.services import empresas_permitidas
+from apps.empresas.models import CategoriaOmie
 from apps.empresas.white_label_domains import _marca_host
 from . import omie
 from .comparacao import dados, normalizar, semelhanca, tipo, sem_observacoes
@@ -28,37 +27,14 @@ class GrupoIncompativel(ValidationError):
     pass
 
 
-def empresas_grupo(usuario, grupo):
-    if not grupo.strip():
-        raise ValidationError("Selecione um grupo cadastrado nas empresas.")
-    empresas = list(empresas_permitidas(usuario).filter(grupo__iexact=grupo, ativa=True).order_by("pk"))
-    # Include companies invisible to an ordinary manager as well: never silently
-    # omit an inaccessible member of a group. Brand scoping is still mandatory.
-    from apps.empresas.white_label_domains import marca_host_atual
-    marca = marca_host_atual()
-    todas = Empresa.objects.filter(grupo__iexact=grupo, ativa=True)
-    if marca is not None:
-        todas = todas.filter(ambientes_white_label=marca)
-    ids = set(todas.values_list("pk", flat=True))
-    autorizadas = set(empresas_gerenciaveis(usuario).filter(pk__in=ids).values_list("pk", flat=True))
-    if ids != autorizadas or {e.pk for e in empresas} != ids:
-        raise PermissionDenied("É necessário administrar todas as empresas ativas deste grupo neste ambiente.")
-    if len(empresas) < 2:
-        raise ValidationError("O grupo precisa ter ao menos duas empresas ativas.")
-    return empresas
-
-
-def conferir_grupo(plano, usuario):
+def conferir_empresas(plano, usuario):
     conferir_acesso(plano, usuario)
-    empresas = empresas_grupo(usuario, plano.grupo)
-    previstos = {plano.matriz_id, *plano.destinos.values_list("empresa_id", flat=True)}
-    if {e.pk for e in empresas} != previstos:
-        raise ValidationError("As empresas do grupo mudaram. Pause esta configuração e cadastre outra com os integrantes atuais.")
+    empresas = [plano.matriz, *[d.empresa for d in plano.destinos.select_related("empresa")]]
     return sorted(empresas, key=lambda e: (e.pk != plano.matriz_id, e.pk))
 
 
 def conferir_operacao(operacao):
-    empresas = conferir_grupo(operacao.plano, operacao.solicitado_por)
+    empresas = conferir_empresas(operacao.plano, operacao.solicitado_por)
     if operacao.aplicativos != identificar_aplicativos(operacao.plano):
         raise ValidationError("Uma integração OMIE mudou. Inicie uma nova solicitação.")
     return empresas
@@ -67,7 +43,7 @@ def conferir_operacao(operacao):
 def solicitar(plano, usuario, descricao="", pai=None, catalogo=False, destinos_ids=None, estrito=True):
     with transaction.atomic():
         plano = type(plano).objects.select_for_update().get(pk=plano.pk)
-        empresas = conferir_grupo(plano, usuario)
+        empresas = conferir_empresas(plano, usuario)
         if plano.cadastros.filter(status__in=OCUPADOS | {"revisao"}).exists() or plano.comparacoes.filter(status__in=["fila", "comparando", "enviando"]).exists():
             raise ValidationError("Conclua a solicitação em andamento antes de iniciar outra.")
         if destinos_ids is not None:
@@ -446,7 +422,7 @@ def confirmar_passo(linha, indice, integracao, codigo=""):
 def resolver_cadastro(op, usuario, escolhas):
     with transaction.atomic():
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
-        conferir_grupo(op.plano, usuario)
+        conferir_empresas(op.plano, usuario)
         if op.modo != "cadastro":
             raise ValidationError("Use a confirmação de situação para inativar ou reativar categorias.")
         if op.status != "revisao":
@@ -492,7 +468,7 @@ def _retomar(op, usuario):
     from datetime import timedelta
     with transaction.atomic():
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
-        conferir_grupo(op.plano, usuario)
+        conferir_empresas(op.plano, usuario)
         if op.status == "cancelada":
             raise ValidationError("Esta requisição foi cancelada. Crie uma nova solicitação para continuar.")
         if op.status in {"consultando", "enviando"} and op.atualizada_em < timezone.now() - timedelta(minutes=30):
@@ -504,7 +480,7 @@ def _retomar(op, usuario):
             op.save()
     with transaction.atomic():
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
-        conferir_grupo(op.plano, usuario)
+        conferir_empresas(op.plano, usuario)
         if op.status in {"consultando", "enviando"}:
             raise ValidationError("O worker ainda está processando. Aguarde a conclusão.")
         if op.empresas.filter(status="incerto").exists():
@@ -527,7 +503,7 @@ def verificar_cadastro(linha_id, usuario_id, codigo=""):
     op = linha.cadastro
     token = contexto_plano(op.plano)
     try:
-        conferir_grupo(op.plano, get_user_model().objects.get(pk=usuario_id))
+        conferir_empresas(op.plano, get_user_model().objects.get(pk=usuario_id))
         if op.aplicativos != identificar_aplicativos(op.plano):
             raise ValidationError("Integração alterada; confira o envio no aplicativo original.")
         with operacao_livre(op.pk), aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:

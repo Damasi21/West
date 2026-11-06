@@ -1,10 +1,28 @@
 # Replicação de categorias entre aplicativos OMIE
 
 Entrada: Configurações > Replicar dados, inclusive no menu principal antes de escolher
-um CNPJ. A configuração é organizada por grupo: escolha o grupo já informado
-nos cadastros das empresas e uma base PAI. Todas as outras empresas ativas desse
-grupo, no mesmo ambiente, participam. Não monitora automaticamente cadastros feitos
-diretamente no OMIE. Departamentos ficam para uma etapa posterior.
+um CNPJ. O gestor escolhe a base PAI e marca explicitamente as empresas FILHO entre
+as bases que pode administrar no ambiente atual. Não exige grupo no cadastro das
+empresas e não inclui automaticamente outras empresas do mesmo grupo. Empresas
+sem grupo ou de grupos diferentes podem participar.
+
+Gestores, administradores White Label e superusers mantêm seus escopos: origem e
+todos os destinos precisam ser administráveis pelo solicitante. Líderes e usuários
+simples não ganham acesso a esta função. As empresas de outras marcas não aparecem
+no ambiente White Label. Revogação de acesso é revalidada antes de confirmar e no
+worker. Alterações no grupo das empresas não interrompem a configuração.
+
+A configuração guarda os destinos disponíveis. A padronização completa continua
+limitada a uma empresa FILHO por solicitação; novos cadastros de categoria/grupo
+podem ser enviados aos destinos marcados em cada pedido. Salvar a configuração não
+envia dados à OMIE. Não monitora automaticamente cadastros feitos diretamente no
+OMIE. Departamentos ficam para uma etapa posterior.
+
+`PlanoReplicacao.selecao_livre` identifica as novas configurações; o campo `grupo`
+antigo é mantido para compatibilidade histórica. Planos anteriores com grupo usam
+seus destinos já cadastrados, sem continuar exigindo o vínculo de grupo. A migração
+`0008_planoreplicacao_selecao_livre` é aditiva, com valor padrão falso para preservar
+a rota de comparações dos planos antigos sem cadastro central.
 
 ## Cadastro central e progresso
 
@@ -376,3 +394,12 @@ somente constatam o estado cancelado. Um envio incerto continua incerto e bloque
 novas escritas somente naquela empresa até ser verificado por leitura. Essa verificação
 não reabre a requisição cancelada. A migration 0007 acrescenta Cancelada às opções de
 status do modelo. Não há exclusão/reversão de cadastros ou alterações na OMIE.
+
+### Texto codificado nas consultas por descrição
+
+A OMIE retorna descrições com entidades HTML, como `&lt;Disponível&gt;`, mas
+espera texto literal (`<Disponível>`) no filtro de ListarCategorias. O cliente
+decodifica somente o filtro; respostas e snapshots continuam intactos para
+comparação e auditoria. As posições disponíveis da origem são excluídas do plano
+tanto na forma literal quanto codificada. Isso evita interpretar uma consulta
+vazia causada pelo filtro como alteração ou remoção do cadastro no destino.

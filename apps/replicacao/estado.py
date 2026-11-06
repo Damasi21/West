@@ -29,14 +29,14 @@ def validar_categoria(categoria):
 
 
 def solicitar(plano, usuario, categoria, modo, empresas_ids):
-    from .central import conferir_grupo, OCUPADOS
+    from .central import conferir_empresas, OCUPADOS
     if modo not in MODOS:
         raise ValidationError("Escolha Inativar ou Reativar.")
     if not isinstance(empresas_ids, list) or not empresas_ids or any(type(pk) is not int for pk in empresas_ids) or len(set(empresas_ids)) != len(empresas_ids):
         raise ValidationError("Selecione ao menos uma empresa do grupo, sem repetições.")
     with transaction.atomic():
         plano = PlanoReplicacao.objects.select_for_update().get(pk=plano.pk)
-        empresas = conferir_grupo(plano, usuario)
+        empresas = conferir_empresas(plano, usuario)
         if not set(empresas_ids).issubset({e.pk for e in empresas}):
             raise PermissionDenied("A seleção contém empresa de fora da configuração.")
         if plano.cadastros.filter(status__in=OCUPADOS | {"revisao"}).exists() or plano.comparacoes.filter(status__in=["fila", "comparando", "enviando"]).exists():
@@ -202,11 +202,11 @@ def processar(op):
 
 
 def confirmar(op, usuario, escolhas):
-    from .central import conferir_grupo, conferir_operacao
+    from .central import conferir_empresas, conferir_operacao
     with transaction.atomic():
         PlanoReplicacao.objects.select_for_update().get(pk=op.plano_id)
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
-        conferir_grupo(op.plano, usuario)
+        conferir_empresas(op.plano, usuario)
         conferir_operacao(op)
         if op.modo not in MODOS or op.status != "revisao":
             raise ValidationError("Esta solicitação não está aguardando confirmação de situação.")

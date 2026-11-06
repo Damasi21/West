@@ -7,6 +7,7 @@ from django.db import models
 class PlanoReplicacao(models.Model):
     nome = models.CharField(max_length=120)
     grupo = models.CharField(max_length=120, blank=True, default="", db_default="")
+    selecao_livre = models.BooleanField(default=False)
     matriz = models.ForeignKey("empresas.Empresa", on_delete=models.PROTECT, related_name="planos_matriz")
     marca = models.ForeignKey("empresas.AmbienteWhiteLabel", null=True, blank=True, on_delete=models.PROTECT)
     criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
@@ -18,6 +19,10 @@ class PlanoReplicacao(models.Model):
 
     def __str__(self):
         return self.nome
+
+    @property
+    def cadastro_central(self):
+        return self.selecao_livre or bool(self.grupo)
 
 
 class DestinoReplicacao(models.Model):

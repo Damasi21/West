@@ -762,3 +762,34 @@ class PadronizacaoTests(TestCase):
         client.force_login(self.lider)
         self.assertEqual(client.post(url, {}).status_code, 403)
         self.assertEqual(self.api.escritas, [])
+
+    def test_posicao_disponivel_codificada_da_origem_nao_e_categoria_a_copiar(self):
+        self.api.catalogos[self.matriz.pk].append(categoria('2.01.95','&lt;Disponível&gt;',pai='2.01'))
+        op=self.previa()
+        self.assertFalse(any(p['origem']['codigo']=='2.01.95' for p in op.empresas.get().passos))
+        self.assertEqual(self.api.escritas,[])
+
+    def test_retomada_em_disponivel_codificado_nao_repete_escritas_confirmadas(self):
+        from html import unescape
+        self.api.catalogos[self.destino.pk].append(categoria('2.08.95','&lt;Disponível&gt;',pai='2.08',conta_inativa='S'))
+        self.patches[0].stop()  # Exercise the real client filter, not the fixture shortcut.
+        falhar_uma_vez=[True]
+        def servidor(integracao,metodo,parametros):
+            if metodo!='ListarCategorias': return self.api.chamada(integracao,metodo,parametros)
+            filtro=parametros.get('descricao','')
+            self.assertNotIn('&lt;',filtro)
+            if filtro=='<Disponível>' and falhar_uma_vez[0]:
+                falhar_uma_vez[0]=False
+                registros=[]
+            else:
+                registros=[deepcopy(c) for c in self.api.catalogos[integracao.empresa_id] if filtro.casefold() in unescape(c['descricao']).casefold()]
+            return {'categoria_cadastro':registros,'total_de_paginas':1,'total_de_registros':len(registros)}
+        with patch('apps.replicacao.omie.chamada',side_effect=servidor):
+            op=self.previa();self.executar(self.confirmar(op))
+            self.assertEqual(op.empresas.get().status,'erro')
+            escritas=deepcopy(self.api.escritas)
+            self.assertTrue(escritas)
+            self.executar(central.retomar(op,self.superuser))
+            self.assertEqual(op.empresas.get().status,'sucesso',op.empresas.get().mensagem)
+            self.assertEqual(self.api.escritas,escritas)
+            self.assertEqual(op.progresso_atual,op.progresso_total)

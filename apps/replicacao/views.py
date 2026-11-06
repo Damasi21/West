@@ -101,7 +101,7 @@ def novo(request):
 @require_GET
 def detalhe(request, plano_id):
     plano = plano_request(request, plano_id)
-    if plano.grupo and not request.GET.get("historico"):
+    if plano.cadastro_central and not request.GET.get("historico"):
         return painel_central(request, plano)
     comparacoes = plano.comparacoes.select_related("solicitado_por")
     comparacao_id = request.GET.get("comparacao")
@@ -280,7 +280,7 @@ def alternar(request, plano_id):
 def painel_central(request, plano):
     erro_grupo = ""
     try:
-        central.conferir_grupo(plano, request.user)
+        central.conferir_empresas(plano, request.user)
     except (ValidationError, PermissionDenied) as exc:
         erro_grupo = " ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
     operacao = plano.cadastros.first()
@@ -329,7 +329,7 @@ def situacao_categoria(request, plano_id, categoria_id):
     plano = plano_request(request, plano_id)
     categoria = get_object_or_404(CategoriaOmie, pk=categoria_id, empresa=plano.matriz)
     try:
-        empresas = central.conferir_grupo(plano, request.user)
+        empresas = central.conferir_empresas(plano, request.user)
         estado.validar_categoria(categoria)
     except (ValidationError, PermissionDenied) as exc:
         informar_erro(request, exc)
@@ -482,7 +482,7 @@ def verificar_cadastro(request, plano_id, empresa_id):
     plano = plano_request(request, plano_id)
     linha = get_object_or_404(CadastroCategoriaEmpresa, pk=empresa_id, cadastro__plano=plano)
     try:
-        central.conferir_grupo(plano, request.user)
+        central.conferir_empresas(plano, request.user)
         codigo = request.POST.get("codigo", "").strip()
         if linha.status != "incerto" or (codigo and (len(codigo) > 20 or any(c not in "0123456789." for c in codigo))):
             raise ValidationError("Selecione um envio sem confirmação e informe um código válido.")

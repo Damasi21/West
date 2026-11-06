@@ -2,6 +2,7 @@
 import json
 import re
 import time
+from html import unescape
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -136,6 +137,9 @@ def chamada(integracao, metodo, parametros):
 
 
 def listar(integracao, descricao=""):
+    # OMIE escapes labels in responses but expects their literal text in filters.
+    # Keep the returned snapshots unchanged for validation and audit.
+    descricao = unescape(descricao)
     itens = []
     pagina = 1
     total_paginas = None

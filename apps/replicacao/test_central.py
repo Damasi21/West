@@ -119,24 +119,23 @@ class CadastroCentralTests(TestCase):
         self.assertEqual(op.status, "revisao")
         self.assertEqual(self.api.escritas, [])
 
-    def test_grupo_ausente_mudou_ou_sem_permissao_nao_envia(self):
+    def test_grupos_diferentes_ou_ausentes_nao_bloqueiam_permissoes_continuam_obrigatorias(self):
         self.plano.grupo = ""
+        self.plano.selecao_livre = True
         self.plano.save()
-        with self.assertRaises(ValidationError): self.solicitar()
-        self.plano.grupo = "Grupo teste"
-        self.plano.save()
+        Empresa.objects.filter(pk=self.matriz.pk).update(grupo="")
         Empresa.objects.filter(pk=self.destino.pk).update(grupo="Outro")
-        with self.assertRaises(ValidationError): self.solicitar()
-        Empresa.objects.filter(pk=self.destino.pk).update(grupo="Grupo teste")
+        self.assertEqual({e.pk for e in central.conferir_empresas(self.plano,self.gestor)}, {self.matriz.pk,self.destino.pk})
         EmpresaUsuario.objects.filter(empresa=self.destino, usuario=self.gestor).delete()
         with self.assertRaises(PermissionDenied): central.solicitar(self.plano, self.gestor, "Aluguel", self.pai)
         self.assertEqual(self.api.escritas, [])
 
-    def test_formulario_grupo_inclui_todos_destinos_e_rejeita_pai_externo(self):
-        form = PlanoForm({"nome":"Grupo", "grupo":"Grupo teste", "matriz":self.matriz.pk}, usuario=self.superuser)
+    def test_formulario_usa_apenas_destinos_marcados_sem_exigir_grupo(self):
+        form = PlanoForm({"nome":"Seleção", "matriz":self.matriz.pk,"destinos":[self.destino.pk]}, usuario=self.superuser)
         self.assertTrue(form.is_valid(), form.errors)
+        self.assertNotIn("grupo", form.fields)
         self.assertEqual([e.pk for e in form.cleaned_data["destinos"]], [self.destino.pk])
-        form = PlanoForm({"nome":"Grupo", "grupo":"Grupo teste", "matriz":self.fora.pk}, usuario=self.superuser)
+        form = PlanoForm({"nome":"Seleção", "matriz":self.matriz.pk,"destinos":[self.matriz.pk]}, usuario=self.superuser)
         self.assertFalse(form.is_valid())
 
     def test_somente_consulta_atualiza_arvore_sem_escritas(self):
@@ -241,11 +240,11 @@ class CadastroCentralTests(TestCase):
         self.assertEqual(op.status, "erro")
         self.assertEqual(self.api.escritas, [])
 
-    def test_lider_viewer_nao_criam_e_grupo_com_membro_invisivel_e_recusado(self):
+    def test_lider_viewer_nao_criam_e_empresa_nao_selecionada_nao_interfere(self):
         for usuario in [self.lider, self.viewer]:
             with self.assertRaises(PermissionDenied): central.solicitar(self.plano, usuario, "Aluguel", self.pai)
         Empresa.objects.filter(pk=self.fora.pk).update(grupo="Grupo teste")
-        with self.assertRaises(PermissionDenied): central.empresas_grupo(self.gestor, "Grupo teste")
+        self.assertEqual({e.pk for e in central.conferir_empresas(self.plano,self.gestor)}, {self.matriz.pk,self.destino.pk})
         self.assertEqual(self.api.escritas, [])
 
     def test_semelhanca_surgida_imediatamente_antes_da_escrita_volta_para_revisao(self):
