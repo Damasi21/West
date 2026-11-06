@@ -42,7 +42,7 @@
     const labels = {fila: 'Na fila', consultando: 'Verificando OMIEs', revisao: 'Aguardando sua decisão',
         enviando: 'Cadastrando no grupo', concluido: 'Processamento concluído', erro: 'Consulta não concluída',
         pendente: 'Aguardando consulta', pronta: 'Verificada', executando: 'Cadastrando', sucesso: 'Confirmado',
-        bloqueada: 'Bloqueada', ignorada: 'Ignorada', incerto: 'Verificar resultado'};
+        cancelada: 'Requisição cancelada', bloqueada: 'Bloqueada', ignorada: 'Ignorada', incerto: 'Verificar resultado'};
     if (panel.dataset.repMode === 'inativar') labels.enviando = 'Inativando categorias';
     if (panel.dataset.repMode === 'reativar') labels.enviando = 'Reativando categorias';
     if (panel.dataset.repMode === 'espelho') labels.enviando = 'Padronizando plano';

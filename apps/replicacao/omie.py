@@ -27,6 +27,12 @@ class ConsultaRecusada(ValidationError):
     """Safe, actionable read errors; never changes uncertain-write semantics."""
 
 
+def eh_duplicidade(erro):
+    detalhe = getattr(erro, "detalhe", "").casefold()
+    return (getattr(erro, "codigo", "") == "102" and "existe" in detalhe
+        and any(campo in detalhe for campo in ("descri", "nome")))
+
+
 def detalhe_envio(dados, integracao):
     """Only structured provider messages, with known credentials redacted."""
     if not isinstance(dados, dict):

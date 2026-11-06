@@ -13,7 +13,7 @@ from apps.empresas.white_label_domains import _marca_host
 from . import omie
 from .comparacao import dados, normalizar, semelhanca, tipo, sem_observacoes
 from .models import CadastroCategoria, CadastroCategoriaEmpresa, ItemReplicacao
-from .permissions import conferir_acesso, contexto_plano, empresas_gerenciaveis
+from .permissions import conferir_acesso, contexto_plano, empresas_gerenciaveis, planos_permitidos
 from .services import aplicativo_livre, atualizar_catalogo, identificar_aplicativos, auditar
 
 
@@ -139,6 +139,10 @@ def montar_passos(op, catalogo, antigos=()):
     pai_codigo = op.pedido["pai"]["codigo"] if op.pedido["pai"]["codigo"] in {"1", "2"} else None
     for indice, origem in enumerate(desejadas(op.pedido)):
         anterior = deepcopy(antigos[indice]) if indice < len(antigos) else {}
+        if anterior.get("status") == "ignorada":
+            passos.append(anterior)
+            pai_codigo = anterior.get("codigo") if origem["totalizadora"] else pai_codigo
+            continue
         if anterior.get("status") == "sucesso":
             alvo = next((c for c in catalogo if c["codigo"] == anterior["codigo"]), None)
             if sem_observacoes(alvo) != sem_observacoes(anterior.get("confirmado")):
@@ -310,6 +314,10 @@ def _executar_cadastro(pk):
                     pai_codigo = op.pedido["pai"]["codigo"] if op.pedido["pai"]["codigo"] in {"1", "2"} else None
                     for indice, passo in enumerate(linha.passos):
                         conferir_operacao(op)
+                        if indice and linha.passos[indice-1].get("origem", {}).get("totalizadora") and linha.passos[indice-1].get("status") == "ignorada" and not pai_codigo:
+                            linha.passos[indice].update(status="ignorada", motivo_ignorar="Grupo superior ignorado por duplicidade.")
+                            linha.save()
+                            continue
                         if passo.get("status") != "sucesso":
                             linha.passos = montar_passos(op, catalogo_dados(linha.empresa, integracao), linha.passos)
                             linha.save()
@@ -318,8 +326,16 @@ def _executar_cadastro(pk):
                         progresso(op, f"{nome}: {passo['origem']['descricao']} — {passo['acao']}.")
                         linha.mensagem = f"Processando {passo['origem']['descricao']}."
                         linha.save(update_fields=["mensagem", "atualizada_em"])
-                        pai_codigo = aplicar_passo(op, linha, indice, integracao, pai_codigo)
-                    linha.status, linha.mensagem = "sucesso", "Cadastro confirmado na OMIE e atualizado no BI."
+                        try:
+                            pai_codigo = aplicar_passo(op, linha, indice, integracao, pai_codigo)
+                        except omie.OmieRecusada as exc:
+                            if not omie.eh_duplicidade(exc):
+                                raise
+                            linha.passos[indice].update(status="ignorada", codigo_erro="102", motivo_ignorar=exc.detalhe or "Descrição já existente; envio ignorado.")
+                            linha.save()
+                            if passo["origem"]["totalizadora"]:
+                                pai_codigo = None
+                    linha.status, linha.mensagem = "sucesso", ("Processamento concluído com duplicidade(s) ignorada(s)." if any(p.get("status") == "ignorada" for p in linha.passos) else "Cadastro confirmado na OMIE e atualizado no BI.")
                     linha.save()
                     auditar(op.plano, op.solicitado_por, "Cadastro central confirmado", cadastro_id=op.pk, empresa_id=linha.empresa_id, passos=linha.passos)
             except GrupoIncompativel as exc:
@@ -354,6 +370,8 @@ def _executar_cadastro(pk):
 
 def aplicar_passo(op, linha, indice, integracao, pai_codigo):
     passo = linha.passos[indice]
+    if passo.get("status") == "ignorada":
+        return passo.get("codigo") if passo["origem"]["totalizadora"] else pai_codigo
     if passo.get("status") == "sucesso":
         return passo["codigo"]
     origem, alvo = passo["origem"], passo["alvo"]
@@ -475,6 +493,8 @@ def _retomar(op, usuario):
     with transaction.atomic():
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
         conferir_grupo(op.plano, usuario)
+        if op.status == "cancelada":
+            raise ValidationError("Esta requisição foi cancelada. Crie uma nova solicitação para continuar.")
         if op.status in {"consultando", "enviando"} and op.atualizada_em < timezone.now() - timedelta(minutes=30):
             for linha in op.empresas.filter(status="executando"):
                 linha.status = "incerto" if any(p.get("status") == "executando" for p in linha.passos) else "erro"
@@ -510,7 +530,8 @@ def verificar_cadastro(linha_id, usuario_id, codigo=""):
         conferir_grupo(op.plano, get_user_model().objects.get(pk=usuario_id))
         if op.aplicativos != identificar_aplicativos(op.plano):
             raise ValidationError("Integração alterada; confira o envio no aplicativo original.")
-        with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
+        with operacao_livre(op.pk), aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
+            op.refresh_from_db()
             linha.refresh_from_db()
             if linha.status != "incerto":
                 return
@@ -518,11 +539,17 @@ def verificar_cadastro(linha_id, usuario_id, codigo=""):
                 if passo.get("status") in {"executando", "incerto"}:
                     confirmar_passo(linha, indice, integracao, codigo)
                     break
-            linha.status = "sucesso" if all(p.get("status") == "sucesso" for p in linha.passos) else "erro"
+            linha.status = "sucesso" if all(p.get("status") in {"sucesso", "ignorada"} for p in linha.passos) else "erro"
             linha.mensagem = "Resultado confirmado. Retome a consulta para concluir os passos restantes." if linha.status == "erro" else "Cadastro confirmado na OMIE."
             if op.modo == "espelho":
                 linha.status = "erro"
                 linha.mensagem = "Resultado confirmado sem reenviar. Retome para concluir os passos restantes e validar a sequência final."
+            if op.status == "cancelada":
+                linha.status = "ignorada"
+                linha.mensagem = "Envio verificado sem reenviar. A requisição permanece cancelada; as etapas restantes não serão executadas."
+            if any(p.get("status") in {"executando", "incerto"} for p in linha.passos):
+                linha.status = "incerto"
+                linha.mensagem = "Ainda há envio sem confirmação. Verifique os resultados restantes sem reenviar."
             linha.save()
             auditar(op.plano, get_user_model().objects.get(pk=usuario_id), "Verificou cadastro central sem repetir escrita", cadastro_id=op.pk, empresa_id=linha.empresa_id)
     except Exception:
@@ -537,3 +564,38 @@ def situacao(op):
         "percentual": min(100, round(op.progresso_atual * 100 / max(1, op.progresso_total))),
         "ativo": op.status in OCUPADOS,
         "empresas": [{"id": l.pk, "nome": l.empresa.nome_fantasia or l.empresa.nome, "status": l.status, "mensagem": l.mensagem} for l in linhas]}
+
+
+def cancelar(op, usuario):
+    """Stop future work only; uncertain sends remain visible and block that app."""
+    with operacao_livre(op.pk), transaction.atomic():
+        op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
+        usuario.refresh_from_db(fields=["is_active"])
+        if not usuario.is_active or not planos_permitidos(usuario).filter(pk=op.plano_id).exists():
+            raise PermissionDenied("É necessário administrar todas as empresas desta configuração.")
+        if op.status == "cancelada":
+            return op
+        if op.status == "concluido" and not op.empresas.exclude(status__in=["sucesso", "ignorada"]).exists():
+            raise ValidationError("Esta requisição já foi concluída sem pendências.")
+        antes = list(op.empresas.values("empresa_id", "status", "passos"))
+        for linha in op.empresas.select_for_update():
+            incerta = False
+            for passo in linha.passos:
+                if passo.get("status") in {"executando", "incerto"}:
+                    passo["status"] = "incerto"
+                    incerta = True
+                elif passo.get("status") not in {"sucesso", "ignorada"}:
+                    passo["status"] = "cancelada"
+            if incerta:
+                linha.status, linha.mensagem = "incerto", "Requisição cancelada. Este envio continua sem confirmação; verifique seu resultado sem reenviar."
+            elif linha.status not in {"sucesso", "ignorada"}:
+                linha.status, linha.mensagem = "ignorada", "Etapas restantes canceladas. Alterações já confirmadas foram preservadas."
+            linha.save()
+        op.status = "cancelada"
+        op.pedido["cancelamento"] = {"usuario_id": usuario.pk, "em": timezone.now().isoformat()}
+        op.mensagem = "Requisição cancelada. Nenhuma etapa restante será enviada; as alterações confirmadas foram preservadas."
+        if op.empresas.filter(status="incerto").exists():
+            op.mensagem += " Há envio sem confirmação que ainda precisa de verificação."
+        op.save()
+        auditar(op.plano, usuario, "Cancelou requisição sem desfazer alterações OMIE", cadastro_id=op.pk, antes=antes)
+        return op

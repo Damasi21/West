@@ -318,6 +318,7 @@ def painel_central(request, plano):
         "erro_grupo": erro_grupo, "form": NovaCategoriaForm(plano=plano), "form_padronizacao": PadronizacaoForm(plano=plano), "operacao": operacao,
         "progresso": central.situacao(operacao) if operacao else None, "linhas": linhas,
         "ocupado": ocupado, "historico": plano.cadastros.all()[:20],
+        "pode_cancelar": operacao and (operacao.status in {"erro", "fila", "revisao"} or (operacao.status == "concluido" and operacao.empresas.exclude(status__in=["sucesso", "ignorada"]).exists())),
         "alteracao_situacao": operacao and operacao.modo in {"inativar", "reativar"}})
 
 
@@ -479,3 +480,18 @@ def verificar_cadastro(request, plano_id, empresa_id):
     except Exception:
         messages.error(request, "Worker indisponível; tente verificar novamente.")
     return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={linha.cadastro_id}")
+
+
+@ambiente_view
+@require_POST
+def cancelar_cadastro(request, plano_id, cadastro_id):
+    plano = plano_request(request, plano_id)
+    op = get_object_or_404(plano.cadastros, pk=cadastro_id)
+    try:
+        if request.POST.get("confirmar") != "sim":
+            raise ValidationError("Confirme o cancelamento das etapas restantes desta requisição.")
+        central.cancelar(op, request.user)
+        messages.success(request, "Requisição cancelada. Os registros já enviados à OMIE foram preservados.")
+    except (ValidationError, PermissionDenied) as exc:
+        informar_erro(request, exc)
+    return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")

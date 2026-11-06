@@ -48,14 +48,15 @@ tratá-lo como campo replicado. Envios antigos incertos que efetivamente incluí
   posição. Exige selecionar novamente as empresas e confirmar o impacto histórico:
   lançamentos anteriores conservam o código, mas passam a exibir a categoria
   reescrita e sua classificação. Pode encerrar a prévia sem novos envios.
-- Colisões de descrição no mesmo grupo são resolvidas na prévia: cadastros que
-  ocupam um nome necessário recebem primeiro um nome temporário único; depois
-  são aplicados os nomes finais. Um excedente que detenha um nome necessário
-  recebe nome próprio de excedente e é inativado. Os códigos continuam os mesmos.
-  Todas essas ações exigem a confirmação da prévia e aparecem no histórico. Em
-  falha parcial, nomes temporários podem permanecer até a conclusão dos passos
-  restantes; não existe rollback automático na OMIE. Prévias anteriores precisam
-  ser encerradas/refeitas para usar esse tratamento.
+- Descrições já existentes no mesmo grupo são ignoradas, preservando o cadastro
+  que já usa o nome (inclusive se seria excedente). Não se criam nomes temporários.
+  A prévia identifica o código existente e as etapas ignoradas. Grupos ignorados
+  sem vínculo seguro também fazem ignorar os filhos, sem enviá-los para outro grupo.
+  Recusa explícita 102 acompanhada de motivo de nome/descrição duplicada é registrada
+  como ignorada e o worker continua os próximos itens. Outros erros não são ignorados.
+  Etapas ignoradas contam como processadas, sem serem tratadas como confirmação de
+  espelhamento integral. Os vínculos só são reconstruídos para envios confirmados.
+  Prévias da regra anterior precisam ser encerradas/refeitas para essa política.
 - O worker recebe um plano congelado, não recalcula os pares depois de uma inclusão.
   Revalida matriz, destino, permissões e integrações. Alterações externas interrompem
   os novos envios; gere outra prévia. Cada intenção é persistida antes da única
@@ -330,3 +331,18 @@ do provedor, com credenciais redigidas. HTTP 500 com codigo_status não zero e c
 de cadastro vazio é recusa explícita; sem esse contrato continua incerto. Em ambos
 os casos não há repetição automática. Verificação de um resultado desconhecido
 continua obrigatoriamente somente de leitura.
+
+## Cancelar requisição
+
+O botão aparece para fila, prévia/revisão, erro ou execução encerrada com pendências.
+Exige POST autenticado, CSRF e confirmação no modal; só administradores da configuração
+no seu ambiente podem usar. É possível encerrar mesmo com integração indisponível ou
+configuração pausada. O lock da operação impede interromper um worker que ainda está
+executando. Não há encerramento forçado de processo ou interferência em outras tarefas.
+
+O cancelamento preserva envios confirmados e o histórico; as etapas restantes não são
+enviadas e a requisição não pode ser retomada. Tarefas antigas que chegarem depois
+somente constatam o estado cancelado. Um envio incerto continua incerto e bloqueia
+novas escritas somente naquela empresa até ser verificado por leitura. Essa verificação
+não reabre a requisição cancelada. A migration 0007 acrescenta Cancelada às opções de
+status do modelo. Não há exclusão/reversão de cadastros ou alterações na OMIE.

@@ -114,7 +114,7 @@ class CadastroCategoria(models.Model):
     modo = models.CharField(max_length=12, default="cadastro")
     pedido = models.JSONField(default=dict)
     aplicativos = models.JSONField(default=dict)
-    status = models.CharField(max_length=16, default="fila", choices=[("fila", "Na fila"), ("consultando", "Verificando OMIEs"), ("revisao", "Aguardando sua decisão"), ("enviando", "Cadastrando no grupo"), ("concluido", "Processamento concluído"), ("erro", "Consulta não concluída")])
+    status = models.CharField(max_length=16, default="fila", choices=[("fila", "Na fila"), ("consultando", "Verificando OMIEs"), ("revisao", "Aguardando sua decisão"), ("enviando", "Cadastrando no grupo"), ("concluido", "Processamento concluído"), ("erro", "Consulta não concluída"), ("cancelada", "Requisição cancelada")])
     mensagem = models.TextField(blank=True)
     progresso_atual = models.PositiveIntegerField(default=0)
     progresso_total = models.PositiveIntegerField(default=0)
