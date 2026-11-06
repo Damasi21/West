@@ -219,7 +219,7 @@ def executar_cadastro(pk):
     try:
         with operacao_livre(pk):
             _executar_cadastro(pk)
-    except ValidationError:
+    except (ValidationError, CadastroCategoria.DoesNotExist):
         # A duplicate Celery delivery must leave the original worker in charge.
         return
 

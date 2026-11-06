@@ -48,15 +48,17 @@ tratá-lo como campo replicado. Envios antigos incertos que efetivamente incluí
   posição. Exige selecionar novamente as empresas e confirmar o impacto histórico:
   lançamentos anteriores conservam o código, mas passam a exibir a categoria
   reescrita e sua classificação. Pode encerrar a prévia sem novos envios.
-- Descrições já existentes no mesmo grupo são ignoradas, preservando o cadastro
-  que já usa o nome (inclusive se seria excedente). Não se criam nomes temporários.
-  A prévia identifica o código existente e as etapas ignoradas. Grupos ignorados
-  sem vínculo seguro também fazem ignorar os filhos, sem enviá-los para outro grupo.
-  Recusa explícita 102 acompanhada de motivo de nome/descrição duplicada é registrada
-  como ignorada e o worker continua os próximos itens. Outros erros não são ignorados.
-  Etapas ignoradas contam como processadas, sem serem tratadas como confirmação de
-  espelhamento integral. Os vínculos só são reconstruídos para envios confirmados.
-  Prévias da regra anterior precisam ser encerradas/refeitas para essa política.
+- Quando outra posição no FILHO ocupa o nome necessário, a prévia acrescenta uma
+  etapa para diferenciar esse cadastro com ponto no início (`.Nome`, `..Nome` se
+  necessário). Não ignora a posição nem troca seus IDs. As etapas por sequência
+  passam a receber os nomes exatos do PAI; excedentes ficam inativos e conservam o
+  ponto. O ponto não precisa ser removido depois. A etapa auxiliar altera somente
+  a descrição, preservando observações, situação e classificação.
+  O nome com ponto respeita 50 caracteres: se não couber, a empresa fica bloqueada
+  na prévia, com o código que precisa de ajuste na OMIE, sem cortar texto.
+  Uma colisão nova após a prévia interrompe os envios dessa empresa e exige nova
+  consulta; não autoriza alterações extras. Prévias antigas devem ser refeitas
+  (`versao_nomes=4`). Etapas confirmadas não são repetidas em retomadas.
 - O worker recebe um plano congelado, não recalcula os pares depois de uma inclusão.
   Revalida matriz, destino, permissões e integrações. Alterações externas interrompem
   os novos envios; gere outra prévia. Cada intenção é persistida antes da única

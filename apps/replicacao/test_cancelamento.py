@@ -91,7 +91,7 @@ class CancelamentoTests(TestCase):
         IntegracaoOmie.objects.filter(empresa=self.matriz).update(ativa=False)
         self.assertEqual(central.cancelar(op,self.superuser).status,"cancelada")
 
-    def test_erro_102_e_ignorado_e_proxima_categoria_e_processada(self):
+    def test_nova_colisao_102_apos_previa_exige_nova_previa_sem_repetir(self):
         self.api.catalogos[self.destino.pk][-1]['descricao']='Nome antigo 1'
         self.api.catalogos[self.matriz.pk].append(categoria('2.01.02','Seguro',pai='2.01'))
         self.api.catalogos[self.destino.pk].append(categoria('2.08.08','Nome antigo 2',pai='2.08'))
@@ -106,14 +106,12 @@ class CancelamentoTests(TestCase):
         with patch('apps.replicacao.omie.chamada',side_effect=escrever) as envio:
             central.executar_cadastro(op.pk)
         linha.refresh_from_db()
-        self.assertEqual(linha.status,'sucesso',linha.mensagem)
-        self.assertEqual(linha.passos[1]['status'],'ignorada')
-        self.assertEqual(linha.passos[1]['codigo_erro'],'102')
-        self.assertEqual(linha.passos[2]['status'],'sucesso')
-        self.assertEqual(envio.call_count,2)
-        self.assertEqual(self.api.catalogos[self.destino.pk][-1]['descricao'],'Seguro')
+        self.assertEqual(linha.status,'erro',linha.mensagem)
+        self.assertEqual(linha.passos[1]['status'],'erro')
+        self.assertEqual(linha.passos[2]['status'],'pendente')
+        self.assertEqual(envio.call_count,1)
 
-    def test_grupo_duplicado_nao_envia_filhos_para_outro_grupo(self):
+    def test_grupo_duplicado_recebe_ponto_e_preserva_hierarquia_dos_filhos(self):
         self.api.catalogos[self.matriz.pk][1]['descricao']='Grupo já existente'
         self.api.catalogos[self.destino.pk].append(categoria('2.09','Grupo já existente',grupo=True,pai='2'))
         # Equal group counts: a second source group maps to the protected target.
@@ -121,12 +119,15 @@ class CancelamentoTests(TestCase):
         op=padronizacao.solicitar(self.plano,self.superuser,[self.destino.pk])
         central.executar_cadastro(op.pk);op.refresh_from_db()
         linha=op.empresas.get()
-        self.assertEqual(linha.passos[0]['acao'],'ignorar')
-        self.assertFalse(linha.passos[0]['permitir_filhos'])
-        self.assertEqual(linha.passos[1]['acao'],'ignorar')
+        self.assertEqual(linha.passos[0]['acao'],'prefixar')
+        self.assertEqual(linha.passos[0]['esperado']['descricao'],'.Grupo já existente')
         op=padronizacao.confirmar(op,self.superuser,{'confirmar':'sim',f'aplicar_{linha.pk}':'sim'})
         central.executar_cadastro(op.pk)
-        self.assertEqual(self.api.escritas,[])
+        self.assertTrue(self.api.escritas)
+        cs={c['codigo']:c for c in self.api.catalogos[self.destino.pk]}
+        self.assertEqual(cs['2.08']['descricao'],'Grupo já existente')
+        self.assertEqual(cs['2.09']['descricao'],'Outro grupo')
+        self.assertEqual(cs['2.08.07']['categoria_superior'],'2.08')
 
     def test_cancelada_com_envio_incerto_pode_verificar_sem_reabrir_ou_reenviar(self):
         self.api.catalogos[self.destino.pk][-1]['descricao']='Nome antigo'

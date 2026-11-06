@@ -128,10 +128,7 @@ class PadronizacaoTests(TestCase):
     def test_grupo_pai_inativo_nao_e_reativado_por_metodo_indevido(self):
         self.api.catalogos[self.destino.pk][1]["conta_inativa"] = "S"
         op = self.previa()
-        self.assertEqual(op.empresas.get().status, "revisao")
-        self.assertTrue(all(p["acao"]=="ignorar" for p in op.empresas.get().passos))
-        self.executar(self.confirmar(op))
-        self.assertEqual(op.empresas.get().status,"sucesso")
+        self.assertEqual(op.empresas.get().status, "bloqueada")
         self.assertEqual(self.api.escritas, [])
 
     def test_mudanca_destino_depois_previa_interrompe_sem_escrita(self):
@@ -378,7 +375,7 @@ class PadronizacaoTests(TestCase):
         self.api.catalogos[self.destino.pk][-1]["codigo_dre"] = "MATRIZ"
         op = self.previa()
         self.assertEqual(op.status, "revisao", op.mensagem)
-        self.assertTrue(all(p["acao"] == "ignorar" for p in op.empresas.get().passos))
+        self.assertTrue(all(p["acao"] == "manter" for p in op.empresas.get().passos))
         self.executar(self.confirmar(op))
         self.assertEqual(op.empresas.get().status, "sucesso", op.empresas.get().mensagem)
         self.assertEqual(self.api.escritas, [])
@@ -526,23 +523,23 @@ class PadronizacaoTests(TestCase):
                 raise central.omie.OmieRecusada("Descrição já existe",detalhe="Já existe uma categoria com essa descrição neste grupo.",codigo="102")
         return self.api.chamada(integracao,metodo,payload)
 
-    def test_nome_ocupado_por_excedente_e_ignorado_sem_alterar_o_existente(self):
+    def test_nome_ocupado_por_excedente_recebe_ponto_e_permanece_inativo(self):
         self.api.catalogos[self.matriz.pk][-1]["descricao"]="Outras Receitas"
         self.api.catalogos[self.destino.pk][-1]["descricao"]="13º Salário"
         self.api.catalogos[self.destino.pk].append(categoria("2.08.95","Outras Receitas",pai="2.08"))
         op=self.previa()
         linha=op.empresas.get()
-        self.assertTrue(all(p["acao"]=="ignorar" for p in linha.passos))
+        self.assertEqual(linha.passos[0]["acao"],"prefixar")
         self.assertEqual(self.api.escritas,[])
         self.confirmar(op)
         with patch('apps.replicacao.omie.chamada',side_effect=self.validar_unicidade): self.executar(op)
         linha.refresh_from_db()
         self.assertEqual(linha.status,"sucesso",linha.mensagem)
         cs={c["codigo"]:c for c in self.api.catalogos[self.destino.pk]}
-        self.assertEqual(cs["2.08.07"]["descricao"],"13º Salário")
-        self.assertEqual(cs["2.08.95"]["conta_inativa"],"N")
-        self.assertEqual(cs["2.08.95"]["descricao"],"Outras Receitas")
-        self.assertEqual(self.api.escritas,[])
+        self.assertEqual(cs["2.08.07"]["descricao"],"Outras Receitas")
+        self.assertEqual(cs["2.08.95"]["conta_inativa"],"S")
+        self.assertEqual(cs["2.08.95"]["descricao"],".Outras Receitas")
+        self.assertEqual(VinculoCategoria.objects.filter(destino=self.alvo).count(),2)
 
     def test_troca_circular_de_nomes_mantem_codigos_e_nao_colide(self):
         self.api.catalogos[self.matriz.pk][-1]["descricao"]="Nome B"
@@ -550,14 +547,13 @@ class PadronizacaoTests(TestCase):
         self.api.catalogos[self.destino.pk][-1]["descricao"]="Nome A"
         self.api.catalogos[self.destino.pk].append(categoria("2.08.08","Nome B",pai="2.08"))
         op=self.previa()
-        self.assertTrue(all(p["acao"]=="ignorar" for p in op.empresas.get().passos))
+        self.assertEqual(sum(p["acao"]=="prefixar" for p in op.empresas.get().passos),2)
         self.confirmar(op)
         with patch('apps.replicacao.omie.chamada',side_effect=self.validar_unicidade): self.executar(op)
         self.assertEqual(op.empresas.get().status,"sucesso",op.empresas.get().mensagem)
         cs={c["codigo"]:c for c in self.api.catalogos[self.destino.pk]}
-        self.assertEqual(cs["2.08.07"]["descricao"],"Nome A")
-        self.assertEqual(cs["2.08.08"]["descricao"],"Nome B")
-        self.assertEqual(self.api.escritas,[])
+        self.assertEqual(cs["2.08.07"]["descricao"],"Nome B")
+        self.assertEqual(cs["2.08.08"]["descricao"],"Nome A")
 
     def test_previa_sem_tratamento_de_colisoes_exige_gerar_outra(self):
         op=self.previa()
@@ -565,3 +561,50 @@ class PadronizacaoTests(TestCase):
         op.save()
         with self.assertRaises(ValidationError): self.confirmar(op)
         self.assertEqual(self.api.escritas,[])
+
+    def test_ponto_repetido_quando_nome_com_um_ponto_ja_existe(self):
+        self.api.catalogos[self.matriz.pk][-1]["descricao"]="Outras Receitas"
+        self.api.catalogos[self.destino.pk][-1]["descricao"]="Nome antigo"
+        self.api.catalogos[self.destino.pk] += [categoria("2.08.95","Outras Receitas",pai="2.08"),categoria("2.08.96",".Outras Receitas",pai="2.08")]
+        op=self.previa()
+        self.assertEqual(op.empresas.get().passos[0]["esperado"]["descricao"],"..Outras Receitas")
+        self.confirmar(op)
+        with patch('apps.replicacao.omie.chamada',side_effect=self.validar_unicidade): self.executar(op)
+        self.assertEqual(op.empresas.get().status,"sucesso",op.empresas.get().mensagem)
+        cs={c["codigo"]:c for c in self.api.catalogos[self.destino.pk]}
+        self.assertEqual(cs["2.08.95"]["descricao"],"..Outras Receitas")
+        self.assertEqual(cs["2.08.95"]["conta_inativa"],"S")
+        self.assertEqual(cs["2.08.07"]["descricao"],"Outras Receitas")
+
+    def test_prefixo_nao_corta_nome_de_cinquenta_caracteres(self):
+        nome="X"*50
+        self.api.catalogos[self.matriz.pk][-1]["descricao"]=nome
+        self.api.catalogos[self.destino.pk][-1]["descricao"]="Nome antigo"
+        self.api.catalogos[self.destino.pk].append(categoria("2.08.95",nome,pai="2.08"))
+        op=self.previa()
+        linha=op.empresas.get()
+        self.assertEqual(linha.status,"bloqueada")
+        self.assertIn("2.08.95",linha.mensagem)
+        self.assertIn("50 caracteres",linha.mensagem)
+        self.assertEqual(self.api.escritas,[])
+        self.assertEqual(self.api.catalogos[self.destino.pk][-1]["descricao"],nome)
+
+    def test_retomada_depois_do_prefixo_nao_repete_renomeacao_confirmada(self):
+        self.api.catalogos[self.matriz.pk][-1]["descricao"]="Outras Receitas"
+        self.api.catalogos[self.destino.pk][-1]["descricao"]="Nome antigo"
+        self.api.catalogos[self.destino.pk].append(categoria("2.08.95","Outras Receitas",pai="2.08"))
+        op=self.previa();self.confirmar(op)
+        def falhar(i,m,p):
+            if p.get("codigo")=="2.08.07": raise central.omie.OmieRecusada(codigo="123",detalhe="Recusa simulada")
+            return self.api.chamada(i,m,p)
+        with patch('apps.replicacao.omie.chamada',side_effect=falhar): self.executar(op)
+        self.assertEqual(op.empresas.get().status,"erro")
+        self.assertEqual(self.api.catalogos[self.destino.pk][-1]["descricao"],".Outras Receitas")
+        op=central.retomar(op,self.superuser);self.executar(op)
+        self.assertEqual(op.empresas.get().status,"sucesso",op.empresas.get().mensagem)
+        self.assertEqual(sum(p.get("codigo")=="2.08.95" and "conta_inativa" not in p for _,_,p in self.api.escritas),1)
+
+    def test_tarefa_de_solicitacao_removida_na_limpeza_nao_consulta_api(self):
+        with patch('apps.replicacao.omie.listar') as consulta:
+            central.executar_cadastro(999999999)
+        consulta.assert_not_called()

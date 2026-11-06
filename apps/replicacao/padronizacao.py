@@ -56,8 +56,21 @@ def estrutura(categorias, empresa=""):
     return grupos, itens
 
 
-def ignorar_duplicados(passos, destino):
-    protegidos = set()
+def prefixar_nomes(passos, destino):
+    """Free occupied names with dots; surplus records retain that dotted name."""
+    por_codigo = {p["alvo"]["codigo"]: p for p in passos if p.get("alvo")}
+    reservados = {normalizar(c["descricao"]) for c in destino} | {normalizar(p["esperado"]["descricao"]) for p in passos}
+    prefixados, desejados = {}, set()
+
+    def nome_com_ponto(cadastro):
+        nome = "." + cadastro["descricao"]
+        while len(nome) <= 50 and normalizar(nome) in reservados:
+            nome = "." + nome
+        if len(nome) > 50:
+            raise ValidationError(f'Não é possível adicionar ponto ao cadastro {cadastro["codigo"]} — "{cadastro["descricao"]}" sem ultrapassar 50 caracteres. Abrevie o nome do cadastro que ocupa a descrição na OMIE e gere outra prévia. Nenhum texto foi cortado.')
+        reservados.add(normalizar(nome))
+        return nome
+
     for passo in passos:
         if passo.get("excedente"):
             continue
@@ -65,22 +78,36 @@ def ignorar_duplicados(passos, destino):
         if not passo["grupo"]:
             grupo = passos[passo["pai_indice"]]
             pai = grupo["alvo"]["codigo"] if grupo.get("alvo") else "novo:" + str(passo["pai_indice"])
-        iguais = [c for c in destino if c["totalizadora"] == passo["grupo"]
-            and c["categoria_superior"] == pai and normalizar(c["descricao"]) == normalizar(passo["esperado"]["descricao"])]
-        if iguais:
-            passo.update(acao="ignorar", motivo_ignorar="Descrição já existente neste grupo (" + ", ".join(c["codigo"] for c in iguais) + "); cadastro preservado.",
-                duplicados=[c["codigo"] for c in iguais], permitir_filhos=bool(passo["grupo"] and passo.get("alvo")
-                    and len(iguais) == 1 and not iguais[0]["conta_inativa"] and iguais[0]["codigo"] == passo["alvo"]["codigo"]))
-            protegidos.update(c["codigo"] for c in iguais if not passo.get("alvo") or c["codigo"] != passo["alvo"]["codigo"])
+        chave = (passo["grupo"], pai, normalizar(passo["esperado"]["descricao"]))
+        if chave in desejados:
+            raise ValidationError("A base PAI possui descrições repetidas no mesmo grupo. Revise os nomes antes de padronizar.")
+        desejados.add(chave)
+        for atual in destino:
+            if atual["totalizadora"] != passo["grupo"] or atual["categoria_superior"] != pai or normalizar(atual["descricao"]) != chave[2]:
+                continue
+            if passo.get("alvo") and atual["codigo"] == passo["alvo"]["codigo"]:
+                continue
+            dono = por_codigo.get(atual["codigo"])
+            if not dono:
+                raise ValidationError(f'O cadastro {atual["codigo"]} ocupa o nome solicitado, mas está fora do plano autorizado. Revise a OMIE antes de continuar.')
+            if atual["codigo"] not in prefixados:
+                novo = {**atual, "descricao": nome_com_ponto(atual)}
+                prefixados[atual["codigo"]] = {"origem": deepcopy(atual), "alvo": deepcopy(atual),
+                    "esperado": novo, "acao": "prefixar", "somente_nome": True,
+                    "grupo": atual["totalizadora"], "pai_indice": None, "excedente": True,
+                    "status": "pendente", "rotulo": "Diferenciar nome com ponto · " + atual["descricao"]}
+                dono["alvo"] = deepcopy(novo)
+                if dono.get("excedente"):
+                    dono["esperado"]["descricao"] = novo["descricao"]
+                if dono["acao"] == "manter":
+                    dono["acao"] = "inativar" if dono.get("excedente") else "reescrever"
+    iniciais = [prefixados[c] for c in sorted(prefixados, key=lambda c: tuple(int(n) for n in c.split(".")))]
     for passo in passos:
-        if passo.get("alvo") and passo["alvo"]["codigo"] in protegidos:
-            passo.update(acao="ignorar", motivo_ignorar="Este cadastro já atende um nome existente e será preservado, sem reescrever ou inativar.", permitir_filhos=False)
-        indice = passo.get("pai_indice")
-        if indice is not None and passos[indice]["acao"] == "ignorar" and not passos[indice].get("permitir_filhos"):
-            passo.update(acao="ignorar", motivo_ignorar="Grupo superior ignorado por duplicidade; nenhuma categoria será enviada para outro grupo.")
-        if passo["grupo"] and passo["acao"] != "ignorar" and passo["esperado"]["conta_inativa"] != (passo["alvo"]["conta_inativa"] if passo.get("alvo") else False):
+        if passo.get("pai_indice") is not None:
+            passo["pai_indice"] += len(iniciais)
+        if passo["grupo"] and passo["esperado"]["conta_inativa"] != (passo["alvo"]["conta_inativa"] if passo.get("alvo") else False):
             raise ValidationError("A situação de um grupo pai difere da matriz. A API de grupos não oferece ativação/inativação; ajuste esse grupo na OMIE e gere outra prévia.")
-    return passos
+    return iniciais + passos
 
 
 def planejar(fonte, destino, *, empresa_pai="", empresa_filho=""):
@@ -125,7 +152,7 @@ def planejar(fonte, destino, *, empresa_pai="", empresa_filho=""):
                 adicionar(filho, atual, gi)
             for sobra in alvos[len(filhos):]:
                 adicionar(None, sobra, gi, excedente=True)
-    return ignorar_duplicados(passos, destino)
+    return prefixar_nomes(passos, destino)
 
 
 def solicitar(plano, usuario, destinos_ids):
@@ -160,8 +187,8 @@ def confirmar(op, usuario, escolhas):
         cancelar = escolhas.get("cancelar") == "sim"
         if not cancelar and not op.pedido.get("somente_ativas"):
             raise ValidationError("Encerre esta prévia anterior sem novos envios e gere outra com apenas as contas ativas da base PAI.")
-        if not cancelar and op.pedido.get("versao_nomes") != 3:
-            raise ValidationError("Encerre esta prévia sem novos envios e gere outra para ignorar os nomes já existentes antes de executar.")
+        if not cancelar and op.pedido.get("versao_nomes") != 4:
+            raise ValidationError("Encerre esta prévia sem novos envios e gere outra para diferenciar com ponto os nomes ocupados antes de executar.")
         if not cancelar and escolhas.get("confirmar") != "sim":
             raise ValidationError("Confirme que os nomes dos lançamentos históricos também acompanharão as categorias reescritas.")
         if not cancelar and not any(escolhas.get(f"aplicar_{pk}") == "sim" for pk in op.empresas.values_list("pk", flat=True)):
@@ -205,15 +232,15 @@ def processar(op):
         raise PermissionDenied("Os destinos não correspondem às empresas FILHO escolhidas.")
     if op.pedido["etapa"] == "envio" and not op.pedido.get("somente_ativas"):
         raise ValidationError("Esta prévia foi gerada pela regra anterior, que incluía contas inativas. Gere uma nova prévia com apenas as contas ativas da base PAI antes de enviar. Os envios já confirmados permanecem registrados.")
-    if op.pedido["etapa"] == "envio" and op.pedido.get("versao_nomes") != 3:
-        raise ValidationError("Esta prévia precisa ser refeita para ignorar duplicidades sem renomeações temporárias. Gere outra prévia; as alterações já confirmadas permanecem registradas.")
+    if op.pedido["etapa"] == "envio" and op.pedido.get("versao_nomes") != 4:
+        raise ValidationError("Esta prévia precisa ser refeita para diferenciar os nomes ocupados com ponto. Gere outra prévia; as alterações já confirmadas permanecem registradas.")
     with aplicativo_livre(op.plano.matriz, aguardar_sincronizacao=False) as integracao:
         fonte = catalogo(op.plano.matriz, integracao)
     if op.pedido["etapa"] == "consulta":
         grupos_fonte, _ = estrutura(origem_ativa(fonte), "Base PAI — " + (op.plano.matriz.nome_fantasia or op.plano.matriz.nome))
         if not grupos_fonte:
             raise ValidationError("A matriz não possui grupos ativos de receita ou despesa para padronizar. Nenhuma alteração será enviada.")
-        op.pedido.update(fonte=fonte, destinos={}, somente_ativas=True, versao_nomes=3)
+        op.pedido.update(fonte=fonte, destinos={}, somente_ativas=True, versao_nomes=4)
         progresso(op, "Base PAI consultada; preparando a sequência por empresa.", 1)
         for linha in linhas:
             conferir_operacao(op)
@@ -264,26 +291,16 @@ def processar(op):
                 for indice, passo in enumerate(linha.passos):
                     conferir_operacao(op)
                     progresso(op, f"{linha.empresa.nome_fantasia or linha.empresa.nome}: {indice+1}/{len(linha.passos)} · {passo['rotulo']} · {passo['acao']}.")
-                    if passo.get("status") not in {"sucesso", "ignorada"}:
-                        pai = passo.get("pai_indice")
-                        if pai is not None and linha.passos[pai].get("status") == "ignorada" and not linha.passos[pai].get("permitir_filhos"):
-                            passo.update(acao="ignorar", motivo_ignorar="Grupo superior ignorado; envio da categoria ignorado.")
-                        try:
-                            aplicar(linha, indice, integracao)
-                        except omie.OmieRecusada as exc:
-                            if not omie.eh_duplicidade(exc):
-                                raise
-                            passo.update(status="ignorada", codigo_erro="102", motivo_ignorar=exc.detalhe or "Nome já existente; operação ignorada.", permitir_filhos=False)
-                            linha.save()
+                    if passo.get("status") != "sucesso":
+                        aplicar(linha, indice, integracao)
                     progresso(op, op.mensagem, 1)
                 # The final complete read also catches unexpected structural changes.
                 final = catalogo(linha.empresa, integracao)
                 if not iguais(final, esperado_catalogo(op, linha)):
                     raise ValidationError("O cadastro mudou durante a execução. Confira a OMIE e gere outra prévia para as diferenças.")
-                if not any(p.get("status") == "ignorada" for p in linha.passos) and any(p["acao"] not in {"manter", "ignorar"} for p in planejar(fonte, final)):
+                if any(p["acao"] != "manter" for p in planejar(fonte, final)):
                     raise ValidationError("Os códigos atribuídos pela OMIE não mantiveram a sequência prevista. Confira a ordem e gere outra prévia para ajustar; os envios já confirmados não serão repetidos.")
-                ignoradas = sum(p.get("status") == "ignorada" for p in linha.passos)
-                linha.status, linha.mensagem = "sucesso", (f"Processamento concluído: {ignoradas} etapa(s) ignorada(s); cadastros existentes preservados." if ignoradas else "Sequência confirmada na OMIE e atualizada no BI.")
+                linha.status, linha.mensagem = "sucesso", "Sequência confirmada na OMIE e atualizada no BI."
                 linha.save()
                 atualizar_vinculos(op, linha)
                 auditar(op.plano, op.solicitado_por, "Concluiu padronização por posição", cadastro_id=op.pk, empresa_id=linha.empresa_id, passos=linha.passos)
@@ -302,7 +319,7 @@ def processar(op):
             linha.save()
     op.status = "concluido"
     pendentes = op.empresas.exclude(status__in=["sucesso", "ignorada"]).exists()
-    progresso(op, "Execução interrompida com pendências. As etapas confirmadas foram preservadas; confira o resultado por empresa antes de retomar." if pendentes else "Processamento concluído. Confira as etapas confirmadas e as duplicidades ignoradas por empresa.")
+    progresso(op, "Execução interrompida com pendências. As etapas confirmadas foram preservadas; confira o resultado por empresa antes de retomar." if pendentes else "Padronização concluída e confirmada nas empresas selecionadas.")
 
 
 def atualizar_vinculos(op, linha):
@@ -323,12 +340,6 @@ def atualizar_vinculos(op, linha):
 
 def aplicar(linha, indice, integracao):
     passo = linha.passos[indice]
-    if passo["acao"] == "ignorar":
-        passo["status"] = "ignorada"
-        if passo.get("permitir_filhos") and passo.get("alvo"):
-            passo["codigo"] = passo["alvo"]["codigo"]
-        linha.save()
-        return
     esperado = deepcopy(passo["esperado"])
     referencia = passo.get("referencia")
     alvo = passo["alvo"]
@@ -360,7 +371,7 @@ def aplicar(linha, indice, integracao):
         payload["tipo_grupo"] = tipo(passo["origem"])
     else:
         payload["categoria_superior"] = esperado["categoria_superior"]
-    if not passo["grupo"] and not passo.get("temporario"):
+    if not passo["grupo"] and not passo.get("temporario") and not passo.get("somente_nome"):
         payload.update(tipo_categoria=esperado["tipo_categoria"], codigo_dre=esperado["codigo_dre"])
         if alvo:
             payload["conta_inativa"] = "S" if esperado["conta_inativa"] else "N"
