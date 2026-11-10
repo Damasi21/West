@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.empresas.models import CategoriaOmie
 from apps.empresas.white_label_domains import _marca_host
 from . import omie
+from .falhas import registrar as registrar_falha, pendencias, motivo as motivo_falha
 from .comparacao import dados, normalizar, semelhanca, tipo, sem_observacoes
 from .models import CadastroCategoria, CadastroCategoriaEmpresa, ItemReplicacao
 from .permissions import conferir_acesso, contexto_plano, empresas_gerenciaveis, planos_permitidos
@@ -34,6 +35,9 @@ def conferir_empresas(plano, usuario):
 
 
 def conferir_operacao(operacao):
+    if operacao.modo == "conciliacao":
+        from .plano_completo import conferir
+        conferir()
     empresas = conferir_empresas(operacao.plano, operacao.solicitado_por)
     if operacao.aplicativos != identificar_aplicativos(operacao.plano):
         raise ValidationError("Uma integração OMIE mudou. Inicie uma nova solicitação.")
@@ -322,24 +326,22 @@ def _executar_cadastro(pk):
             except NovaRevisao:
                 linha.status, linha.mensagem = "revisao", "A OMIE mudou antes da gravação. Revise as novas correspondências."
                 linha.save()
-            except omie.OmieRecusada:
-                linha.status, linha.mensagem = "erro", "A OMIE recusou o cadastro. Corrija a causa antes de retomar as pendências."
-                linha.save()
+            except omie.OmieRecusada as exc:
+                linha.status = "erro"
+                registrar_falha(linha, exc)
             except (ValidationError, PermissionDenied) as exc:
                 linha.status = "incerto" if any(p.get("status") == "executando" for p in linha.passos) else "erro"
-                linha.mensagem = " ".join(exc.messages) if hasattr(exc, "messages") else "Acesso revogado."
-                linha.save()
-            except Exception:
+                registrar_falha(linha, exc)
+            except Exception as exc:
                 linha.status = "incerto" if any(p.get("status") == "executando" for p in linha.passos) else "erro"
-                linha.mensagem = "Resultado sem confirmação. Verifique na OMIE antes de qualquer nova tentativa." if linha.status == "incerto" else "Empresa indisponível. Os demais destinos continuam."
-                linha.save()
+                registrar_falha(linha, exc)
             finally:
                 progresso(op, op.mensagem, 1)
         op.status = "revisao" if op.empresas.filter(status="revisao").exists() else "concluido"
         progresso(op, "Processamento finalizado. Confira o resultado por empresa." if op.status == "concluido" else "Novas diferenças encontradas. Resolva as pendências para continuar.")
     except Exception as exc:
         op.status = "erro"
-        mensagem = " ".join(exc.messages) if isinstance(exc, (ValidationError, PermissionDenied)) and hasattr(exc, "messages") else "Não foi possível concluir a varredura. Nenhum novo envio foi iniciado; confira a integração e retome a consulta."
+        mensagem = motivo_falha(exc)
         progresso(op, mensagem)
     finally:
         op.save(update_fields=["status", "atualizada_em"])
@@ -471,6 +473,9 @@ def _retomar(op, usuario):
     with transaction.atomic():
         op = CadastroCategoria.objects.select_for_update().get(pk=op.pk)
         conferir_empresas(op.plano, usuario)
+        if op.modo in {"conciliacao", "espelho"}:
+            from .plano_completo import conferir
+            conferir()
         if op.status == "cancelada":
             raise ValidationError("Esta requisição foi cancelada. Crie uma nova solicitação para continuar.")
         if op.status in {"consultando", "enviando"} and op.atualizada_em < timezone.now() - timedelta(minutes=30):
@@ -530,17 +535,22 @@ def verificar_cadastro(linha_id, usuario_id, codigo=""):
                 linha.mensagem = "Ainda há envio sem confirmação. Verifique os resultados restantes sem reenviar."
             linha.save()
             auditar(op.plano, get_user_model().objects.get(pk=usuario_id), "Verificou cadastro central sem repetir escrita", cadastro_id=op.pk, empresa_id=linha.empresa_id)
-    except Exception:
-        CadastroCategoriaEmpresa.objects.filter(pk=linha.pk, status="incerto").update(mensagem="A OMIE ainda não confirmou o resultado. Confira o código e verifique novamente; nenhum envio foi repetido.")
+    except Exception as exc:
+        linha.refresh_from_db()
+        if linha.status == "incerto":
+            registrar_falha(linha, exc)
     finally:
         _marca_host.reset(token)
 
 
 def situacao(op):
     linhas = list(op.empresas.select_related("empresa"))
-    return {"status": op.status, "rotulo": op.get_status_display(), "mensagem": op.mensagem, "atual": op.progresso_atual, "total": op.progresso_total,
+    avisos = pendencias(op, linhas)
+    mensagem = ("Solicitação encerrada com pendências. Confira os motivos abaixo antes de retomar ou verificar o resultado."
+        if avisos and op.status == "concluido" else op.mensagem)
+    return {"status": op.status, "rotulo": op.get_status_display(), "mensagem": mensagem, "atual": op.progresso_atual, "total": op.progresso_total,
         "percentual": min(100, round(op.progresso_atual * 100 / max(1, op.progresso_total))),
-        "ativo": op.status in OCUPADOS,
+        "ativo": op.status in OCUPADOS, "pendencias": avisos,
         "empresas": [{"id": l.pk, "nome": l.empresa.nome_fantasia or l.empresa.nome, "status": l.status, "mensagem": l.mensagem} for l in linhas]}
 
 

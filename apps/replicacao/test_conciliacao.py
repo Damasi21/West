@@ -1,7 +1,7 @@
 from copy import deepcopy
 from unittest.mock import patch
 from django.core.exceptions import ValidationError, PermissionDenied
-from django.test import TestCase
+from django.test import override_settings, TestCase
 from django.urls import reverse
 from apps.empresas.models import EmpresaUsuario
 from . import central, conciliacao, padronizacao, test_central as fixtures
@@ -20,6 +20,7 @@ def decisoes_padrao(op):
     return dados
 
 
+@override_settings(REPLICACAO_PLANO_COMPLETO_ATIVO=True)
 class ConciliacaoTests(TestCase):
     def setUp(self):fixtures.CadastroCentralTests.setUp(self)
     def executar(self,op):

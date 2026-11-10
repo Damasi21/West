@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.empresas.models import CategoriaOmie
 from apps.empresas.omie import _salvar_categorias
 from . import omie
+from .plano_completo import conferir as conferir_ativo
 from .comparacao import normalizar, semelhanca, tipo, sem_observacoes
 from .estado import catalogo, snapshot
 from .models import PlanoReplicacao, CadastroCategoria, CadastroCategoriaEmpresa
@@ -81,6 +82,7 @@ def prever(fonte, destino):
 
 
 def solicitar(plano, usuario, destinos_ids):
+    conferir_ativo()
     from .central import conferir_empresas, OCUPADOS
     with transaction.atomic():
         plano=PlanoReplicacao.objects.select_for_update().get(pk=plano.pk)
@@ -187,6 +189,7 @@ def confirmar(op, usuario, escolhas):
 
 
 def aplicar(linha, indice, integracao):
+    conferir_ativo()
     passo=linha.passos[indice]
     if passo["acao"] not in {"manter","criar","reativar","inativar"}:
         raise ValidationError("Esta ação não faz parte da conciliação sem renomeações.")
@@ -282,12 +285,7 @@ def processar(op):
         auditar(op.plano,op.solicitado_por,"Concluiu conciliação sem renomear cadastros",cadastro_id=op.pk,passos=linha.passos)
     except Exception as exc:
         linha.status="incerto" if any(p.get("status") in {"executando","incerto"} for p in linha.passos) else "erro"
-        detalhe=getattr(exc,"detalhe","")
-        linha.mensagem=("Envio sem confirmação. Verifique sem reenviar." if linha.status=="incerto" else " ".join(exc.messages) if isinstance(exc,(ValidationError,PermissionDenied)) else "A execução foi interrompida. Confira as etapas antes de retomar.")
-        if detalhe:linha.mensagem+="\n"+detalhe
-        for passo in linha.passos:
-            if passo.get("status") in {"executando","incerto","erro"}:
-                passo["motivo_seguro"]=detalhe or linha.mensagem;break
-        linha.save()
+        from .falhas import registrar
+        registrar(linha, exc)
     op.status="concluido";op.save()
     progresso(op,"Conciliação concluída conforme as decisões aprovadas." if linha.status=="sucesso" else "Execução interrompida com pendências. Alterações confirmadas preservadas; nenhuma repetição automática.")

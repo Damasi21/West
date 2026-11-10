@@ -40,7 +40,8 @@ class SelecaoLivreTests(TestCase):
         self.assertEqual(self.api.escritas, [])
         self.client.force_login(self.gestor)
         response = self.client.get(reverse("replicacao:detalhe", args=[plano.pk]))
-        self.assertContains(response, "Preparar prévia do plano")
+        self.assertNotContains(response, "Preparar prévia do plano")
+        self.assertContains(response, "Cadastrar categoria ou grupo")
         self.assertContains(response, "Categorias da conta principal")
 
     def test_worker_usa_participantes_configurados_e_ignora_mudancas_de_grupo(self):

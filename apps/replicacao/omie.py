@@ -120,6 +120,14 @@ def chamada(integracao, metodo, parametros):
                 if status.isdigit() and int(status) > 0 and not dados_erro.get("codigo"):
                     raise OmieRecusada("A OMIE recusou a operação.", detalhe=f"OMIE recusou a operação (código {status}): {detalhe}", codigo=status) from exc
             detalhe = f"OMIE retornou HTTP {exc.code}" + (f": {detalhe}" if detalhe else ".")
+        elif isinstance(exc, TimeoutError):
+            detalhe = "Tempo limite de resposta da OMIE excedido. O envio pode ter sido recebido; verifique o resultado sem reenviar."
+        elif isinstance(exc, URLError):
+            detalhe = "Falha de conexão com a OMIE. Não foi possível confirmar o resultado do envio."
+        elif isinstance(exc, ValueError):
+            detalhe = "A resposta da OMIE não pôde ser interpretada. Verifique o resultado antes de repetir."
+        elif isinstance(exc, OSError):
+            detalhe = "A conexão com a OMIE foi interrompida antes da confirmação do resultado."
         raise OmieIncerta("A OMIE não confirmou a comunicação. Consulte o resultado antes de repetir qualquer inclusão.", detalhe=detalhe) from exc
     if not isinstance(dados, dict) or "faultstring" in dados or "faultcode" in dados:
         if metodo == "ListarCategorias":

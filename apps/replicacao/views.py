@@ -297,6 +297,8 @@ def alternar(request, plano_id):
 
 
 def painel_central(request, plano, operacao_id=None):
+    from .plano_completo import ativo
+    plano_completo_ativo = ativo()
     erro_grupo = ""
     try:
         central.conferir_empresas(plano, request.user)
@@ -343,6 +345,8 @@ def painel_central(request, plano, operacao_id=None):
     return render(request, "replicacao/central.html", {"plano": plano, "arvore": arvore,
         "erro_grupo": erro_grupo, "form": NovaCategoriaForm(plano=plano), "form_padronizacao": PadronizacaoForm(plano=plano), "operacao": operacao,
         "progresso": central.situacao(operacao) if operacao else None, "linhas": linhas,
+        "plano_completo_ativo": plano_completo_ativo,
+        "plano_completo_bloqueado": operacao and operacao.modo in {"conciliacao", "espelho"} and not plano_completo_ativo,
         "ocupado": ocupado, "historico": plano.cadastros.all()[:20],
         "pode_cancelar": operacao and (operacao.status in {"erro", "fila", "revisao"} or (operacao.status == "concluido" and operacao.empresas.exclude(status__in=["sucesso", "ignorada"]).exists())),
         "alteracao_situacao": operacao and operacao.modo in {"inativar", "reativar"}})

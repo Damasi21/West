@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import connection
-from django.test import TestCase, Client
+from django.test import override_settings, TestCase, Client
 from django.urls import reverse
 
 from . import central, test_central as fixtures, conciliacao
@@ -12,6 +12,7 @@ from apps.empresas.models import AmbienteWhiteLabel
 from apps.empresas.white_label_domains import _marca_host
 
 
+@override_settings(REPLICACAO_PLANO_COMPLETO_ATIVO=True)
 class CancelamentoTests(TestCase):
     def setUp(self):
         fixtures.CadastroCentralTests.setUp(self)

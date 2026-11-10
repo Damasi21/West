@@ -153,6 +153,27 @@
             panel.querySelector('[data-rep-message]').textContent = data.mensagem;
             panel.querySelector('[data-rep-status]').textContent = data.status === 'concluido' ? (data.rotulo || labels[data.status]) : (labels[data.status] || data.status);
             panel.querySelector('[data-rep-stages]').textContent = `${data.atual} de ${data.total} etapas concluídas`;
+            const errors = panel.querySelector('[data-rep-pendencias]');
+            if (errors) {
+                const list = errors.querySelector('ul');
+                list.replaceChildren();
+                (data.pendencias || []).forEach(item => {
+                    const row = document.createElement('li');
+                    row.className = 'mb-2';
+                    const title = document.createElement('strong');
+                    title.textContent = [item.empresa, item.categoria, item.codigo && `Código ${item.codigo}`, item.metodo].filter(Boolean).join(' · ');
+                    const message = document.createElement('div');
+                    message.textContent = item.mensagem || '';
+                    row.append(title, message);
+                    if (item.detalhe && !(item.mensagem || '').includes(item.detalhe)) {
+                        const detail = document.createElement('div');
+                        detail.textContent = item.detalhe;
+                        row.append(detail);
+                    }
+                    list.append(row);
+                });
+                errors.hidden = !list.children.length;
+            }
             data.empresas.forEach(company => {
                 const row = document.querySelector(`[data-rep-company="${company.id}"]`);
                 if (!row) return;

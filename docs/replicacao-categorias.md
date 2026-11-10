@@ -365,3 +365,13 @@ A prévia de conciliação apresenta o plano PAI e os cadastros atuais do FILHO 
 ### Painel de exclusão e configurações arquivadas
 
 Cada card possui um painel de exclusão. Configurações sem solicitações ou vínculos podem ser excluídas após confirmação. Configurações com histórico podem ser removidas da lista por arquivamento, mantendo solicitações, evidências, resultados e vínculos. Arquivar pausa o plano e não altera dados na OMIE. Solicitações em fila, consulta, revisão ou envio, bem como envios sem confirmação, precisam ser resolvidos antes do arquivamento. As configurações arquivadas continuam disponíveis para consulta por meio do link na listagem, com as mesmas permissões de administração e isolamento White Label; não podem ser reativadas pela ação de pausar/ativar.
+
+
+### Motivo das pendências
+
+O card da solicitação exibe as pendências por empresa e categoria, incluindo código conhecido, método e mensagem da OMIE quando disponíveis. O painel também é atualizado pelo acompanhamento automático. Recusas e falhas de confirmação preservam o motivo seguro no passo e na auditoria; exceções internas não expõem payloads, credenciais ou rastros técnicos. Timeout, falha de conexão e resposta inválida mantêm a situação sem confirmação, sem repetição automática de escrita. Uma verificação bem-sucedida remove o alerta atual, preservando o registro do ocorrido. A porcentagem mede etapas processadas; 100% com pendências não é apresentado como sucesso. Motivos antigos que não foram registrados não são reconstruídos por suposição.
+
+
+### Plano completo temporariamente inativo
+
+A partir deste ajuste, apenas o cadastro avulso aparece na configuração. A chave interna `REPLICACAO_PLANO_COMPLETO_ATIVO` tem valor padrão falso; sem ativação explícita, novas prévias, confirmações, retomadas e escritas de conciliação são bloqueadas também no servidor e no worker. O histórico permanece disponível e resultados sem confirmação ainda podem ser verificados sem repetir escritas. Solicitações anteriores podem ser canceladas. Os testes do motor preservado usam a chave ativa apenas no ambiente de teste; a produção permanece desativada.

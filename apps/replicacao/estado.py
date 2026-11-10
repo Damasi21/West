@@ -187,14 +187,14 @@ def processar(op):
                 linha.save()
                 auditar(op.plano, op.solicitado_por, "Confirmou situação de categoria na OMIE", cadastro_id=op.pk,
                     empresa_id=linha.empresa_id, modo=op.modo, codigo=atual["codigo"], passos=linha.passos)
-        except omie.OmieRecusada:
-            linha.status, linha.mensagem = "erro", "A OMIE recusou a alteração. Corrija a causa antes de retomar."
-            linha.save()
+        except omie.OmieRecusada as exc:
+            from .falhas import registrar
+            linha.status = "erro"
+            registrar(linha, exc)
         except Exception as exc:
             linha.status = "incerto" if any(p.get("status") in {"executando", "incerto"} for p in linha.passos) else "erro"
-            linha.mensagem = ("Resultado sem confirmação. Use Verificar resultado; não será reenviado." if linha.status == "incerto"
-                else " ".join(exc.messages) if isinstance(exc, ValidationError) else "Não foi possível alterar esta empresa. As demais continuam.")
-            linha.save()
+            from .falhas import registrar
+            registrar(linha, exc)
         finally:
             progresso(op, op.mensagem, 1)
     op.status = "revisao" if op.empresas.filter(status="revisao").exists() else "concluido"
