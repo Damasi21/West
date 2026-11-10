@@ -11,6 +11,7 @@ from .contas_pagar_local_views import cadastrar_conta_pagar_local, listar_contas
 app_name = "dashboards"
 
 urlpatterns = [
+    path("parametros/budget/financeiro/", compras_views.parametros_budget, {"area_slug": "financeiro"}, name="budget_financeiro"),
     path("financeiro/contas-a-pagar/locais/enviar/", enviar_contas_pagar_locais, name="enviar_contas_pagar_locais"),
     path("financeiro/contas-a-pagar/cadastrar/", cadastrar_conta_pagar_local, name="cadastrar_conta_pagar_local"),
     path("financeiro/contas-a-pagar/locais/", listar_contas_pagar_locais, name="listar_contas_pagar_locais"),

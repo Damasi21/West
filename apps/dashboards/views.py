@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
@@ -113,6 +114,7 @@ AREAS = {
         "imagem": "financeiro.png",
         "cor": "success",
         "dashboards": [
+            {"slug": "budget", "titulo": "Budget", "descricao": "Acompanhe orçamentos por projeto, departamento e categoria.", "icone": "bi-wallet2"},
             {
                 "slug": "fluxo-de-caixa",
                 "titulo": "Fluxo de caixa",
@@ -1495,7 +1497,8 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             "empresas_selecionadas": empresas_selecionadas,
         }
     )
-    if area_slug == "compras" and dashboard_slug == "budget":
+    if area_slug in {"compras", "financeiro"} and dashboard_slug == "budget":
+        contexto["budget_parametros_url"] = reverse("dashboards:budget_financeiro" if area_slug == "financeiro" else "dashboards:budget", kwargs={"empresa_slug": empresa.slug})
         contexto["budget"] = budget_compras(
             empresa,
             periodo_selecionado,
@@ -1503,6 +1506,10 @@ def dashboard(request, empresa_slug, area_slug, dashboard_slug):
             data_fim,
             empresas_consulta_ids,
             budget_dimensao,
+            area_slug=area_slug,
+            projetos=projetos_consulta if area_slug == "financeiro" else None,
+            departamentos=_valores_para_consulta(departamentos_selecionados, departamentos_opcoes) if area_slug == "financeiro" else None,
+            categorias=_valores_para_consulta(categorias_selecionadas, categorias_opcoes) if area_slug == "financeiro" else None,
         )
     if area_slug == "compras" and dashboard_slug == "score-de-fornecedor":
         contexto["score_fornecedor"] = score_fornecedores_compras(

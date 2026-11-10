@@ -476,7 +476,7 @@ class DashboardPermissaoTests(TestCase):
         self.assertContains(response, "Itens estourados")
         self.assertContains(response, "Acionador Manual Enderecavel AME 566")
         self.assertContains(response, "120%")
-        self.assertContains(response, "Dimensao: Produto")
+        self.assertContains(response, "Dimensao: Família de produtos")
         self.assertContains(response, 'name="budget_dimensao"')
         self.assertNotContains(response, "Todos os projetos")
         self.assertNotContains(response, "Todos os departamentos")
@@ -564,22 +564,11 @@ class DashboardPermissaoTests(TestCase):
             referencia_nome=departamento.descricao,
             limite_compra=Decimal("1000"),
         )
-        pedido = PedidoCompraOmie.objects.create(
-            empresa=self.empresa,
-            codigo_pedido=520,
-            numero_pedido="PC-520",
-            data_previsao=date(ano_atual, 2, 10),
-            departamentos_consulta=[
-                {"cCodDep": departamento.codigo, "cDesDep": departamento.descricao}
-            ],
-        )
-        PedidoCompraItemOmie.objects.create(
-            empresa=self.empresa,
-            pedido=pedido,
-            codigo_item=521,
-            descricao="Compra administrativa",
-            valor_total=Decimal("850"),
-        )
+        conta=ContaPagarOmie.objects.create(empresa=self.empresa,codigo_lancamento_omie=520,
+            data_previsao=date(ano_atual,2,10),valor_documento=Decimal("1000"),
+            distribuicao=[{"cCodDep":departamento.codigo,"nPerDep":100}])
+        MovimentoFinanceiroOmie.objects.create(empresa=self.empresa,codigo_titulo=520,natureza="P",
+            valor_pago=Decimal("850"),data_pagamento=date(ano_atual,3,10))
         self.client.force_login(self.usuario)
 
         response = self.client.get(
@@ -587,7 +576,7 @@ class DashboardPermissaoTests(TestCase):
                 "dashboards:dashboard",
                 kwargs={
                     "empresa_slug": self.empresa.slug,
-                    "area_slug": "compras",
+                    "area_slug": "financeiro",
                     "dashboard_slug": "budget",
                 },
             ),

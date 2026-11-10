@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}Budget de compras | {{ app_brand_name }}{% endblock %}
+{% block title %}Budget {{ budget_area_titulo }} | {{ app_brand_name }}{% endblock %}
 
 {% block content %}
 <div class="page-heading">
     <div>
         <span class="eyebrow">PARAMETROS</span>
         <h1>Budget</h1>
-        <p>Controle os limites de compra da {{ empresa.nome_fantasia }}.</p>
+        <p>Configure o Budget de {{ budget_area_titulo }} da {{ empresa.nome_fantasia }}.</p>
     </div>
-    <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">
+    <a href="{% url 'dashboards:dashboard' empresa.slug budget_area 'budget' %}" class="btn btn-white">
         <i class="bi bi-arrow-left me-2"></i>Voltar
     </a>
 </div>
@@ -17,9 +17,10 @@
 <section class="budget-settings-card">
     <div class="budget-settings-header">
         <div>
-            <span class="eyebrow">COMPRAS</span>
+            <span class="eyebrow">{{ budget_area_titulo|upper }}</span>
             <h2>Controle de budget</h2>
-            <p>Escolha a vertente para configurar os limites de compras.</p>
+            <p>Escolha a vertente para configurar os limites de {{ budget_area_titulo|lower }}.</p>
+            {% if budget_area == 'financeiro' %}<p class="small text-secondary">O gasto anterior considera somente valores efetivamente pagos, agrupados pela previsão de pagamento do título no ano anterior.</p>{% endif %}
         </div>
     </div>
 
@@ -411,7 +412,7 @@
             {% endfor %}
 
             <div class="budget-actions">
-                <a href="{% url 'dashboards:parametros' empresa.slug %}" class="btn btn-white">Cancelar</a>
+                <a href="{% url 'dashboards:dashboard' empresa.slug budget_area 'budget' %}" class="btn btn-white">Cancelar</a>
                 <button class="btn btn-primary" type="submit">
                     <i class="bi bi-check2-circle me-2"></i>Salvar budget
                 </button>

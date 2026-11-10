@@ -23,6 +23,7 @@ from apps.empresas.omie import OmieAPIError, consultar_orcamentos_categorias
 from apps.empresas.services import usuario_gestor_empresa
 
 from .models import BudgetConfiguracaoCompra, BudgetLimiteCompra
+from .budget_scopes import tipos_modulo
 
 MODALIDADE_INDIVIDUAL = "individual"
 MODALIDADE_GRUPO = "grupo"
@@ -92,8 +93,8 @@ def _exigir_gestor_empresa(request, empresa):
         raise PermissionDenied
 
 
-def _redirect_budget(empresa, tipo_controle=None):
-    url = reverse("dashboards:budget", kwargs={"empresa_slug": empresa.slug})
+def _redirect_budget(empresa, tipo_controle=None, area_slug="compras"):
+    url = reverse("dashboards:budget_financeiro" if area_slug == "financeiro" else "dashboards:budget", kwargs={"empresa_slug": empresa.slug})
     if tipo_controle in BudgetConfiguracaoCompra.TipoControle.values:
         url = f"{url}?budget_tipo={tipo_controle}"
     return redirect(url)
@@ -538,7 +539,7 @@ def _buscar_previsto_realizado_categoria(empresa, configuracao, secao, request):
     return alterados, ano, meses
 
 
-def _montar_secoes(empresa, configuracao):
+def _montar_secoes(empresa, configuracao, area_slug="compras"):
     rotulos = dict(BudgetConfiguracaoCompra.TipoControle.choices)
     secoes = []
     total_itens = 0
@@ -552,8 +553,17 @@ def _montar_secoes(empresa, configuracao):
         BudgetConfiguracaoCompra.TipoControle.CATEGORIA,
     ]
     for tipo_controle in ordem_tipos:
+        if tipo_controle not in tipos_modulo(area_slug):
+            continue
         linhas_base = LINHAS_POR_TIPO[tipo_controle](empresa)
-        gastos_anteriores = _gastos_ano_anterior(empresa, tipo_controle)
+        if area_slug == "financeiro":
+            from datetime import date
+            from apps.dashboards.budget_financeiro_services import gastos_financeiros
+            ano = timezone.localdate().year - 1
+            gastos, _ = gastos_financeiros(date(ano,1,1),date(ano,12,31),[empresa.pk],tipo_controle)
+            gastos_anteriores = {codigo: valor for (empresa_id,codigo),valor in gastos.items()}
+        else:
+            gastos_anteriores = _gastos_ano_anterior(empresa, tipo_controle)
         periodicidade = _periodicidade_secao(configuracao, tipo_controle)
         mes_edicao = _mes_edicao_secao(configuracao, tipo_controle)
         mes_limite = mes_edicao if periodicidade == PERIODICIDADE_MENSAL else 0
@@ -682,34 +692,48 @@ def _montar_secoes(empresa, configuracao):
 
 
 @login_required
-def parametros_budget(request, empresa_slug):
+@transaction.atomic
+def parametros_budget(request, empresa_slug, area_slug="compras"):
     empresa = get_object_or_404(Empresa, slug=empresa_slug, ativa=True)
     _exigir_gestor_empresa(request, empresa)
     configuracao, _ = BudgetConfiguracaoCompra.objects.get_or_create(empresa=empresa)
+    if request.method == "POST":
+        configuracao = BudgetConfiguracaoCompra.objects.select_for_update().get(pk=configuracao.pk)
+    tipos_permitidos = tipos_modulo(area_slug)
+    def redirect_budget(tipo=None):
+        return _redirect_budget(empresa, tipo, area_slug)
+    # Reject another module's operations even if submitted directly.
+    if request.method == "POST":
+        tipo = request.POST.get("tipo_controle")
+        if (tipo and tipo not in tipos_permitidos) or (request.POST.get("acao") == "buscar_previsto_realizado_categoria" and area_slug != "financeiro"):
+            messages.error(request, "Este controle de budget pertence a outro módulo.")
+            return redirect_budget()
 
     if request.method == "POST" and request.POST.get("acao") == "definir_tipos":
         tipos_controle = request.POST.getlist("tipos_controle")
-        tipos_validos = BudgetConfiguracaoCompra.TipoControle.values
+        tipos_validos = tipos_permitidos
         if any(tipo not in tipos_validos for tipo in tipos_controle):
             messages.error(request, "Selecione tipos de controle validos.")
         elif not tipos_controle:
             messages.error(request, "Selecione pelo menos um controle de budget.")
         else:
-            configuracao.definir_tipos(tipos_controle)
+            configuracao.definir_tipos([tipo for tipo in configuracao.tipos_selecionados if tipo not in tipos_permitidos] + tipos_controle)
             configuracao.save(
                 update_fields=["tipo_controle", "tipos_controle", "atualizado_em"]
             )
             messages.success(request, "Controles de budget atualizados.")
-        return _redirect_budget(empresa)
+        return redirect_budget()
 
-    secoes, total_itens, total_limite = _montar_secoes(empresa, configuracao)
+    secoes, total_itens, total_limite = _montar_secoes(empresa, configuracao, area_slug)
     budget_tipo_ativo = _tipo_ativo_request(request, configuracao)
+    if budget_tipo_ativo not in tipos_permitidos:
+        budget_tipo_ativo = None
 
     if request.method == "POST" and request.POST.get("acao") == "reverter_budget":
         tipo_reverter = request.POST.get("tipo_controle")
         if tipo_reverter not in BudgetConfiguracaoCompra.TipoControle.values:
             messages.error(request, "Controle de budget invalido para reverter.")
-            return _redirect_budget(empresa, budget_tipo_ativo)
+            return redirect_budget(budget_tipo_ativo)
 
         modalidades = dict(configuracao.modalidades_controle or {})
         totais_grupo = dict(configuracao.totais_grupo or {})
@@ -738,20 +762,20 @@ def parametros_budget(request, empresa_slug):
                 ]
             )
         messages.success(request, "Budget revertido. Escolha a modalidade novamente.")
-        return _redirect_budget(empresa, tipo_reverter)
+        return redirect_budget(tipo_reverter)
 
     if request.method == "POST" and request.POST.get("acao") == "selecionar_mes_budget":
         tipo_selecionar = request.POST.get("tipo_controle")
         if tipo_selecionar not in BudgetConfiguracaoCompra.TipoControle.values:
             messages.error(request, "Controle de budget invalido para selecionar mes.")
-            return _redirect_budget(empresa, budget_tipo_ativo)
+            return redirect_budget(budget_tipo_ativo)
         try:
             mes_edicao = int(request.POST.get("mes_edicao") or "0")
             if mes_edicao < 1 or mes_edicao > 12:
                 raise ValueError
         except (TypeError, ValueError):
             messages.error(request, "Escolha um mes valido para carregar.")
-            return _redirect_budget(empresa, tipo_selecionar)
+            return redirect_budget(tipo_selecionar)
 
         periodicidades = dict(configuracao.periodicidades_controle or {})
         meses_controle = dict(configuracao.meses_controle or {})
@@ -770,20 +794,20 @@ def parametros_budget(request, empresa_slug):
             request,
             f"Budget de {_rotulo_mes(mes_edicao)} carregado.",
         )
-        return _redirect_budget(empresa, tipo_selecionar)
+        return redirect_budget(tipo_selecionar)
 
     if request.method == "POST" and request.POST.get("acao") == "replicar_budget_mensal":
         tipo_replicar = request.POST.get("tipo_controle")
         if tipo_replicar not in BudgetConfiguracaoCompra.TipoControle.values:
             messages.error(request, "Controle de budget invalido para replicar.")
-            return _redirect_budget(empresa, budget_tipo_ativo)
+            return redirect_budget(budget_tipo_ativo)
         try:
             mes_origem = int(request.POST.get("mes_origem") or "0")
             if mes_origem < 1 or mes_origem > 12:
                 raise ValueError
         except (TypeError, ValueError):
             messages.error(request, "Escolha um mes valido para replicar.")
-            return _redirect_budget(empresa, tipo_replicar)
+            return redirect_budget(tipo_replicar)
 
         limites_origem = list(
             BudgetLimiteCompra.objects.filter(
@@ -797,7 +821,7 @@ def parametros_budget(request, empresa_slug):
                 request,
                 "Salve o budget deste mes antes de replicar para o ano.",
             )
-            return _redirect_budget(empresa, tipo_replicar)
+            return redirect_budget(tipo_replicar)
 
         totais_grupo = dict(configuracao.totais_grupo or {})
         periodicidades = dict(configuracao.periodicidades_controle or {})
@@ -842,7 +866,7 @@ def parametros_budget(request, empresa_slug):
             request,
             f"Budget de {_rotulo_mes(mes_origem)} replicado para todos os meses do ano.",
         )
-        return _redirect_budget(empresa, tipo_replicar)
+        return redirect_budget(tipo_replicar)
 
     if (
         request.method == "POST"
@@ -878,10 +902,7 @@ def parametros_budget(request, empresa_slug):
                 request,
                 f"Previsto x realizado importado para {alterados} categoria(s) de despesa em {ano} mes(es): {meses_texto}.",
             )
-            return _redirect_budget(
-                empresa,
-                BudgetConfiguracaoCompra.TipoControle.CATEGORIA,
-            )
+            return redirect_budget(BudgetConfiguracaoCompra.TipoControle.CATEGORIA)
 
     if request.method == "POST" and request.POST.get("acao") == "salvar_limites":
         alteracoes = []
@@ -1128,7 +1149,7 @@ def parametros_budget(request, empresa_slug):
             )
         else:
             messages.success(request, "Limites de budget salvos.")
-            return _redirect_budget(empresa, _tipo_ativo_request(request, configuracao))
+            return redirect_budget(_tipo_ativo_request(request, configuracao))
 
     return render(
         request,
@@ -1136,9 +1157,11 @@ def parametros_budget(request, empresa_slug):
         {
             "empresa": empresa,
             "configuracao": configuracao,
-            "tipos_controle": BudgetConfiguracaoCompra.TipoControle.choices,
+            "tipos_controle": [(v,r) for v,r in BudgetConfiguracaoCompra.TipoControle.choices if v in tipos_permitidos],
+            "budget_area": area_slug,
+            "budget_area_titulo": "Financeiro" if area_slug == "financeiro" else "Compras",
             "tipos_selecionados": configuracao.tipos_selecionados,
-            "rotulos_tipos": configuracao.rotulos_tipos(),
+            "rotulos_tipos": [r for v,r in BudgetConfiguracaoCompra.TipoControle.choices if v in tipos_permitidos and v in configuracao.tipos_selecionados],
             "secoes": secoes,
             "budget_tipo_ativo": budget_tipo_ativo,
             "total_itens": total_itens,

@@ -20,6 +20,8 @@
         <span class="eyebrow">{{ area_atual.titulo|upper }}</span>
         <h1>{{ dashboard_atual.titulo }}</h1>
         <p>{{ dashboard_atual.descricao }}</p>
+        {% if budget_parametros_url and pode_ver_parametros %}<a class="btn btn-white btn-sm" href="{{ budget_parametros_url }}"><i class="bi bi-sliders me-1" aria-hidden="true"></i>Configurar Budget</a>{% endif %}
+        {% if budget and area_slug == "financeiro" %}<small class="d-block text-secondary mt-2">Período pela previsão de pagamento · Realizado somente pelos valores efetivamente pagos, incluindo baixas parciais.</small>{% endif %}
     </div>
     <form class="filters dashboard-filters" method="get" id="dashboard-filters-form" data-dashboard-filters>
         <input type="hidden" name="_filtrar" value="1">
@@ -114,7 +116,7 @@
             {% endif %}
         {% endif %}
 
-        {% if area_slug == "compras" and dashboard_slug == "budget" and budget %}
+        {% if dashboard_slug == "budget" and budget %}
             <label class="regime-filter" title="Escolha a dimensao do budget">
                 <i class="bi bi-diagram-3"></i>
                 <select name="budget_dimensao" aria-label="Dimensao do budget">

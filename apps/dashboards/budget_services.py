@@ -4,11 +4,13 @@ from collections import defaultdict
 from decimal import Decimal
 
 from apps.compras.models import BudgetConfiguracaoCompra, BudgetLimiteCompra
+from apps.compras.budget_scopes import dimensoes_modulo
 from apps.dashboards.dre_services import _formatar_moeda, _intervalo_periodo
 from apps.empresas.models import DepartamentoOmie, PedidoCompraItemOmie
 
 
 ROTULOS_DIMENSAO = dict(BudgetConfiguracaoCompra.TipoControle.choices)
+ROTULOS_DIMENSAO[BudgetConfiguracaoCompra.TipoControle.PRODUTO] = "Família de produtos"
 PERIODICIDADE_MENSAL = "mensal"
 TODOS_MESES = set(range(1, 13))
 
@@ -21,7 +23,7 @@ def _formatar_percentual(valor):
     return f"{valor:.0f}%"
 
 
-def _opcoes_dimensao(empresa, empresas_ids):
+def _opcoes_dimensao(empresa, empresas_ids, area_slug="compras"):
     configuracoes = BudgetConfiguracaoCompra.objects.filter(
         empresa_id__in=empresas_ids,
     )
@@ -35,6 +37,9 @@ def _opcoes_dimensao(empresa, empresas_ids):
             tipos = empresa.budget_compras.tipos_selecionados
         except BudgetConfiguracaoCompra.DoesNotExist:
             tipos = [BudgetConfiguracaoCompra.TipoControle.PRODUTO]
+    tipos = [t for t in tipos if t in dimensoes_modulo(area_slug)]
+    if not tipos:
+        tipos = [dimensoes_modulo(area_slug)[0]]
     return [{"valor": tipo, "nome": ROTULOS_DIMENSAO[tipo]} for tipo in tipos]
 
 
@@ -106,7 +111,7 @@ def _gastos_por_referencia(inicio, fim, empresas_ids, dimensao):
     )
     gastos = defaultdict(Decimal)
     nomes = {
-        departamento.codigo: departamento.descricao
+        (departamento.empresa_id, departamento.codigo): departamento.descricao
         for departamento in DepartamentoOmie.objects.filter(
             empresa_id__in=empresas_ids,
             ativo_omie=True,
@@ -116,9 +121,10 @@ def _gastos_por_referencia(inicio, fim, empresas_ids, dimensao):
         codigo, nome = _chave_gasto(item, dimensao)
         if not codigo:
             continue
-        gastos[codigo] += _decimal(item.valor_total)
-        if nome and codigo not in nomes:
-            nomes[codigo] = nome
+        chave = (item.empresa_id, codigo)
+        gastos[chave] += _decimal(item.valor_total)
+        if nome and chave not in nomes:
+            nomes[chave] = nome
     return gastos, nomes
 
 
@@ -165,9 +171,11 @@ def budget_compras(
     data_fim,
     empresas_ids,
     dimensao="",
+    area_slug="compras",
+    projetos=None, departamentos=None, categorias=None,
 ):
     inicio, fim = _intervalo_periodo(periodo, data_inicio, data_fim)
-    opcoes = _opcoes_dimensao(empresa, empresas_ids)
+    opcoes = _opcoes_dimensao(empresa, empresas_ids, area_slug)
     dimensao = _dimensao_valida(dimensao, opcoes)
     limites = list(
         BudgetLimiteCompra.objects.filter(
@@ -177,7 +185,11 @@ def budget_compras(
         .select_related("configuracao")
         .order_by("referencia_nome", "referencia_codigo")
     )
-    gastos, nomes_gastos = _gastos_por_referencia(inicio, fim, empresas_ids, dimensao)
+    if area_slug == "financeiro":
+        from .budget_financeiro_services import gastos_financeiros
+        gastos, nomes_gastos = gastos_financeiros(inicio, fim, empresas_ids, dimensao, projetos, departamentos, categorias)
+    else:
+        gastos, nomes_gastos = _gastos_por_referencia(inicio, fim, empresas_ids, dimensao)
 
     itens = []
     total_budget = Decimal("0")
@@ -187,14 +199,29 @@ def budget_compras(
         "atencao": 0,
         "estourado": 0,
     }
+    grupos_limites = defaultdict(list)
     for limite in limites:
-        multiplicador = (
-            Decimal(_meses_no_periodo(inicio, fim, _meses_limite(limite)))
-            if _periodicidade_limite(limite) == PERIODICIDADE_MENSAL
-            else Decimal("1")
-        )
-        budget = _decimal(limite.limite_compra) * multiplicador
-        gasto = gastos.get(limite.referencia_codigo, Decimal("0"))
+        grupos_limites[(limite.empresa_id, limite.referencia_codigo)].append(limite)
+    for chave, registros in grupos_limites.items():
+        limite = registros[0]
+        selecionados = {str(v) for v in ({"projeto": projetos, "departamento": departamentos, "categoria": categorias}.get(dimensao) or [])}
+        if selecionados and str(limite.referencia_codigo) not in selecionados and f"{limite.empresa_id}:{limite.referencia_codigo}" not in selecionados:
+            continue
+        budget = Decimal("0")
+        mensal = _periodicidade_limite(limite) == PERIODICIDADE_MENSAL
+        explicitos = any(r.mes > 0 for r in registros)
+        for registro in registros:
+            if mensal:
+                if explicitos and registro.mes == 0:
+                    continue
+                meses = {registro.mes} if registro.mes else _meses_limite(registro)
+                multiplicador = Decimal(_meses_no_periodo(inicio, fim, meses))
+            else:
+                if registro.mes:
+                    continue
+                multiplicador = Decimal("1")
+            budget += _decimal(registro.limite_compra) * multiplicador
+        gasto = gastos.get((limite.empresa_id, limite.referencia_codigo), Decimal("0"))
         percentual = (gasto / budget * Decimal("100")) if budget > 0 else Decimal("0")
         if percentual >= 100:
             tom = "danger"
@@ -207,7 +234,7 @@ def budget_compras(
             status["ok"] += 1
         nome = (
             limite.referencia_nome
-            or nomes_gastos.get(limite.referencia_codigo)
+            or nomes_gastos.get((limite.empresa_id, limite.referencia_codigo))
             or limite.referencia_codigo
         )
         itens.append(

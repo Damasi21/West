@@ -101,9 +101,9 @@ class BudgetComprasParametrosTests(TestCase):
         self.assertContains(response, 'class="budget-overview "')
         self.assertContains(response, 'class="budget-detail-view d-none"')
         self.assertContains(response, "Budget por familia de produtos")
-        self.assertContains(response, "Budget de Projetos")
+        self.assertNotContains(response, "Budget de Projetos")
         self.assertContains(response, "Teto por fornecedor")
-        self.assertContains(response, "Budget por Departamentos")
+        self.assertNotContains(response, "Budget por Departamentos")
         self.assertContains(response, "Sem familia")
         self.assertContains(response, "Materia prima A")
         self.assertContains(response, "Gasto ano anterior")
@@ -228,6 +228,7 @@ class BudgetComprasParametrosTests(TestCase):
         )
 
     def test_budget_por_departamento_lista_e_salva_limite(self):
+        self.url = reverse("dashboards:budget_financeiro", kwargs={"empresa_slug": self.empresa.slug})
         DepartamentoOmie.objects.create(
             empresa=self.empresa,
             codigo="DEP-001",
@@ -250,7 +251,7 @@ class BudgetComprasParametrosTests(TestCase):
         configuracao = BudgetConfiguracaoCompra.objects.get(empresa=self.empresa)
         self.assertEqual(
             configuracao.tipos_selecionados,
-            [BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO],
+            [BudgetConfiguracaoCompra.TipoControle.PRODUTO, BudgetConfiguracaoCompra.TipoControle.DEPARTAMENTO],
         )
 
         response = self.client.get(self.url)
@@ -281,6 +282,7 @@ class BudgetComprasParametrosTests(TestCase):
         )
 
     def test_budget_por_categoria_lista_botao_previsto_realizado_e_salva_limite(self):
+        self.url = reverse("dashboards:budget_financeiro", kwargs={"empresa_slug": self.empresa.slug})
         CategoriaOmie.objects.create(
             empresa=self.empresa,
             codigo="2.01.01",
@@ -308,7 +310,7 @@ class BudgetComprasParametrosTests(TestCase):
         configuracao = BudgetConfiguracaoCompra.objects.get(empresa=self.empresa)
         self.assertEqual(
             configuracao.tipos_selecionados,
-            [BudgetConfiguracaoCompra.TipoControle.CATEGORIA],
+            [BudgetConfiguracaoCompra.TipoControle.PRODUTO, BudgetConfiguracaoCompra.TipoControle.CATEGORIA],
         )
 
         response = self.client.get(self.url)
@@ -352,6 +354,7 @@ class BudgetComprasParametrosTests(TestCase):
         self.assertEqual(configuracao.meses_controle["categoria"], [8])
 
     def test_budget_por_categoria_rateia_em_grupo(self):
+        self.url = reverse("dashboards:budget_financeiro", kwargs={"empresa_slug": self.empresa.slug})
         CategoriaOmie.objects.create(
             empresa=self.empresa,
             codigo="2.01.01",
@@ -611,6 +614,7 @@ class BudgetComprasParametrosTests(TestCase):
         self,
         consultar_orcamentos_mock,
     ):
+        self.url = reverse("dashboards:budget_financeiro", kwargs={"empresa_slug": self.empresa.slug})
         integracao = IntegracaoOmie(empresa=self.empresa, app_key="app-key")
         integracao.definir_app_secret("app-secret")
         integracao.save()

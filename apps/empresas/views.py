@@ -373,13 +373,19 @@ def parametros(request, empresa_slug):
         },
         {
             "titulo": "Budget",
-            "descricao": "Defina o controle de compras por produto, familia, projeto ou fornecedor.",
+            "descricao": "Defina limites por família de produtos e fornecedor.",
             "icone": "bi-wallet2",
             "status": "Disponivel",
             "url": reverse(
                 "dashboards:budget",
                 kwargs={"empresa_slug": empresa.slug},
             ),
+        },
+        {
+            "titulo": "Budget Financeiro",
+            "descricao": "Defina limites por projeto, departamento e categoria.",
+            "icone": "bi-wallet2", "status": "Disponível",
+            "url": reverse("dashboards:budget_financeiro", kwargs={"empresa_slug": empresa.slug}),
         },
         {
             "titulo": "Sincronizacao",
