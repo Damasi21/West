@@ -375,3 +375,12 @@ O card da solicitação exibe as pendências por empresa e categoria, incluindo 
 ### Plano completo temporariamente inativo
 
 A partir deste ajuste, apenas o cadastro avulso aparece na configuração. A chave interna `REPLICACAO_PLANO_COMPLETO_ATIVO` tem valor padrão falso; sem ativação explícita, novas prévias, confirmações, retomadas e escritas de conciliação são bloqueadas também no servidor e no worker. O histórico permanece disponível e resultados sem confirmação ainda podem ser verificados sem repetir escritas. Solicitações anteriores podem ser canceladas. Os testes do motor preservado usam a chave ativa apenas no ambiente de teste; a produção permanece desativada.
+
+
+### Replicar categoria ou grupo existente
+
+A ação “Replicar existente” abre a árvore da conta principal, onde cada categoria ou grupo ativo de receita/despesa possui o botão “Replicar”. As raízes Receitas/Despesas, transferências, categorias inativas e posições disponíveis não são elegíveis. A tela apresenta o cadastro escolhido, os destinos autorizados da configuração e uma confirmação antes de enfileirar.
+
+Uma categoria avulsa exige que o grupo superior já exista uma única vez, ativo, com descrição e tipo idênticos no destino; um destino incompatível é bloqueado sem criar o grupo automaticamente. Ao selecionar um grupo, o usuário escolhe entre enviar somente o grupo ou incluir suas categorias ativas. O conjunto fica congelado na solicitação e é conferido com a OMIE da origem antes dos envios. Mudanças na origem exigem nova seleção, sem repetir escritas já confirmadas.
+
+A base PAI é somente consultada; apenas os FILHOs selecionados recebem etapas de escrita. Não há reescrita por posição, inativação de excedentes nem alteração de lançamentos. Inclusões de categorias preservam o tipo e código da DRE da origem, sem copiar observações. Correspondências exatas compatíveis são reaproveitadas; semelhanças aguardam decisão. Diferenças de tipo/classificação impedem sobrescrever o cadastro existente nessa rotina. Envios sem confirmação continuam sujeitos à verificação sem reenvio, e os motivos das pendências ficam disponíveis no card. O plano completo permanece inativo.

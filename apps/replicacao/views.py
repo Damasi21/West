@@ -15,7 +15,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from apps.empresas.models import AmbienteWhiteLabel, Empresa, CategoriaOmie
 from apps.empresas.white_label_branding import SESSION_MARCA
 from apps.empresas.white_label_domains import _marca_host, marca_host_atual
-from .forms import PlanoForm, NovaCategoriaForm, PadronizacaoForm
+from .forms import PlanoForm, NovaCategoriaForm, PadronizacaoForm, ReplicarExistenteForm
 from .models import CadastroCategoria, CadastroCategoriaEmpresa
 from . import central
 from .models import PlanoReplicacao, ComparacaoReplicacao, ItemReplicacao, DestinoReplicacao, VinculoCategoria
@@ -330,6 +330,12 @@ def painel_central(request, plano, operacao_id=None):
     for c in categorias:
         incluir(c, 0)
     for categoria in arvore:
+        from .existentes import validar as validar_existente
+        try:
+            validar_existente(categoria)
+            categoria.pode_replicar = True
+        except ValidationError:
+            categoria.pode_replicar = False
         categoria.pode_alterar_situacao = not categoria.totalizadora and not categoria.transferencia and categoria.ativo_omie
     linhas = list(operacao.empresas.select_related("empresa")) if operacao else []
     for linha in linhas:
@@ -392,6 +398,33 @@ def confirmar_situacao(request, plano_id, cadastro_id):
     except (ValidationError, PermissionDenied) as exc:
         informar_erro(request, exc)
     return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
+
+
+@ambiente_view
+@require_http_methods(["GET", "POST"])
+def replicar_existente(request, plano_id, categoria_id):
+    from . import existentes
+    plano=plano_request(request,plano_id)
+    categoria=get_object_or_404(CategoriaOmie,pk=categoria_id,empresa=plano.matriz)
+    try:
+        central.conferir_empresas(plano,request.user)
+        existentes.validar(categoria)
+    except (ValidationError,PermissionDenied) as erro:
+        informar_erro(request,erro)
+        return redirect('replicacao:detalhe',plano_id=plano.pk)
+    form=ReplicarExistenteForm(request.POST or None,plano=plano,categoria=categoria)
+    if request.method=='POST' and form.is_valid():
+        try:
+            if not categoria.totalizadora and request.POST.get('incluir_filhos'):
+                raise ValidationError('Somente grupos podem incluir categorias filhas.')
+            op=existentes.solicitar(plano,request.user,categoria,list(form.cleaned_data['destinos'].values_list('pk',flat=True)),form.cleaned_data.get('incluir_filhos',False))
+            transaction.on_commit(lambda:central.publicar_cadastro(op))
+            return redirect(reverse('replicacao:detalhe',args=[plano.pk])+f'?cadastro={op.pk}')
+        except (ValidationError,PermissionDenied) as erro:
+            informar_erro(request,erro)
+    return render(request,'replicacao/replicar_existente.html',{'plano':plano,'categoria':categoria,'form':form,
+        'filhos':existentes.filhos_ativos(categoria) if categoria.totalizadora else [],
+        'pai_categoria':CategoriaOmie.objects.filter(empresa=plano.matriz,codigo=categoria.categoria_superior).first()})
 
 
 @ambiente_view

@@ -3,6 +3,7 @@ from . import views
 
 app_name = "replicacao"
 urlpatterns = [
+    path("<int:plano_id>/categorias/<int:categoria_id>/replicar/", views.replicar_existente, name="replicar_existente"),
     path("<int:plano_id>/cadastros/<int:cadastro_id>/resolver-nomes/", views.resolver_nomes_padronizacao, name="resolver_nomes_padronizacao"),
     path("<int:plano_id>/cadastros/<int:cadastro_id>/cancelar/", views.cancelar_cadastro, name="cancelar_cadastro"),
     path("<int:plano_id>/padronizar/", views.padronizar, name="padronizar"),

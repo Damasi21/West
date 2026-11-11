@@ -79,3 +79,15 @@ class PadronizacaoForm(forms.Form):
         if hasattr(self.data, "getlist") and len(self.data.getlist("destinos")) != 1:
             raise ValidationError("Escolha uma única empresa FILHO para esta padronização.")
         return self.cleaned_data["destinos"]
+
+
+class ReplicarExistenteForm(forms.Form):
+    destinos = DestinosChoice(label="Empresas FILHO que receberão o cadastro", queryset=Empresa.objects.none(), widget=forms.CheckboxSelectMultiple)
+    incluir_filhos = forms.BooleanField(label="Incluir as categorias ativas deste grupo", required=False)
+    confirmar = forms.BooleanField(label="Autorizo a consulta e a replicação nos destinos selecionados. A base PAI será somente consultada.")
+
+    def __init__(self, *args, plano, categoria, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['destinos'].queryset=Empresa.objects.filter(pk__in=plano.destinos.values('empresa_id'),ativa=True).order_by('nome_fantasia','pk')
+        if not categoria.totalizadora:
+            self.fields.pop('incluir_filhos')

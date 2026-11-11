@@ -2,6 +2,7 @@
 import re
 from contextlib import contextmanager
 from copy import deepcopy
+from html import unescape
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction, connection
@@ -91,6 +92,8 @@ def publicar_cadastro(op):
 
 
 def desejadas(pedido):
+    if pedido.get("origem_existente"):
+        return deepcopy(pedido["origens_existentes"])
     pai = pedido["pai"]
     grupo = pai["codigo"] in {"1", "2"}
     nova = {**pai, "codigo": pai["codigo"] + (".00" if grupo else ".000"),
@@ -110,7 +113,7 @@ def montar_passos(op, catalogo, antigos=()):
     if op.pedido.get("estrito") and op.pedido["pai"]["codigo"] not in {"1", "2"}:
         origem = op.pedido["pai"]
         pais = [c for c in catalogo if c["totalizadora"] and c["ativo_omie"] and not c["conta_inativa"]
-            and not c["transferencia"] and tipo(c) == tipo(origem) and c["descricao"] == origem["descricao"]
+            and not c["transferencia"] and tipo(c) == tipo(origem) and (unescape(c["descricao"]) == unescape(origem["descricao"]) if op.pedido.get("origem_existente") else c["descricao"] == origem["descricao"])
             and re.fullmatch(r"[12]\.\d{2}", c["codigo"]) and c["categoria_superior"] == c["codigo"][0]]
         if len(pais) != 1:
             raise GrupoIncompativel("Cadastro bloqueado: o grupo superior deve existir uma única vez, ativo, com descrição e tipo idênticos à base PAI. Cadastre ou ajuste o grupo antes de retomar; ele não será criado automaticamente.")
@@ -128,7 +131,8 @@ def montar_passos(op, catalogo, antigos=()):
             if sem_observacoes(alvo) != sem_observacoes(anterior.get("confirmado")):
                 raise ValidationError("Um cadastro já confirmado mudou na OMIE. Revise antes de continuar.")
             passos.append(anterior)
-            pai_codigo = alvo["codigo"]
+            if origem["totalizadora"]:
+                pai_codigo = alvo["codigo"]
             continue
         if anterior.get("status") in {"executando", "incerto"}:
             raise ValidationError("Há uma escrita sem confirmação. Verifique seu resultado antes de continuar.")
@@ -136,14 +140,19 @@ def montar_passos(op, catalogo, antigos=()):
         for c in catalogo:
             if pai_estrito and indice == 0 and c["codigo"] != pai_estrito["codigo"]:
                 continue
-            if c["codigo"] in {"1", "2"} or semelhanca(origem["descricao"], c["descricao"]) < .8:
+            nome_origem, nome_alvo = origem["descricao"], c["descricao"]
+            if op.pedido.get("origem_existente"):
+                nome_origem, nome_alvo = unescape(nome_origem), unescape(nome_alvo)
+            if c["codigo"] in {"1", "2"} or semelhanca(nome_origem, nome_alvo) < .8:
                 continue
             compativel = (c["ativo_omie"] and not c["conta_inativa"] and not c["transferencia"]
                 and c["totalizadora"] == origem["totalizadora"] and tipo(c) == tipo(origem)
                 and (origem["totalizadora"] or bool(pai_codigo and c["categoria_superior"] == pai_codigo)))
+            if op.pedido.get("origem_existente") and not origem["totalizadora"]:
+                compativel = compativel and c["tipo_categoria"] == origem["tipo_categoria"] and c.get("codigo_dre", "") == origem.get("codigo_dre", "")
             candidatos.append({"dados": c, "compativel": compativel})
         candidatos.sort(key=lambda c: (-semelhanca(origem["descricao"], c["dados"]["descricao"]), c["dados"]["codigo"]))
-        exatos = [c["dados"] for c in candidatos if c["compativel"] and normalizar(c["dados"]["descricao"]) == normalizar(origem["descricao"])]
+        exatos = [c["dados"] for c in candidatos if c["compativel"] and normalizar(unescape(c["dados"]["descricao"]) if op.pedido.get("origem_existente") else c["dados"]["descricao"]) == normalizar(unescape(origem["descricao"]) if op.pedido.get("origem_existente") else origem["descricao"])]
         passo = {"origem": origem, "candidatos": candidatos, "acao": "criar", "status": "pendente", "alvo": None}
         decisao = anterior.get("decisao", {})
         if len(exatos) == 1:
@@ -165,8 +174,9 @@ def progresso(op, mensagem, incremento=0):
     op.save(update_fields=["mensagem", "progresso_atual", "atualizada_em"])
 
 
-def catalogo_dados(empresa, integracao):
-    return [dados(c) for c in atualizar_catalogo(empresa, integracao)]
+def catalogo_dados(empresa, integracao, incluir_dre=False):
+    from .estado import snapshot
+    return [(snapshot(c) if incluir_dre else dados(c)) for c in atualizar_catalogo(empresa, integracao)]
 
 
 def conferir_sem_incerteza(empresa, propria=None):
@@ -227,10 +237,13 @@ def _executar_cadastro(pk):
             processar(op)
             return
         if op.modo == "cadastro" and "destinos_ids" in op.pedido:
-            esperadas = {op.plano.matriz_id, *op.pedido["destinos_ids"]}
+            esperadas = set(op.pedido["destinos_ids"]) if op.pedido.get("origem_existente") else {op.plano.matriz_id, *op.pedido["destinos_ids"]}
             permitidas = {op.plano.matriz_id, *op.plano.destinos.values_list("empresa_id", flat=True)}
             if not esperadas.issubset(permitidas) or set(op.empresas.values_list("empresa_id", flat=True)) != esperadas:
                 raise ValidationError("As empresas da solicitação não correspondem aos destinos escolhidos. Inicie uma nova solicitação.")
+        if op.pedido.get("origem_existente"):
+            from .existentes import validar_fonte
+            validar_fonte(op)
         for linha in op.empresas.select_related("empresa"):
             progresso(op, f"Consultando categorias de {linha.empresa.nome_fantasia or linha.empresa.nome}.")
             conferir_operacao(op)
@@ -241,7 +254,7 @@ def _executar_cadastro(pk):
                 raise ValidationError("Existe envio sem confirmação. Use Verificar resultado antes de retomar.")
             try:
                 with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
-                    catalogo = catalogo_dados(linha.empresa, integracao)
+                    catalogo = catalogo_dados(linha.empresa, integracao, incluir_dre=bool(op.pedido.get("origem_existente")))
             except ValidationError as exc:
                 linha.status, linha.mensagem = "erro", " ".join(exc.messages)
                 linha.save()
@@ -284,8 +297,11 @@ def _executar_cadastro(pk):
             try:
                 conferir_operacao(op)
                 conferir_sem_incerteza(linha.empresa, linha)
+                if op.pedido.get("origem_existente"):
+                    from .existentes import validar_fonte
+                    validar_fonte(op)
                 with aplicativo_livre(linha.empresa, aguardar_sincronizacao=False) as integracao:
-                    catalogo = catalogo_dados(linha.empresa, integracao)
+                    catalogo = catalogo_dados(linha.empresa, integracao, incluir_dre=bool(op.pedido.get("origem_existente")))
                     linha.passos = montar_passos(op, catalogo, linha.passos)
                     if any(p["acao"] == "conflito" for p in linha.passos):
                         linha.status, linha.mensagem = "revisao", "O cadastro mudou após a varredura. Revise as novas semelhanças."
@@ -296,12 +312,12 @@ def _executar_cadastro(pk):
                     pai_codigo = op.pedido["pai"]["codigo"] if op.pedido["pai"]["codigo"] in {"1", "2"} else None
                     for indice, passo in enumerate(linha.passos):
                         conferir_operacao(op)
-                        if indice and linha.passos[indice-1].get("origem", {}).get("totalizadora") and linha.passos[indice-1].get("status") == "ignorada" and not pai_codigo:
+                        if not passo["origem"]["totalizadora"] and not pai_codigo and any(p.get("origem",{}).get("totalizadora") and p.get("status")=="ignorada" for p in linha.passos[:indice]):
                             linha.passos[indice].update(status="ignorada", motivo_ignorar="Grupo superior ignorado por duplicidade.")
                             linha.save()
                             continue
                         if passo.get("status") != "sucesso":
-                            linha.passos = montar_passos(op, catalogo_dados(linha.empresa, integracao), linha.passos)
+                            linha.passos = montar_passos(op, catalogo_dados(linha.empresa, integracao, incluir_dre=bool(op.pedido.get("origem_existente"))), linha.passos)
                             linha.save()
                             if any(p["acao"] == "conflito" for p in linha.passos):
                                 raise NovaRevisao
@@ -353,13 +369,13 @@ def aplicar_passo(op, linha, indice, integracao, pai_codigo):
     if passo.get("status") == "ignorada":
         return passo.get("codigo") if passo["origem"]["totalizadora"] else pai_codigo
     if passo.get("status") == "sucesso":
-        return passo["codigo"]
+        return passo["codigo"] if passo["origem"]["totalizadora"] else pai_codigo
     origem, alvo = passo["origem"], passo["alvo"]
     grupo = origem["totalizadora"]
     if passo["acao"] == "existente":
         passo.update(status="sucesso", codigo=alvo["codigo"], confirmado=alvo)
         linha.save()
-        return alvo["codigo"]
+        return alvo["codigo"] if grupo else pai_codigo
     if passo["acao"] not in {"criar", "sobrescrever"}:
         raise ValidationError("Resolva a correspondência antes de gravar.")
     if passo["acao"] == "sobrescrever":
@@ -378,6 +394,10 @@ def aplicar_passo(op, linha, indice, integracao, pai_codigo):
             if not pai_codigo:
                 raise ValidationError("Grupo superior não confirmado.")
             parametros.update(categoria_superior=pai_codigo, tipo_categoria=origem["tipo_categoria"])
+    if op.pedido.get("origem_existente"):
+        parametros["descricao"] = unescape(parametros["descricao"])
+        if not grupo and passo["acao"] == "criar":
+            parametros["codigo_dre"] = origem.get("codigo_dre", "")
     passo.update(status="executando", metodo=metodo, parametros=parametros, pai_confirmado=pai_codigo)
     linha.save()  # Intent durable before the single HTTP write.
     try:
@@ -392,7 +412,7 @@ def aplicar_passo(op, linha, indice, integracao, pai_codigo):
     passo["codigo"] = codigo
     linha.save()
     confirmar_passo(linha, indice, integracao)
-    return codigo
+    return codigo if grupo else pai_codigo
 
 
 def confirmar_passo(linha, indice, integracao, codigo=""):
@@ -409,14 +429,16 @@ def confirmar_passo(linha, indice, integracao, codigo=""):
     codigo = conhecido or codigo
     if not codigo:
         raise ValidationError("Informe o código confirmado no OMIE para esta inclusão.")
-    catalogo = catalogo_dados(linha.empresa, integracao)
+    catalogo = catalogo_dados(linha.empresa, integracao, incluir_dre=bool(linha.cadastro.pedido.get("origem_existente")))
     alvo = next((c for c in catalogo if c["codigo"] == codigo), None)
     origem = passo["origem"]
-    if not alvo or alvo["descricao"] != origem["descricao"] or alvo["totalizadora"] != origem["totalizadora"] or tipo(alvo) != tipo(origem) or alvo["conta_inativa"] or alvo["transferencia"]:
+    nome_confirmado = unescape(alvo["descricao"]) if alvo and linha.cadastro.pedido.get("origem_existente") else (alvo or {}).get("descricao")
+    nome_origem = unescape(origem["descricao"]) if linha.cadastro.pedido.get("origem_existente") else origem["descricao"]
+    if not alvo or nome_confirmado != nome_origem or alvo["totalizadora"] != origem["totalizadora"] or tipo(alvo) != tipo(origem) or alvo["conta_inativa"] or alvo["transferencia"]:
         raise omie.OmieIncerta("Cadastro ainda não confirmado na OMIE.")
     if not origem["totalizadora"] and alvo["categoria_superior"] != passo.get("pai_confirmado"):
         raise omie.OmieIncerta("Grupo superior divergente.")
-    for campo in ["natureza", *([] if origem["totalizadora"] else ["tipo_categoria"])]:
+    for campo in ["natureza", *([] if origem["totalizadora"] else ["tipo_categoria", "codigo_dre"])]:
         if campo in passo["parametros"] and alvo[campo] != passo["parametros"][campo]:
             raise omie.OmieIncerta("Dados diferentes dos enviados.")
     passo.update(status="sucesso", codigo=codigo, confirmado=alvo)

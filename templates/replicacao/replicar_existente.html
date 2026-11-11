@@ -1,0 +1,18 @@
+{% extends "replicacao/base.html" %}
+{% block heading %}Replicar cadastro existente{% endblock %}
+{% block replicacao_content %}
+<form method="post" class="settings-card p-4">{% csrf_token %}
+  <h2 class="h5">{% if categoria.totalizadora %}Grupo{% else %}Categoria{% endif %} · {{ categoria.descricao }}</h2>
+  <p class="text-secondary">{{ plano.matriz.nome_fantasia|default:plano.matriz.nome }} · Código {{ categoria.codigo }}</p>
+  <div class="alert alert-info">A base PAI será somente consultada. O worker verificará os destinos antes de incluir o cadastro. Correspondências compatíveis serão reaproveitadas; nomes semelhantes aguardarão sua decisão. As categorias que já existem no FILHO serão preservadas.</div>
+  {% if not categoria.totalizadora %}<p><strong>Grupo superior:</strong> {{ pai_categoria.descricao }} · {{ categoria.categoria_superior }}</p><p class="small text-secondary">O grupo superior deve existir uma única vez no FILHO, ativo e com descrição e tipo idênticos. Caso contrário, apenas aquele destino será bloqueado. Replicar a categoria não cria o grupo automaticamente.</p>{% endif %}
+  {% if form.non_field_errors %}<div class="text-danger">{{ form.non_field_errors }}</div>{% endif %}
+  {% for field in form %}<div class="mb-3">
+    {% if field.name == 'destinos' %}<label class="form-label">{{ field.label }}</label><div class="rep-empresas">{{ field }}</div>
+    {% else %}<label class="form-check"><span class="me-2">{{ field }}</span><span class="form-check-label">{{ field.label }}</span></label>{% endif %}
+    {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
+  </div>{% endfor %}
+  {% if categoria.totalizadora %}<details class="mb-3"><summary>Categorias ativas deste grupo ({{ filhos|length }})</summary><ul class="mt-2">{% for filho in filhos %}<li>{{ filho.codigo }} · {{ filho.descricao }}</li>{% empty %}<li>Nenhuma categoria ativa disponível.</li>{% endfor %}</ul></details><p class="small text-secondary">Sem marcar a opção de incluir categorias, será replicado somente o grupo. Categorias inativas e posições disponíveis não serão copiadas.</p>{% endif %}
+  <div class="rep-actions mt-4"><a href="{% url 'replicacao:detalhe' plano.pk %}" class="btn btn-white">Voltar</a><button class="btn btn-primary" type="submit">Verificar e replicar nos destinos</button></div>
+</form>
+{% endblock %}
