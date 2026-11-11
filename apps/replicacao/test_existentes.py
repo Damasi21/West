@@ -155,3 +155,47 @@ class ReplicarExistenteTests(TestCase):
         self.assertEqual(escrever.call_count,1)
         self.assertEqual(op.empresas.get().status,'sucesso')
         self.assertTrue(all(p['status']=='ignorada' for p in op.empresas.get().passos))
+
+    def test_grupo_receita_sem_raiz_no_catalogo_da_pai_ou_filho(self):
+        grupo=categoria('1.03','Devoluções / Reembolsos',grupo=True,pai='1',conta_receita='S',conta_despesa='N')
+        filho=categoria('1.03.01','Reembolso',pai='1.03',conta_receita='S',conta_despesa='N')
+        self.api.catalogos[self.matriz.pk]=[grupo,filho]
+        self.api.catalogos[self.destino.pk]=[]
+        CategoriaOmie.objects.filter(empresa=self.matriz,codigo__in=['1','2']).delete()
+        _salvar_categorias(self.matriz,[grupo,filho])
+        origem=CategoriaOmie.objects.get(empresa=self.matriz,codigo='1.03')
+        op=self.executar(self.solicitar(origem,True))
+        self.assertEqual(op.empresas.get().status,'sucesso',op.empresas.get().mensagem)
+        self.assertEqual(op.pedido['pai']['codigo'],'1')
+        self.assertEqual([m for _,m,_ in self.api.escritas],['IncluirGrupoCategoria','IncluirCategoria'])
+        self.assertEqual(self.api.escritas[0][2]['tipo_grupo'],'R')
+        self.assertFalse(CategoriaOmie.objects.filter(empresa__in=[self.matriz,self.destino],codigo__in=['1','2']).exists())
+        self.assertTrue(all(e==self.destino.pk for e,_,_ in self.api.escritas))
+
+    def test_grupo_despesa_sem_raiz_sozinho_e_confirmado_sem_criar_raiz(self):
+        self.api.catalogos[self.matriz.pk]=[self.api.catalogos[self.matriz.pk][1]]
+        self.api.catalogos[self.destino.pk]=[]
+        CategoriaOmie.objects.filter(empresa=self.matriz,codigo='2').delete()
+        op=self.executar(self.solicitar(self.pai))
+        self.assertEqual(op.empresas.get().status,'sucesso',op.empresas.get().mensagem)
+        self.assertEqual(self.api.escritas[0][2],{'descricao':self.pai.descricao,'tipo_grupo':'D'})
+        self.assertEqual(len(self.api.escritas),1)
+        self.assertFalse(CategoriaOmie.objects.filter(empresa=self.matriz,codigo='2').exists())
+
+    def test_categoria_filtra_exige_grupo_real_mesmo_sem_raizes(self):
+        origem=self.nova()
+        CategoriaOmie.objects.filter(empresa=self.matriz,codigo='2.01').delete()
+        with self.assertRaisesMessage(ValidationError,'grupo superior da categoria'):
+            self.solicitar(origem)
+        self.assertEqual(self.api.escritas,[])
+
+    def test_grupo_mudou_ainda_bloqueia_mesmo_sem_raiz(self):
+        self.api.catalogos[self.matriz.pk]=[self.api.catalogos[self.matriz.pk][1]]
+        self.api.catalogos[self.destino.pk]=[]
+        CategoriaOmie.objects.filter(empresa=self.matriz,codigo='2').delete()
+        op=self.solicitar(self.pai)
+        self.api.catalogos[self.matriz.pk][0]['descricao']='Grupo alterado'
+        self.executar(op)
+        self.assertEqual(op.status,'erro')
+        self.assertIn('mudou na base PAI',op.mensagem)
+        self.assertEqual(self.api.escritas,[])

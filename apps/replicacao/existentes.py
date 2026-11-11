@@ -41,18 +41,30 @@ def solicitar(plano, usuario, categoria, destinos_ids, incluir_filhos=False):
         validar(categoria)
         if incluir_filhos and not categoria.totalizadora:
             raise ValidationError("A opção de incluir categorias está disponível somente para grupos.")
-        pai=CategoriaOmie.objects.filter(empresa=plano.matriz,codigo=categoria.categoria_superior,ativo_omie=True,totalizadora=True,conta_inativa=False,transferencia=False).first()
-        if not pai:
-            raise ValidationError("O grupo superior não está disponível na base PAI. Atualize a árvore.")
-        if not categoria.totalizadora:
+        if categoria.totalizadora:
+            # Receitas/Despesas are structural roots, not necessarily returned
+            # as catalog records by ListarCategorias. Never persist/create them.
+            raiz = categoria.codigo.split('.', 1)[0]
+            if categoria.categoria_superior != raiz:
+                raise ValidationError('A raiz do grupo na base PAI está inconsistente. Atualize a árvore.')
+            pai_dados = {'codigo': raiz, 'descricao': 'Receitas' if raiz == '1' else 'Despesas',
+                'natureza': '', 'tipo_categoria': '', 'categoria_superior': '', 'totalizadora': True,
+                'ativo_omie': True, 'conta_inativa': False, 'transferencia': False,
+                'conta_receita': raiz == '1', 'conta_despesa': raiz == '2', 'codigo_dre': ''}
+            origens = [categoria]
+        else:
+            pai=CategoriaOmie.objects.filter(empresa=plano.matriz,codigo=categoria.categoria_superior,ativo_omie=True,totalizadora=True,conta_inativa=False,transferencia=False).first()
+            if not pai:
+                raise ValidationError("O grupo superior da categoria não está disponível na base PAI. Atualize a árvore.")
             validar(pai)
             if categoria.categoria_superior != categoria.codigo.rsplit('.',1)[0] or tipo(snapshot(pai))!=tipo(snapshot(categoria)):
                 raise ValidationError('A hierarquia da categoria na base PAI está inconsistente. Atualize a árvore.')
-        origens=[categoria] if categoria.totalizadora else [pai,categoria]
+            pai_dados = snapshot(pai)
+            origens = [pai, categoria]
         filhos=list(filhos_ativos(categoria)) if categoria.totalizadora and incluir_filhos else []
         for filho in filhos:validar(filho)
         origens+=filhos
-        pedido={'descricao':unescape(categoria.descricao),'pai':snapshot(pai),'origem_id':categoria.pk,
+        pedido={'descricao':unescape(categoria.descricao),'pai':pai_dados,'origem_id':categoria.pk,
             'origem_existente':True,'origens_existentes':[snapshot(c) for c in origens],
             'incluir_filhos':bool(incluir_filhos),'estrito':not categoria.totalizadora,'destinos_ids':destinos_ids}
         op=CadastroCategoria.objects.create(plano=plano,solicitado_por=usuario,modo='cadastro',pedido=pedido,
@@ -68,7 +80,10 @@ def validar_fonte(op):
     with aplicativo_livre(op.plano.matriz,aguardar_sincronizacao=False) as integracao:
         atual=catalogo_dados(op.plano.matriz,integracao,incluir_dre=True)
     por_codigo={c['codigo']:c for c in atual}
-    for origem in [op.pedido['pai'],*op.pedido['origens_existentes']]:
+    # Also supports existing group requests created before roots were structural.
+    pai = op.pedido['pai']
+    superiores = [] if pai['codigo'] in {'1', '2'} else [pai]
+    for origem in [*superiores,*op.pedido['origens_existentes']]:
         if sem_observacoes(por_codigo.get(origem['codigo']))!=sem_observacoes(origem):
             raise ValidationError(f"O cadastro {unescape(origem['descricao'])} ({origem['codigo']}) mudou na base PAI. Atualize a árvore e prepare outra solicitação; envios confirmados não serão repetidos.")
     if op.pedido.get('incluir_filhos'):
