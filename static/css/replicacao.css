@@ -90,3 +90,30 @@
 .rep-concil-table td:nth-child(3) { width: 27%; }
 .rep-concil-table td:last-child { min-width: 350px; }
 .rep-concil-table tr:has([data-concil-check]:checked) td { background: var(--blue-light, #eef5ff); }
+
+.rep-branches { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .8rem; margin-bottom: 1.5rem; }
+.rep-branch { border: 1px solid var(--border,#dae2ef); border-radius: 12px; padding: 1rem 1.2rem; background: white; color: var(--text,#24354b); display: flex; flex-direction: column; gap: .25rem; text-decoration: none; }
+.rep-branch.is-active { border-color: var(--bs-primary,#0d6efd); background: var(--blue-light,#eef5ff); }
+.rep-branch[aria-disabled="true"] { opacity: .6; }
+.rep-plan-select { width: min(100%,480px); }
+.rep-action-select { width: auto; }
+.rep-selection-search { width: min(100%,350px); }
+.rep-selection-scroll { max-height: 510px; border: 1px solid var(--border,#dae2ef); border-radius: 10px; }
+.rep-selection-table { margin-bottom: 0; min-width: 460px; }
+.rep-selection-table thead th { position: sticky; top: 0; background: white; z-index: 1; }
+.rep-selection-table td { padding: .8rem; }
+.rep-selection-table td:first-child { width: 45px; }
+.rep-selection-table tr:has([data-rep-source-check]:checked) td { background: var(--blue-light,#eef5ff); }
+.rep-dest-choice { display: inline-flex; align-items: center; padding: .65rem .8rem; border: 1px solid var(--border,#dae2ef); border-radius: 8px; }
+.rep-preview-scroll { max-height: 600px; position: relative; max-width: 100%; overflow: auto; }
+.rep-batch-table { min-width: 780px; }
+.rep-batch-table th { position: sticky; top: 0; background: white; z-index: 1; }
+.rep-batch-table td { vertical-align: top; padding: 1rem; width: 33.33%; }
+.rep-batch-table select { min-width: 250px; white-space: normal; }
+.rep-operation[data-rep-result="pendente"] .progress-bar { background: #ce8600; }
+.rep-operation[data-rep-result="sucesso"] .progress-bar { background: #0d8877; }
+.rep-operation[data-rep-result="cancelada"] .progress-bar { background: #64748b; }
+.rep-results [data-status="erro"] [data-rep-company-status], .rep-results [data-status="incerto"] [data-rep-company-status], .rep-results [data-status="bloqueada"] [data-rep-company-status] { color: #ab391e; font-weight: 600; }
+.rep-results [data-status="sucesso"] [data-rep-company-status] { color: #087768; font-weight: 600; }
+.rep-operation details summary, #rep-selecao summary { cursor: pointer; }
+@media(max-width: 767.98px) { .rep-branches { gap: .4rem; } .rep-branch { padding: .75rem .6rem; font-size: .85rem; } .rep-plan-select, .rep-selection-search { width: 100%; } }

@@ -1,7 +1,9 @@
 {% extends "replicacao/base.html" %}
 {% block replicacao_content %}
-<div class="rep-toolbar mb-4"><div><h2 class="h5 mb-1">Configurações de replicação</h2><p class="text-secondary mb-0">Cada configuração possui uma matriz e seus próprios destinos.</p></div><a href="{% url 'replicacao:novo' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-2"></i>Nova configuração</a></div>
+{% include "replicacao/vertentes.html" %}
+<div class="rep-toolbar mb-4"><div><h2 class="h5 mb-1">Planos de categorias</h2><p class="text-secondary mb-0">Selecione o plano PAI: cada configuração reúne uma base de origem e suas bases FILHO.</p></div><a href="{% url 'replicacao:novo' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-2"></i>Nova configuração</a></div>
 <p class="text-end"><a href="{% url 'replicacao:lista' %}{% if not arquivadas %}?arquivadas=1{% endif %}">{% if arquivadas %}Voltar às configurações atuais{% else %}Configurações arquivadas{% endif %}</a></p>
+{% if planos %}<form method="get" class="rep-actions mb-4"><label for="rep-plano-inicial" class="form-label mb-0">Plano PAI</label><select name="plano" id="rep-plano-inicial" class="form-select rep-plan-select" required><option value="">Selecione um plano</option>{% for item in planos %}<option value="{{ item.pk }}">{{ item.nome }} · PAI: {{ item.matriz.nome_fantasia|default:item.matriz.nome }}</option>{% endfor %}</select><button class="btn btn-primary" type="submit">Abrir categorias</button></form>{% endif %}
 <div class="row g-4">{% for plano in planos %}<div class="col-lg-6"><article class="settings-card p-4 h-100">
     <div class="rep-toolbar"><h2 class="h5 mb-0">{{ plano.nome }}</h2><span class="rep-badge">{% if plano.arquivado %}Arquivada{% elif plano.ativo %}Ativa{% else %}Pausada{% endif %}</span></div>
     <p class="mt-3 mb-2"><strong>Base PAI:</strong> {{ plano.matriz.nome_fantasia }}</p><p class="small text-secondary">{% if plano.cadastro_central %}Cadastro central · Empresas selecionadas{% else %}Configuração anterior · Comparações e histórico{% endif %}</p>

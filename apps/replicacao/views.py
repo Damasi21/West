@@ -1,4 +1,6 @@
 from datetime import timedelta
+from html import unescape
+import re
 from functools import wraps
 
 from django.contrib import messages
@@ -59,6 +61,9 @@ def voltar_comparacao(plano, comparacao_id):
 @ambiente_view
 @require_GET
 def lista(request):
+    if request.GET.get("plano", "").isdigit():
+        plano = plano_request(request, int(request.GET["plano"]))
+        return redirect("replicacao:detalhe", plano_id=plano.pk)
     planos = disponibilidade_exclusao(planos_permitidos(request.user)).select_related("matriz").prefetch_related("destinos__empresa")
     arquivadas = request.GET.get("arquivadas") == "1"
     return render(request, "replicacao/lista.html", {"planos": planos.filter(arquivado=arquivadas), "arquivadas": arquivadas})
@@ -336,11 +341,13 @@ def painel_central(request, plano, operacao_id=None):
             categoria.pode_replicar = True
         except ValidationError:
             categoria.pode_replicar = False
+        categoria.pode_selecionar = bool(not categoria.transferencia and categoria.ativo_omie and re.fullmatch(r"[12]\.\d{2}" if categoria.totalizadora else r"[12]\.\d{2}\.\d{2,3}", categoria.codigo) and unescape(categoria.descricao).strip().casefold() != "<disponível>")
+        categoria.pai_selecao = categoria.categoria_superior
         categoria.pode_alterar_situacao = not categoria.totalizadora and not categoria.transferencia and categoria.ativo_omie
     linhas = list(operacao.empresas.select_related("empresa")) if operacao else []
     for linha in linhas:
         linha.precisa_codigo = any(p.get("status") in {"executando", "incerto"} and not p.get("codigo") and not p.get("alvo") for p in linha.passos)
-        if operacao.modo in {"inativar", "reativar", "espelho", "conciliacao"} and linha.status == "revisao":
+        if operacao.modo in {"inativar", "reativar", "espelho", "conciliacao", "lote"} and linha.status == "revisao":
             linha.rotulo_situacao = "Aguardando confirmação"
         if operacao.modo == "conciliacao" and operacao.status == "revisao" and request.method == "POST":
             for indice,item in enumerate(linha.passos):
@@ -351,9 +358,11 @@ def painel_central(request, plano, operacao_id=None):
     return render(request, "replicacao/central.html", {"plano": plano, "arvore": arvore,
         "erro_grupo": erro_grupo, "form": NovaCategoriaForm(plano=plano), "form_padronizacao": PadronizacaoForm(plano=plano), "operacao": operacao,
         "progresso": central.situacao(operacao) if operacao else None, "linhas": linhas,
+        "planos_disponiveis": planos_permitidos(request.user).filter(arquivado=False).select_related("matriz"),
         "plano_completo_ativo": plano_completo_ativo,
         "plano_completo_bloqueado": operacao and operacao.modo in {"conciliacao", "espelho"} and not plano_completo_ativo,
         "ocupado": ocupado, "historico": plano.cadastros.all()[:20],
+        "pode_retomar": operacao and (operacao.status == "erro" or (operacao.status == "concluido" and any(l.status not in {"sucesso", "ignorada", "incerto"} for l in linhas))),
         "pode_cancelar": operacao and (operacao.status in {"erro", "fila", "revisao"} or (operacao.status == "concluido" and operacao.empresas.exclude(status__in=["sucesso", "ignorada"]).exists())),
         "alteracao_situacao": operacao and operacao.modo in {"inativar", "reativar"}})
 
@@ -431,7 +440,10 @@ def replicar_existente(request, plano_id, categoria_id):
 @require_POST
 def cadastrar(request, plano_id):
     plano = plano_request(request, plano_id)
-    form = NovaCategoriaForm(request.POST, plano=plano)
+    dados = request.POST.copy()
+    if dados.get("escopo") == "plano":
+        dados.setlist("destinos", [str(pk) for pk in plano.destinos.values_list("empresa_id", flat=True)])
+    form = NovaCategoriaForm(dados, plano=plano)
     try:
         if request.POST.get("confirmar") != "sim":
             raise ValidationError("Confirme o cadastro nos OMIEs do grupo.")
@@ -443,6 +455,37 @@ def cadastrar(request, plano_id):
     except (ValidationError, PermissionDenied) as exc:
         informar_erro(request, exc)
     return redirect("replicacao:detalhe", plano_id=plano.pk)
+
+
+@ambiente_view
+@require_POST
+def selecionar_categorias(request, plano_id):
+    from . import lotes
+    plano=plano_request(request,plano_id)
+    try:
+        ids=request.POST.getlist('categorias');destinos=request.POST.getlist('destinos')
+        if any(not v.isascii() or not v.isdigit() for v in [*ids,*destinos]):
+            raise ValidationError('A seleção contém identificadores inválidos.')
+        op=lotes.solicitar(plano,request.user,[int(v) for v in ids],[int(v) for v in destinos],request.POST.get('acao',''))
+        transaction.on_commit(lambda:central.publicar_cadastro(op))
+        return redirect(reverse('replicacao:detalhe',args=[plano.pk])+f'?cadastro={op.pk}')
+    except (ValidationError,PermissionDenied) as erro:
+        informar_erro(request,erro)
+    return redirect(reverse('replicacao:detalhe',args=[plano.pk])+'?selecionar=1')
+
+
+@ambiente_view
+@require_POST
+def confirmar_categorias(request, plano_id, cadastro_id):
+    from . import lotes
+    plano=plano_request(request,plano_id)
+    op=get_object_or_404(plano.cadastros,pk=cadastro_id)
+    try:
+        op=lotes.confirmar(op,request.user,request.POST)
+        transaction.on_commit(lambda:central.publicar_cadastro(op))
+    except (ValidationError,PermissionDenied) as erro:
+        informar_erro(request,erro)
+    return redirect(reverse('replicacao:detalhe',args=[plano.pk])+f'?cadastro={op.pk}')
 
 
 @ambiente_view

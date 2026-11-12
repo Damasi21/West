@@ -127,6 +127,57 @@
         refresh();
     });
 
+    const selection = document.querySelector('[data-rep-selection]');
+    document.querySelector('[data-rep-open-selection]')?.addEventListener('click', () => {
+        const details = document.getElementById('rep-selecao');
+        if (details) { details.open = true; details.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+        selection?.querySelector('[data-rep-selection-search]')?.focus({preventScroll: true});
+    });
+    if (selection) {
+        const rows = Array.from(selection.querySelectorAll('[data-rep-source-row]'));
+        const check = row => row.querySelector('[data-rep-source-check]');
+        const action = selection.querySelector('[name="acao"]');
+        const search = selection.querySelector('[data-rep-selection-search]');
+        const all = selection.querySelector('[data-rep-selection-all]');
+        const destAll = selection.querySelector('[data-rep-dest-all]');
+        const destinations = Array.from(selection.querySelectorAll('[name="destinos"]'));
+        const submit = selection.querySelector('[data-rep-selection-submit]');
+        const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const eligible = row => check(row) && !check(row).disabled;
+        const visible = () => rows.filter(row => !row.hidden && eligible(row));
+        const selectChildren = row => {
+            if (row.dataset.grupo !== 'sim') return;
+            rows.filter(child => child.dataset.pai === row.dataset.codigo && eligible(child)).forEach(child => {
+                const desired = 'nao';
+                check(child).checked = check(row).checked && child.dataset.inativa === desired;
+            });
+        };
+        const refresh = () => {
+            const selected = rows.filter(row => eligible(row) && check(row).checked);
+            const count = action.value === 'replicar' ? selected.length : selected.filter(row => row.dataset.grupo !== 'sim').length;
+            selection.querySelector('[data-rep-selection-count]').textContent = `${count} cadastro(s) · ${destinations.filter(c => c.checked).length} destino(s)`;
+            const shown = visible(), checked = shown.filter(row => check(row).checked).length;
+            all.checked = shown.length > 0 && checked === shown.length;
+            all.indeterminate = checked > 0 && checked < shown.length;
+            all.disabled = !shown.length;
+            const destCount = destinations.filter(c => c.checked).length;
+            destAll.checked = destCount > 0 && destCount === destinations.length;
+            destAll.indeterminate = destCount > 0 && destCount < destinations.length;
+            submit.disabled = submit.dataset.repLocked === 'sim' || count === 0 || destCount === 0;
+        };
+        rows.forEach(row => check(row)?.addEventListener('change', () => { selectChildren(row); refresh(); }));
+        all.addEventListener('change', () => { visible().forEach(row => { check(row).checked = all.checked; }); refresh(); });
+        action.addEventListener('change', () => { rows.filter(row => eligible(row) && check(row).checked).forEach(selectChildren); refresh(); });
+        search.addEventListener('input', () => {
+            const term = normalize(search.value.trim());
+            rows.forEach(row => { row.hidden = !normalize(row.dataset.texto).includes(term); });
+            refresh();
+        });
+        destAll.addEventListener('change', () => { destinations.forEach(c => { c.checked = destAll.checked; }); refresh(); });
+        destinations.forEach(c => c.addEventListener('change', refresh));
+        refresh();
+    }
+
     const panel = document.querySelector('[data-rep-progress]');
     if (!panel) return;
     const labels = {fila: 'Na fila', consultando: 'Verificando OMIEs', revisao: 'Aguardando sua decisão',
@@ -137,6 +188,7 @@
     if (panel.dataset.repMode === 'reativar') labels.enviando = 'Reativando categorias';
     if (panel.dataset.repMode === 'espelho') labels.enviando = 'Padronizando plano';
     if (panel.dataset.repMode === 'conciliacao') labels.enviando = 'Conciliando plano';
+    if (panel.dataset.repMode === 'lote') labels.enviando = 'Processando categorias';
     let stopped = false;
     let state = panel.dataset.repState;
     const pollMessage = panel.querySelector('[data-rep-poll-message]');
@@ -147,6 +199,9 @@
             const response = await fetch(panel.dataset.repProgress, {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}});
             if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error();
             const data = await response.json();
+            panel.dataset.repResult = data.resultado || 'andamento';
+            const summary = panel.querySelector('[data-rep-resumo]');
+            if (summary && data.resumo) summary.textContent = `${data.resumo.sucesso} confirmadas · ${data.resumo.ignorada} ignoradas · ${data.resumo.pendente} aguardando/pendentes`;
             panel.querySelector('[data-rep-percent]').textContent = `${data.percentual}%`;
             panel.querySelector('[data-rep-bar]').style.width = `${data.percentual}%`;
             panel.querySelector('[role="progressbar"]').setAttribute('aria-valuenow', data.percentual);
@@ -172,12 +227,13 @@
                     }
                     list.append(row);
                 });
-                errors.hidden = !list.children.length;
+                errors.hidden = !list.children.length || data.status === 'revisao';
             }
             data.empresas.forEach(company => {
                 const row = document.querySelector(`[data-rep-company="${company.id}"]`);
                 if (!row) return;
-                row.querySelector('[data-rep-company-status]').textContent = company.status === 'revisao' && ['espelho', 'conciliacao', 'inativar', 'reativar'].includes(panel.dataset.repMode) ? 'Aguardando confirmação' : labels[company.status] || company.status;
+                row.dataset.status = company.status;
+                row.querySelector('[data-rep-company-status]').textContent = company.status === 'revisao' && ['espelho', 'conciliacao', 'inativar', 'reativar', 'lote'].includes(panel.dataset.repMode) ? 'Aguardando confirmação' : labels[company.status] || company.status;
                 row.querySelector('[data-rep-company-message]').textContent = company.mensagem;
             });
             pollMessage.textContent = '';

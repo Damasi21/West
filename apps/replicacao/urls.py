@@ -3,6 +3,8 @@ from . import views
 
 app_name = "replicacao"
 urlpatterns = [
+    path("<int:plano_id>/categorias/selecionar/", views.selecionar_categorias, name="selecionar_categorias"),
+    path("<int:plano_id>/cadastros/<int:cadastro_id>/confirmar-selecao/", views.confirmar_categorias, name="confirmar_categorias"),
     path("<int:plano_id>/categorias/<int:categoria_id>/replicar/", views.replicar_existente, name="replicar_existente"),
     path("<int:plano_id>/cadastros/<int:cadastro_id>/resolver-nomes/", views.resolver_nomes_padronizacao, name="resolver_nomes_padronizacao"),
     path("<int:plano_id>/cadastros/<int:cadastro_id>/cancelar/", views.cancelar_cadastro, name="cancelar_cadastro"),

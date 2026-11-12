@@ -226,6 +226,10 @@ def _executar_cadastro(pk):
     token = contexto_plano(op.plano)
     try:
         conferir_operacao(op)
+        if op.modo == "lote":
+            from .lotes import processar
+            processar(op)
+            return
         if op.modo in {"inativar", "reativar"}:
             from .estado import processar
             processar(op)
@@ -416,6 +420,9 @@ def aplicar_passo(op, linha, indice, integracao, pai_codigo):
 
 
 def confirmar_passo(linha, indice, integracao, codigo=""):
+    if linha.cadastro.modo == "lote":
+        from .lotes import verificar
+        return verificar(linha, indice, integracao, codigo)
     if linha.cadastro.modo in {"espelho", "conciliacao"}:
         from .padronizacao import confirmar_resultado
         return confirmar_resultado(linha, indice, integracao, codigo)
@@ -546,7 +553,7 @@ def verificar_cadastro(linha_id, usuario_id, codigo=""):
                     break
             linha.status = "sucesso" if all(p.get("status") in {"sucesso", "ignorada"} for p in linha.passos) else "erro"
             linha.mensagem = "Resultado confirmado. Retome a consulta para concluir os passos restantes." if linha.status == "erro" else "Cadastro confirmado na OMIE."
-            if op.modo in {"espelho", "conciliacao"}:
+            if op.modo in {"espelho", "conciliacao", "lote"}:
                 linha.status = "erro"
                 linha.mensagem = "Resultado confirmado sem reenviar. Retome para concluir os passos restantes e validar a sequência final."
             if op.status == "cancelada":
@@ -570,7 +577,13 @@ def situacao(op):
     avisos = pendencias(op, linhas)
     mensagem = ("Solicitação encerrada com pendências. Confira os motivos abaixo antes de retomar ou verificar o resultado."
         if avisos and op.status == "concluido" else op.mensagem)
-    return {"status": op.status, "rotulo": op.get_status_display(), "mensagem": mensagem, "atual": op.progresso_atual, "total": op.progresso_total,
+    contagens = {"sucesso": 0, "ignorada": 0, "pendente": 0}
+    for linha in linhas:
+        for passo in linha.passos:
+            status = passo.get("status")
+            contagens[status if status in {"sucesso", "ignorada"} else "pendente"] += 1
+    return {"status": op.status, "rotulo": op.get_status_display(), "mensagem": mensagem, "resumo": contagens,
+        "resultado": "revisao" if op.status=="revisao" else "pendente" if avisos else "cancelada" if op.status=="cancelada" else "sucesso" if op.status=="concluido" else "andamento", "atual": op.progresso_atual, "total": op.progresso_total,
         "percentual": min(100, round(op.progresso_atual * 100 / max(1, op.progresso_total))),
         "ativo": op.status in OCUPADOS, "pendencias": avisos,
         "empresas": [{"id": l.pk, "nome": l.empresa.nome_fantasia or l.empresa.nome, "status": l.status, "mensagem": l.mensagem} for l in linhas]}

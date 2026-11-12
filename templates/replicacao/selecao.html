@@ -1,0 +1,20 @@
+<details id="rep-selecao" class="settings-card p-4 mb-4"{% if request.GET.selecionar %} open{% endif %}>
+<summary class="h5 mb-0">Selecionar grupos ou categorias existentes</summary>
+<p class="small text-secondary mt-3">Marcar um grupo seleciona suas categorias ativas. Você pode desmarcar qualquer categoria. Escolha a ação e os destinos para preparar a conferência. A situação dos grupos será preservada nas ações de inativar/reativar.</p>
+<form method="post" action="{% url 'replicacao:selecionar_categorias' plano.pk %}" data-rep-selection>{% csrf_token %}
+<div class="rep-actions mb-3">
+<label for="rep-acao">Ação</label><select name="acao" id="rep-acao" class="form-select rep-action-select"><option value="replicar">Replicar</option><option value="inativar">Inativar</option><option value="reativar">Reativar</option></select>
+<label for="rep-pesquisar" class="visually-hidden">Buscar grupo ou categoria</label><input type="search" id="rep-pesquisar" class="form-control rep-selection-search" placeholder="Buscar grupo, categoria ou código" data-rep-selection-search>
+<strong class="small" data-rep-selection-count>0 selecionados</strong>
+</div>
+<div class="table-responsive rep-selection-scroll"><table class="table align-middle rep-selection-table"><thead><tr><th><input class="form-check-input" type="checkbox" data-rep-selection-all aria-label="Selecionar linhas visíveis"></th><th>Grupo / categoria do PAI</th><th>Situação</th></tr></thead><tbody>
+{% for categoria in arvore %}<tr data-rep-source-row data-codigo="{{ categoria.codigo }}" data-pai="{{ categoria.categoria_superior }}" data-grupo="{{ categoria.totalizadora|yesno:'sim,nao' }}" data-inativa="{{ categoria.conta_inativa|yesno:'sim,nao' }}" data-texto="{{ categoria.descricao }} {{ categoria.codigo }}">
+<td>{% if categoria.pode_selecionar %}<input class="form-check-input" type="checkbox" name="categorias" value="{{ categoria.pk }}" data-rep-source-check aria-label="Selecionar {{ categoria.descricao }}"{% if ocupado or erro_grupo or not plano.ativo %} disabled{% endif %}>{% endif %}</td>
+<td><span class="rep-tree-level rep-level-{{ categoria.nivel_visual }}">{% if categoria.totalizadora %}<strong>{{ categoria.descricao }}</strong>{% else %}{{ categoria.descricao }}{% endif %}</span><small class="d-block text-secondary">{{ categoria.codigo }} · {% if categoria.totalizadora %}Grupo{% else %}Categoria{% endif %}</small></td><td><span class="rep-badge">{% if categoria.conta_inativa %}Inativa{% else %}Ativa{% endif %}</span></td></tr>
+{% empty %}<tr><td colspan="3" class="text-secondary py-4">Atualize as categorias da base PAI para selecionar os cadastros.</td></tr>{% endfor %}
+</tbody></table></div>
+<fieldset class="mt-3"><legend class="h6">Empresas FILHO</legend><label class="form-check mb-2"><input class="form-check-input" type="checkbox" data-rep-dest-all checked><span class="form-check-label">Todas as bases FILHO deste plano</span></label><div class="rep-chips">{% for destino in plano.destinos.all %}<label class="rep-dest-choice"><input class="form-check-input me-2" type="checkbox" name="destinos" value="{{ destino.empresa_id }}" checked>{{ destino.empresa.nome_fantasia|default:destino.empresa.nome }}</label>{% endfor %}</div></fieldset>
+<p class="small text-secondary mt-3">Cadastros idênticos serão ignorados para evitar duplicidade. Nomes parecidos serão apresentados para revisão. Esta etapa apenas consulta as bases.</p>
+<button class="btn btn-primary" type="submit" data-rep-selection-submit disabled{% if ocupado or erro_grupo or not plano.ativo %} data-rep-locked="sim"{% endif %}>Conferir seleção nos destinos</button>
+</form>
+</details>

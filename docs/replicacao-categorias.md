@@ -1,5 +1,41 @@
 # Replicação de categorias entre aplicativos OMIE
 
+## Fluxo atual: Categorias, Departamentos e Projetos
+
+A entrada exibe as três vertentes. Categorias está disponível; Departamentos e
+Projetos estão identificados como futuras funcionalidades. O usuário abre uma
+configuração existente para escolher o plano PAI e seus FILHOs, sempre dentro das
+empresas que pode administrar. A conciliação completa permanece desativada.
+
+- **Cadastro avulso:** o modal usa o grupo da PAI e envia o novo cadastro à PAI e
+  a todos os FILHOs da configuração. O servidor fixa os destinos do plano, sem
+  confiar em uma lista alterada no navegador. Grupo superior ausente/incompatível
+  bloqueia aquela empresa; os nomes parecidos continuam exigindo decisão.
+- **Cadastros existentes:** tabela com busca e checkboxes, ação Replicar/Inativar/
+  Reativar e seleção de destinos. Marcar um grupo seleciona suas categorias ativas;
+  é possível desmarcar cada filha. O servidor respeita exatamente os IDs enviados,
+  sem expandir novamente o grupo. Raízes e posições disponíveis não são copiadas.
+- **Conferência obrigatória:** `modo=lote` primeiro apenas consulta PAI e destinos.
+  Nomes exatos existentes são ignorados mesmo que metadados sejam diferentes;
+  nada é sobrescrito. Nomes parecidos exigem escolher criar, ignorar ou usar um
+  cadastro compatível sem modificar seu nome. A inclusão usa tipo/DRE da origem,
+  sem observações. A criação de grupos antecede suas filhas selecionadas, sem
+  exigir que as raízes estruturais 1/2 sejam retornadas pela API.
+- **Situação:** inativar/reativar aplica-se somente às categorias filhas dos
+  destinos, com prévia e confirmação. Grupos são preservados. O envio altera só
+  `conta_inativa`, mantendo código, descrição, DRE, tipo e histórico. A PAI fica
+  somente para leitura nas ações sobre cadastros existentes.
+- **Execução:** mesma fila `omie_replicacao`, locks, permissões e conferência de
+  snapshots. Sem chamadas de escrita antes de aprovar a prévia. Etapas confirmadas
+  são preservadas na retomada; resultado incerto exige consulta, nunca reenvio.
+- **Resultado:** barra de etapas processadas, contagem de confirmadas/ignoradas/
+  pendentes e tabela compacta por empresa com o motivo real seguro. Chegar a 100%
+  não transforma erro em sucesso. Histórico e detalhes ficam recolhidos.
+
+As rotas e descrições abaixo registram também os fluxos anteriores, preservados
+para consultar/verificar históricos. As novas ações por checkbox usam a conferência
+em lote descrita acima. Não é necessária migração de banco para esse modo.
+
 Entrada: Configurações > Replicar dados, inclusive no menu principal antes de escolher
 um CNPJ. O gestor escolhe a base PAI e marca explicitamente as empresas FILHO entre
 as bases que pode administrar no ambiente atual. Não exige grupo no cadastro das
