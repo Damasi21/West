@@ -314,7 +314,7 @@ def painel_central(request, plano, operacao_id=None):
         operacao = get_object_or_404(plano.cadastros, pk=operacao_id)
     elif request.GET.get("cadastro", "").isdigit():
         operacao = get_object_or_404(plano.cadastros, pk=request.GET["cadastro"])
-    categorias = list(CategoriaOmie.objects.filter(empresa=plano.matriz, ativo_omie=True).order_by("codigo"))
+    categorias = list(CategoriaOmie.objects.filter(empresa=plano.matriz, ativo_omie=True, conta_inativa=False).order_by("codigo"))
     # The OMIE hierarchy is shallow, but keep the display independent of code
     # numbering and show orphans instead of silently dropping a category.
     por_pai = {}
