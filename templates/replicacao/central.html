@@ -2,6 +2,7 @@
 {% load static %}
 {% block heading %}Categorias{% endblock %}
 {% block replicacao_content %}
+<span hidden data-rep-entry-action="{{ entrada_acao }}"></span>
 {% include "replicacao/vertentes.html" %}
 <div class="settings-card p-4 mb-4"><div class="rep-toolbar"><div><span class="eyebrow">PLANO PAI</span><h2 class="h5 mt-2">{{ plano.nome }}</h2><p class="text-secondary mb-0">{{ plano.matriz.nome_fantasia|default:plano.matriz.nome }} · {% if plano.ativo %}Ativo{% else %}Pausado{% endif %}</p></div><div class="rep-actions"><a class="btn btn-white" href="{% url 'replicacao:lista' %}">Voltar</a><button type="button" class="btn btn-white" data-bs-toggle="modal" data-bs-target="#rep-historico">Histórico</button><form method="post" action="{% url 'replicacao:alternar' plano.pk %}">{% csrf_token %}<button class="btn btn-outline-secondary">{% if plano.ativo %}Pausar{% else %}Reativar{% endif %}</button></form></div></div>
 <form method="get" action="{% url 'replicacao:lista' %}" class="rep-actions mt-3"><label for="rep-plano">Selecionar plano PAI</label><select name="plano" id="rep-plano" class="form-select rep-plan-select">{% for item in planos_disponiveis %}<option value="{{ item.pk }}"{% if item.pk == plano.pk %} selected{% endif %}>{{ item.nome }} · {{ item.matriz.nome_fantasia|default:item.matriz.nome }}</option>{% endfor %}</select><button class="btn btn-white">Abrir</button></form>
@@ -28,4 +29,4 @@
 {% include "replicacao/selecao.html" %}
 {% include "replicacao/dialogos.html" %}
 {% endblock %}
-{% block extra_js %}<script src="{% static 'js/replicacao.js' %}?v=20261111-categorias-2" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/replicacao.js' %}?v=20261119-menu-categorias" defer></script>{% endblock %}

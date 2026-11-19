@@ -359,6 +359,7 @@ def painel_central(request, plano, operacao_id=None):
         "erro_grupo": erro_grupo, "form": NovaCategoriaForm(plano=plano), "form_padronizacao": PadronizacaoForm(plano=plano), "operacao": operacao,
         "progresso": central.situacao(operacao) if operacao else None, "linhas": linhas,
         "planos_disponiveis": planos_permitidos(request.user).filter(arquivado=False).select_related("matriz"),
+        "entrada_acao": request.GET.get("acao", "") if request.GET.get("acao") in {"nova", "replicar", "inativar"} else "",
         "plano_completo_ativo": plano_completo_ativo,
         "plano_completo_bloqueado": operacao and operacao.modo in {"conciliacao", "espelho"} and not plano_completo_ativo,
         "ocupado": ocupado, "historico": plano.cadastros.all()[:20],

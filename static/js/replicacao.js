@@ -1,4 +1,26 @@
 (() => {
+    const categoryActions = Array.from(document.querySelectorAll('[data-rep-menu-action]'));
+    const categoryActionNames = {
+        nova: 'Cadastrar nova categoria',
+        replicar: 'Cadastrar categoria da base PAI',
+        inativar: 'Inativar categoria',
+    };
+    categoryActions.forEach(button => button.addEventListener('click', () => {
+        const selected = button.dataset.repMenuAction;
+        if (!Object.hasOwn(categoryActionNames, selected)) return;
+        categoryActions.forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        const configurations = document.getElementById('rep-configuracoes');
+        if (!configurations) return;
+        configurations.hidden = false;
+        document.querySelector('[data-rep-menu-description]').textContent = `${categoryActionNames[selected]}: escolha a configuração com a base PAI e os destinos desejados.`;
+        document.querySelectorAll('[data-rep-config-link]').forEach(link => {
+            const url = new URL(link.dataset.repConfigLink, window.location.origin);
+            url.searchParams.set('acao', selected);
+            link.href = url.pathname + url.search;
+            link.textContent = categoryActionNames[selected];
+        });
+        configurations.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }));
     const all = document.querySelector('[data-rep-all]');
     const items = Array.from(document.querySelectorAll('[data-rep-item]'));
     const count = document.querySelector('[data-rep-count]');
@@ -176,6 +198,22 @@
         destAll.addEventListener('change', () => { destinations.forEach(c => { c.checked = destAll.checked; }); refresh(); });
         destinations.forEach(c => c.addEventListener('change', refresh));
         refresh();
+    }
+
+    // Entry shortcuts only open the existing forms. They never submit a request.
+    const entryAction = document.querySelector('[data-rep-entry-action]')?.dataset.repEntryAction;
+    if (entryAction === 'nova') {
+        const trigger = document.querySelector('[data-bs-target="#rep-nova-categoria"]');
+        const modal = document.getElementById('rep-nova-categoria');
+        if (trigger && !trigger.disabled && modal && window.bootstrap?.Modal) window.bootstrap.Modal.getOrCreateInstance(modal).show();
+    } else if (['replicar', 'inativar'].includes(entryAction) && selection) {
+        const trigger = document.querySelector('[data-rep-open-selection]');
+        if (trigger && !trigger.disabled) {
+            const action = selection.querySelector('[name="acao"]');
+            action.value = entryAction;
+            action.dispatchEvent(new Event('change', {bubbles: true}));
+            trigger.click();
+        }
     }
 
     const panel = document.querySelector('[data-rep-progress]');

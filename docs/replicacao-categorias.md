@@ -2,8 +2,12 @@
 
 ## Fluxo atual: Categorias, Departamentos e Projetos
 
-A entrada exibe as três vertentes. Categorias está disponível; Departamentos e
-Projetos estão identificados como futuras funcionalidades. O usuário abre uma
+A entrada exibe somente as três vertentes, sem funções ou configurações abertas.
+Ao clicar em Categorias, aparecem Cadastrar nova categoria, Cadastrar categoria
+da base PAI e Inativar categoria. Escolher uma função revela as configurações;
+abrir uma delas apenas apresenta o formulário correspondente, sem criar pedido
+ou enviar dados à OMIE. Departamentos e Projetos continuam como funcionalidades
+futuras. O usuário abre uma
 configuração existente para escolher o plano PAI e seus FILHOs, sempre dentro das
 empresas que pode administrar. A conciliação completa permanece desativada.
 

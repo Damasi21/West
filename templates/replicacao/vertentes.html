@@ -1,5 +1,5 @@
 <nav class="rep-branches mb-4" aria-label="Vertentes de replicação">
-<a href="{% url 'replicacao:lista' %}" class="rep-branch is-active"><i class="bi bi-tags" aria-hidden="true"></i><strong>Categorias</strong></a>
+{% if menu_principal %}<button type="button" class="rep-branch" data-bs-toggle="collapse" data-bs-target="#rep-categorias-menu" aria-expanded="{% if arquivadas %}true{% else %}false{% endif %}" aria-controls="rep-categorias-menu"><i class="bi bi-tags" aria-hidden="true"></i><strong>Categorias</strong></button>{% else %}<a href="{% url 'replicacao:lista' %}" class="rep-branch is-active"><i class="bi bi-tags" aria-hidden="true"></i><strong>Categorias</strong></a>{% endif %}
 <span class="rep-branch is-disabled" aria-disabled="true"><i class="bi bi-diagram-3" aria-hidden="true"></i><strong>Departamentos</strong><small>Em breve</small></span>
 <span class="rep-branch is-disabled" aria-disabled="true"><i class="bi bi-kanban" aria-hidden="true"></i><strong>Projetos</strong><small>Em breve</small></span>
 </nav>
