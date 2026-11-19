@@ -13,11 +13,17 @@
         if (!configurations) return;
         configurations.hidden = false;
         document.querySelector('[data-rep-menu-description]').textContent = `${categoryActionNames[selected]}: escolha a configuração com a base PAI e os destinos desejados.`;
-        document.querySelectorAll('[data-rep-config-link]').forEach(link => {
-            const url = new URL(link.dataset.repConfigLink, window.location.origin);
+        document.querySelectorAll('[data-rep-new-config]').forEach(link => {
+            const url = new URL(link.href, window.location.origin);
             url.searchParams.set('acao', selected);
             link.href = url.pathname + url.search;
-            link.textContent = categoryActionNames[selected];
+        });
+        document.querySelectorAll('[data-rep-config-link]').forEach(link => {
+            const url = new URL(link.dataset.repSimpleUrl || link.dataset.repConfigLink, window.location.origin);
+            if (link.dataset.repSimpleUrl) url.pathname = url.pathname.replace(/\/nova\/$/, `/${selected}/`);
+            else url.searchParams.set('acao', selected);
+            link.href = url.pathname + url.search;
+            link.textContent = 'Configuração';
         });
         configurations.scrollIntoView({behavior: 'smooth', block: 'start'});
     }));
@@ -149,6 +155,57 @@
         refresh();
     });
 
+    const simpleForm = document.querySelector('[data-rep-simple-form]');
+    if (simpleForm) {
+        const bases = Array.from(simpleForm.querySelectorAll('[name="destinos"]'));
+        const all = simpleForm.querySelector('[data-rep-simple-all]');
+        const refreshBases = () => {
+            const count = bases.filter(b => b.checked).length;
+            all.checked = count > 0 && count === bases.length;
+            all.indeterminate = count > 0 && count < bases.length;
+        };
+        all.addEventListener('change', () => { bases.forEach(b => { b.checked = all.checked; }); refreshBases(); });
+        bases.forEach(b => b.addEventListener('change', refreshBases));
+        refreshBases();
+        const search = simpleForm.querySelector('[data-rep-single-search]');
+        const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        search?.addEventListener('input', () => simpleForm.querySelectorAll('[data-rep-single-row]').forEach(row => {
+            row.hidden = !normalize(row.textContent).includes(normalize(search.value.trim()));
+        }));
+        const group = simpleForm.querySelector('[name="grupo"]');
+        const expenseType = simpleForm.querySelector('[name="tipo_categoria"]');
+        if (group && expenseType) {
+            const groups = JSON.parse(document.getElementById('rep-grupos-tipos').textContent);
+            const message = simpleForm.querySelector('[data-rep-types-message]');
+            let types = [], loaded = false;
+            const updateTypes = () => {
+                const value = expenseType.value;
+                expenseType.replaceChildren(new Option('Não informar', ''));
+                types.filter(t => t.cTipo === groups[group.value]).forEach(t => expenseType.add(new Option(t.cDescricao, t.cCodigo)));
+                if (Array.from(expenseType.options).some(o => o.value === value)) expenseType.value = value;
+                expenseType.disabled = !loaded || !group.value;
+            };
+            group.addEventListener('change', updateTypes);
+            expenseType.disabled = true;
+            fetch(simpleForm.dataset.tiposUrl, {credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(20000), headers: {Accept: 'application/json'}})
+                .then(async response => {
+                    const data = await response.json();
+                    if (!response.ok || !Array.isArray(data.tipos)) throw new Error();
+                    types = data.tipos; loaded = true; updateTypes();
+                    message.textContent = 'Tipo opcional. As opções respeitam o grupo de receita ou despesa selecionado.';
+                }).catch(() => {
+                    message.textContent = 'Não foi possível carregar os tipos da OMIE. Você pode executar sem informar o tipo.';
+                });
+        }
+        simpleForm.addEventListener('submit', () => {
+            // Keep normal browser/server validation. Prevent accidental double clicks after valid submission.
+            if (simpleForm.checkValidity()) {
+                const button = simpleForm.querySelector('[type="submit"]');
+                button.disabled = true; button.textContent = 'Enviando…';
+            }
+        });
+    }
+
     const selection = document.querySelector('[data-rep-selection]');
     document.querySelector('[data-rep-open-selection]')?.addEventListener('click', () => {
         const details = document.getElementById('rep-selecao');
@@ -227,6 +284,7 @@
     if (panel.dataset.repMode === 'espelho') labels.enviando = 'Padronizando plano';
     if (panel.dataset.repMode === 'conciliacao') labels.enviando = 'Conciliando plano';
     if (panel.dataset.repMode === 'lote') labels.enviando = 'Processando categorias';
+    if (panel.dataset.repMode === 'simples') labels.enviando = 'Executando a réplica';
     let stopped = false;
     let state = panel.dataset.repState;
     const pollMessage = panel.querySelector('[data-rep-poll-message]');
@@ -245,7 +303,7 @@
             panel.querySelector('[role="progressbar"]').setAttribute('aria-valuenow', data.percentual);
             panel.querySelector('[data-rep-message]').textContent = data.mensagem;
             panel.querySelector('[data-rep-status]').textContent = data.status === 'concluido' ? (data.rotulo || labels[data.status]) : (labels[data.status] || data.status);
-            panel.querySelector('[data-rep-stages]').textContent = `${data.atual} de ${data.total} etapas concluídas`;
+            panel.querySelector('[data-rep-stages]').textContent = `${data.atual} de ${data.total} ${panel.dataset.repMode === 'simples' ? 'bases processadas' : 'etapas concluídas'}`;
             const errors = panel.querySelector('[data-rep-pendencias]');
             if (errors) {
                 const list = errors.querySelector('ul');

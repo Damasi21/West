@@ -2,6 +2,45 @@
 
 ## Fluxo atual: Categorias, Departamentos e Projetos
 
+### Réplica simples por função
+
+Nas três opções de Categorias, o botão **Configuração** abre um formulário próprio.
+**Executar a réplica** autoriza a conferência automática e o envio no worker:
+
+- Nova categoria: grupo real de receita/despesa da PAI, nome (50 caracteres) e
+  tipo de gasto/receita opcional, lado a lado. A lista oficial vem de
+  [ListarTipoCategoria](https://api.omie.com.br/docs/apis/geral/tipocategoria),
+  com cache de uma hora por aplicativo. O grupo filtra tipos R (receita) ou P
+  (gasto); o worker confere a compatibilidade antes da inclusão.
+- Categoria da PAI: somente uma categoria filha ativa, selecionada por rádio,
+  com busca. Copia tipo e vínculo DRE; observações não são enviadas.
+- Inativar: a mesma seleção única. Só inativa uma correspondência exata, única,
+  no grupo e natureza certos. Não usa proximidade de nome para alterar situação.
+- Em todos os casos, as bases são marcadas explicitamente dentro da configuração.
+  A PAI aparece como opção, desmarcada; só recebe escrita quando marcada.
+- Na criação/cópia, nomes normalizados iguais, distância de edição de até duas
+  letras ou semelhança de nome pela regra existente (>= 0,8) são ignorados, inclusive
+  se a categoria encontrada estiver inativa ou em outro grupo. Não sobrescreve.
+  O grupo superior precisa existir único, ativo e idêntico no destino.
+- A nova operação usa `modo=simples`, uma categoria por pedido e uma etapa por
+  destino, na fila `omie_replicacao`. O worker lê a fonte uma vez ao começar e
+  mantém o snapshot aprovado. Revalida acessos/integrações a cada base, registra
+  intenção antes da única chamada de escrita e confirma o código por leitura.
+- A página de resultado mostra apenas progresso, resultado e motivo por base.
+  Duplicidade ignorada não é erro. Resposta incerta exige verificar o código,
+  sem reenviar; as demais bases podem concluir. A função de atualizar categorias
+  da PAI também retorna a esse fluxo, sem iniciar cadastros.
+
+Os fluxos anteriores abaixo permanecem para histórico e verificação de pedidos
+existentes. As opções do menu agora usam os formulários simples acima. Não há
+migração de banco para esse modo.
+
+O deploy desta versão precisa atualizar **app e replicacao_worker** para a mesma
+imagem: encerrar o worker anterior de forma graciosa e iniciar o novo antes de
+expor os novos formulários. Os workers OMIE das demais filas, scheduler, Redis e
+Postgres permanecem em execução. O modo simples é despachado pelo código novo
+do worker; não publicar somente a aplicação nesta versão.
+
 A entrada exibe somente as três vertentes, sem funções ou configurações abertas.
 Ao clicar em Categorias, aparecem Cadastrar nova categoria, Cadastrar categoria
 da base PAI e Inativar categoria. Escolher uma função revela as configurações;

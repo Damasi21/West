@@ -91,3 +91,59 @@ class ReplicarExistenteForm(forms.Form):
         self.fields['destinos'].queryset=Empresa.objects.filter(pk__in=plano.destinos.values('empresa_id'),ativa=True).order_by('nome_fantasia','pk')
         if not categoria.totalizadora:
             self.fields.pop('incluir_filhos')
+
+
+class CategoriaReplicaChoice(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        from html import unescape
+        return f"{obj.codigo} · {unescape(obj.descricao)}"
+
+
+class BasesReplicaChoice(DestinosChoice):
+    matriz_id = None
+
+    def label_from_instance(self, obj):
+        return super().label_from_instance(obj) + (" (PAI)" if obj.pk == self.matriz_id else "")
+
+
+class ReplicaSimplesForm(forms.Form):
+    grupo = CategoriaReplicaChoice(label="Grupo de receitas ou despesas", queryset=Empresa.objects.none(),
+                                  widget=forms.Select(attrs={"class": "form-select"}))
+    descricao = forms.CharField(label="Nome da categoria", max_length=50,
+                               widget=forms.TextInput(attrs={"class": "form-control"}))
+    tipo_categoria = forms.CharField(label="Tipo de gasto/receita (opcional)", max_length=3, required=False,
+                                    widget=forms.Select(attrs={"class": "form-select"}, choices=[('', 'Não informar')]))
+    categoria = CategoriaReplicaChoice(label="Categoria da base PAI", queryset=Empresa.objects.none(),
+                                      widget=forms.RadioSelect)
+    destinos = BasesReplicaChoice(label="Bases que receberão a réplica", queryset=Empresa.objects.none(),
+                                 widget=forms.CheckboxSelectMultiple)
+
+    def __init__(self, *args, plano, acao, **kwargs):
+        from apps.empresas.models import CategoriaOmie
+        super().__init__(*args, **kwargs)
+        fonte = CategoriaOmie.objects.filter(empresa=plano.matriz, ativo_omie=True, conta_inativa=False, transferencia=False)
+        self.fields['grupo'].queryset = fonte.filter(totalizadora=True, codigo__regex=r'^[12]\.\d{2}$').order_by('codigo')
+        self.fields['categoria'].queryset = fonte.filter(totalizadora=False, codigo__regex=r'^[12]\.\d{2}\.\d{2,3}$').exclude(
+            descricao__iregex=r'(<|&lt;)dispon[ií]vel(>|&gt;)').order_by('codigo')
+        self.fields['destinos'].queryset = Empresa.objects.filter(pk__in=[plano.matriz_id, *plano.destinos.values_list('empresa_id', flat=True)], ativa=True).order_by('nome_fantasia', 'pk')
+        self.fields['destinos'].matriz_id = plano.matriz_id
+        if acao == 'nova':
+            self.fields.pop('categoria')
+            selecionado = self.data.get('tipo_categoria', '') if self.is_bound else ''
+            if selecionado:
+                self.fields['tipo_categoria'].widget.choices = [('', 'Não informar'), (selecionado, selecionado)]
+        else:
+            for campo in ['grupo', 'descricao', 'tipo_categoria']:
+                self.fields.pop(campo)
+
+    def clean_categoria(self):
+        if hasattr(self.data, 'getlist') and len(self.data.getlist('categoria')) != 1:
+            raise ValidationError("Selecione apenas uma categoria da base PAI.")
+        return self.cleaned_data['categoria']
+
+    def clean_destinos(self):
+        if hasattr(self.data, 'getlist'):
+            ids = self.data.getlist('destinos')
+            if len(ids) != len(set(ids)):
+                raise ValidationError("Não repita bases na seleção.")
+        return self.cleaned_data['destinos']

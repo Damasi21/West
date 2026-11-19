@@ -45,7 +45,7 @@ def conferir_operacao(operacao):
     return empresas
 
 
-def solicitar(plano, usuario, descricao="", pai=None, catalogo=False, destinos_ids=None, estrito=True):
+def solicitar(plano, usuario, descricao="", pai=None, catalogo=False, destinos_ids=None, estrito=True, somente_matriz=False):
     with transaction.atomic():
         plano = type(plano).objects.select_for_update().get(pk=plano.pk)
         empresas = conferir_empresas(plano, usuario)
@@ -58,7 +58,11 @@ def solicitar(plano, usuario, descricao="", pai=None, catalogo=False, destinos_i
             if not set(destinos_ids).issubset(permitidos):
                 raise PermissionDenied("Selecione apenas empresas destino desta configuração. A base PAI já participa como origem.")
             empresas = [e for e in empresas if e.pk == plano.matriz_id or e.pk in destinos_ids]
-        pedido = {}
+        if somente_matriz:
+            if not catalogo:
+                raise ValidationError("Consulta somente da PAI exige atualização de catálogo.")
+            empresas = [e for e in empresas if e.pk == plano.matriz_id]
+        pedido = {"somente_matriz": True} if somente_matriz else {}
         if not catalogo:
             descricao = descricao.strip()
             if not descricao or len(descricao) > 50:
@@ -88,6 +92,12 @@ def publicar_cadastro(op):
     try:
         cadastrar_categoria.apply_async(args=[op.pk], queue="omie_replicacao", retry=False)
     except Exception:
+        if op.modo == 'simples':
+            # A delivery may have reached the broker before its acknowledgement failed.
+            # Only fail an unclaimed request; a duplicate delivery then sees erro and does nothing.
+            CadastroCategoria.objects.filter(pk=op.pk, status='fila').update(status='erro',
+                mensagem='Não foi possível confirmar o envio à fila. Tente as pendências novamente.', atualizada_em=timezone.now())
+            return
         CadastroCategoria.objects.filter(pk=op.pk).update(mensagem="Worker indisponível. Use Retomar consulta para reenfileirar com segurança.", atualizada_em=timezone.now())
 
 
@@ -226,6 +236,10 @@ def _executar_cadastro(pk):
     token = contexto_plano(op.plano)
     try:
         conferir_operacao(op)
+        if op.modo == "simples":
+            from .simples import processar
+            processar(op)
+            return
         if op.modo == "lote":
             from .lotes import processar
             processar(op)
@@ -420,7 +434,7 @@ def aplicar_passo(op, linha, indice, integracao, pai_codigo):
 
 
 def confirmar_passo(linha, indice, integracao, codigo=""):
-    if linha.cadastro.modo == "lote":
+    if linha.cadastro.modo in {"lote", "simples"}:
         from .lotes import verificar
         return verificar(linha, indice, integracao, codigo)
     if linha.cadastro.modo in {"espelho", "conciliacao"}:
@@ -582,7 +596,10 @@ def situacao(op):
         for passo in linha.passos:
             status = passo.get("status")
             contagens[status if status in {"sucesso", "ignorada"} else "pendente"] += 1
-    return {"status": op.status, "rotulo": op.get_status_display(), "mensagem": mensagem, "resumo": contagens,
+    rotulo = op.get_status_display()
+    if op.modo == 'simples' and op.status == 'concluido':
+        rotulo = 'Réplica concluída com pendências' if avisos else 'Réplica concluída'
+    return {"status": op.status, "rotulo": rotulo, "mensagem": mensagem, "resumo": contagens,
         "resultado": "revisao" if op.status=="revisao" else "pendente" if avisos else "cancelada" if op.status=="cancelada" else "sucesso" if op.status=="concluido" else "andamento", "atual": op.progresso_atual, "total": op.progresso_total,
         "percentual": min(100, round(op.progresso_atual * 100 / max(1, op.progresso_total))),
         "ativo": op.status in OCUPADOS, "pendencias": avisos,

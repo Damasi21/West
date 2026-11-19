@@ -173,3 +173,37 @@ def listar(integracao, descricao=""):
                 raise OmieIncerta("Contagem de categorias divergente. Compare novamente.")
             return itens
         pagina += 1
+
+
+def listar_tipos(integracao):
+    """Read the official list; never infer gasto/receita codes from descriptions."""
+    itens, total = [], None
+    for pagina in range(1, 101):
+        corpo = {"call": "ListarTipoCategoria", "param": [{"nPagina": pagina, "nRegPorPagina": 500}],
+                 "app_key": integracao.app_key, "app_secret": integracao.obter_app_secret()}
+        request = Request("https://app.omie.com.br/api/v1/geral/tipocategoria/", data=json.dumps(corpo).encode(),
+                          headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with _abrir_requisicao_omie(request, settings.OMIE_API_TIMEOUT) as response:
+                dados = json.loads(response.read().decode())
+        except (HTTPError, URLError, TimeoutError, OSError, ValueError, OmieAPIError) as exc:
+            raise ConsultaRecusada("ListarTipoCategoria: " + motivo_consulta(exc)) from exc
+        if not isinstance(dados, dict) or str(dados.get("cCodStatus", "")) != "0":
+            raise ConsultaRecusada("A OMIE não confirmou a listagem dos tipos de gasto/receita.")
+        try:
+            paginas, registros = int(dados["nTotPaginas"]), int(dados["nTotRegistros"])
+        except (KeyError, TypeError, ValueError):
+            raise ConsultaRecusada("Listagem dos tipos de gasto/receita incompleta.")
+        lista = dados.get("listaTipoCategoria")
+        if not isinstance(lista, list) or not 0 <= paginas <= 100 or registros < 0 or (total is not None and total != (paginas, registros)):
+            raise ConsultaRecusada("A lista de tipos mudou ou está incompleta. Tente consultar novamente.")
+        total = (paginas, registros)
+        for item in lista:
+            if not isinstance(item, dict) or not isinstance(item.get("cCodigo"), str) or not 1 <= len(item["cCodigo"]) <= 3 or item.get("cTipo") not in {"P", "R"} or not isinstance(item.get("cDescricao"), str):
+                raise ConsultaRecusada("A OMIE retornou um tipo de gasto/receita inválido.")
+            itens.append({k: item.get(k, "") for k in ("cCodigo", "cDescricao", "cGrupo", "cTipo")})
+        if pagina >= max(1, paginas):
+            if len(itens) != registros or len({(i['cCodigo'], i['cTipo']) for i in itens}) != len(itens):
+                raise ConsultaRecusada("Contagem de tipos de gasto/receita divergente.")
+            return itens
+    raise ConsultaRecusada("A listagem dos tipos excedeu o limite de páginas.")

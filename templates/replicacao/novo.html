@@ -7,7 +7,7 @@
     <div class="row g-4">{% for field in form %}<div class="{% if field.name == 'destinos' %}col-12{% else %}col-md-6{% endif %}"><label class="form-label fw-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'destinos' %}<div class="rep-empresas" data-rep-config-destinos>{{ field }}</div>{% else %}{{ field }}{% endif %}{% for erro in field.errors %}<div class="invalid-feedback d-block">{{ erro }}</div>{% endfor %}</div>{% endfor %}</div>
     <div class="rep-notice mt-4"><strong>Empresas participantes</strong><p class="mb-0 mt-1" data-rep-members>Escolha a base PAI e marque as empresas FILHO que poderão receber suas categorias.</p></div>
     <p class="small text-secondary mt-3">As empresas podem pertencer a grupos diferentes ou não possuir grupo. Aparecem apenas empresas em que você tem permissão de gestor ou Adm White Label, neste ambiente. Salvar esta configuração não envia dados à OMIE.</p>
-    <p class="small text-secondary mt-3">Depois de salvar, escolha entre padronizar o plano completo de uma única empresa FILHO por solicitação ou cadastrar uma categoria/grupo nos destinos escolhidos. As prévias mostram as alterações antes do envio.</p>
+    <p class="small text-secondary mt-3">Depois de salvar, selecione a categoria e marque as bases que receberão a réplica. Somente as bases marcadas receberão alterações.</p>
     <div class="form-actions"><a class="btn btn-light" href="{% url 'replicacao:lista' %}">Voltar</a><button class="btn btn-primary" type="submit">Salvar configuração</button></div>
 </form>
 {% endblock %}

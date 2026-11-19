@@ -17,7 +17,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from apps.empresas.models import AmbienteWhiteLabel, Empresa, CategoriaOmie
 from apps.empresas.white_label_branding import SESSION_MARCA
 from apps.empresas.white_label_domains import _marca_host, marca_host_atual
-from .forms import PlanoForm, NovaCategoriaForm, PadronizacaoForm, ReplicarExistenteForm
+from .forms import PlanoForm, NovaCategoriaForm, PadronizacaoForm, ReplicarExistenteForm, ReplicaSimplesForm
 from .models import CadastroCategoria, CadastroCategoriaEmpresa
 from . import central
 from .models import PlanoReplicacao, ComparacaoReplicacao, ItemReplicacao, DestinoReplicacao, VinculoCategoria
@@ -113,6 +113,8 @@ def novo(request):
             plano = form.salvar()
             auditar(plano, request.user, "Criou plano de replicação", destinos=list(plano.destinos.values_list("empresa_id", flat=True)))
             messages.success(request, "Configuração salva. Atualize a árvore de categorias da base PAI para começar.")
+            if request.GET.get('acao') in {'nova', 'replicar', 'inativar'}:
+                return redirect('replicacao:replica', plano_id=plano.pk, acao=request.GET['acao'])
             return redirect("replicacao:detalhe", plano_id=plano.pk)
         except (ValidationError, PermissionDenied) as erro:
             form.add_error(None, erro)
@@ -123,6 +125,8 @@ def novo(request):
 @require_GET
 def detalhe(request, plano_id):
     plano = plano_request(request, plano_id)
+    if request.GET.get('acao') in {'nova', 'replicar', 'inativar'} and not request.GET.get('cadastro'):
+        return redirect('replicacao:replica', plano_id=plano.pk, acao=request.GET['acao'])
     if plano.cadastro_central and not request.GET.get("historico"):
         return painel_central(request, plano)
     comparacoes = plano.comparacoes.select_related("solicitado_por")
@@ -167,6 +171,68 @@ def detalhe(request, plano_id):
         "em_processamento": comparacao and comparacao.status in {"fila", "comparando", "enviando"},
         "pode_enviar": comparacao and comparacao.status in {"pronta", "concluida"} and plano.ativo,
     })
+
+
+@ambiente_view
+@require_http_methods(['GET', 'POST'])
+def replica(request, plano_id, acao):
+    from . import simples
+    from .falhas import motivo
+    from django.http import Http404
+    if acao not in simples.ACOES:
+        raise Http404
+    plano = plano_request(request, plano_id)
+    form = ReplicaSimplesForm(request.POST if request.method == 'POST' else None, plano=plano, acao=acao)
+    erro_acesso = ''
+    try:
+        central.conferir_empresas(plano, request.user)
+    except (PermissionDenied, ValidationError) as exc:
+        erro_acesso = motivo(exc)
+    if request.method == 'POST' and form.is_valid():
+        try:
+            op = simples.solicitar(plano, request.user, acao, list(form.cleaned_data['destinos'].values_list('pk', flat=True)),
+                categoria=form.cleaned_data.get('categoria'), grupo=form.cleaned_data.get('grupo'),
+                descricao=form.cleaned_data.get('descricao', ''), tipo_categoria=form.cleaned_data.get('tipo_categoria', ''))
+            transaction.on_commit(lambda: central.publicar_cadastro(op))
+            return redirect('replicacao:resultado_replica', plano_id=plano.pk, cadastro_id=op.pk)
+        except (PermissionDenied, ValidationError) as exc:
+            form.add_error(None, motivo(exc))
+    grupos = {str(c.pk): ('R' if c.codigo.startswith('1') else 'P') for c in form.fields['grupo'].queryset} if acao == 'nova' else {}
+    ocupado = plano.cadastros.filter(status__in=central.OCUPADOS | {'revisao'}).exists()
+    return render(request, 'replicacao/replica.html', {'plano': plano, 'form': form, 'acao': acao, 'grupos_tipos': grupos,
+        'erro_acesso': erro_acesso, 'ocupado': ocupado,
+        'titulo_replica': {'nova': 'Cadastrar nova categoria', 'replicar': 'Cadastrar categoria da base PAI', 'inativar': 'Inativar categoria'}[acao]})
+
+
+@ambiente_view
+@require_GET
+def tipos_categoria(request, plano_id):
+    from .simples import tipos
+    from .services import aplicativo_livre
+    plano = plano_request(request, plano_id)
+    try:
+        central.conferir_empresas(plano, request.user)
+        with aplicativo_livre(plano.matriz, aguardar_sincronizacao=False) as integracao:
+            valores = tipos(integracao)
+        return JsonResponse({'tipos': valores})
+    except Exception:
+        return JsonResponse({'erro': 'Não foi possível carregar os tipos da OMIE. Você pode continuar sem informar o tipo.'}, status=503)
+
+
+@ambiente_view
+@require_GET
+def resultado_replica(request, plano_id, cadastro_id):
+    plano = plano_request(request, plano_id)
+    op = get_object_or_404(plano.cadastros, pk=cadastro_id)
+    if op.modo != 'simples' and not (op.modo == 'catalogo' and op.pedido.get('voltar_replica') in {'nova', 'replicar', 'inativar'}):
+        return redirect(reverse('replicacao:detalhe', args=[plano.pk]) + f'?cadastro={op.pk}')
+    linhas = list(op.empresas.select_related('empresa'))
+    for linha in linhas:
+        linha.precisa_codigo = any(p.get('status') in {'executando', 'incerto'} and not p.get('codigo') and not p.get('alvo') for p in linha.passos)
+    return render(request, 'replicacao/resultado_replica.html', {'plano': plano, 'operacao': op,
+        'progresso': central.situacao(op), 'linhas': linhas,
+        'acao': op.pedido.get('acao', op.pedido.get('voltar_replica', 'replicar')),
+        'pode_retomar': op.status == 'erro' or (op.status == 'concluido' and any(l.status in {'erro', 'bloqueada'} for l in linhas))})
 
 
 @ambiente_view
@@ -494,8 +560,14 @@ def confirmar_categorias(request, plano_id, cadastro_id):
 def atualizar_arvore(request, plano_id):
     plano = plano_request(request, plano_id)
     try:
-        op = central.solicitar(plano, request.user, catalogo=True)
+        voltar = request.POST.get('voltar_replica')
+        op = central.solicitar(plano, request.user, catalogo=True, somente_matriz=voltar in {'nova', 'replicar', 'inativar'})
+        if voltar in {'nova', 'replicar', 'inativar'}:
+            op.pedido['voltar_replica'] = voltar
+            op.save(update_fields=['pedido'])
         transaction.on_commit(lambda: central.publicar_cadastro(op))
+        if voltar in {'nova', 'replicar', 'inativar'}:
+            return redirect('replicacao:resultado_replica', plano_id=plano.pk, cadastro_id=op.pk)
     except (ValidationError, PermissionDenied) as exc:
         informar_erro(request, exc)
     return redirect("replicacao:detalhe", plano_id=plano.pk)
@@ -579,6 +651,8 @@ def retomar_cadastro(request, plano_id, cadastro_id):
         transaction.on_commit(lambda: central.publicar_cadastro(op))
     except (ValidationError, PermissionDenied) as exc:
         informar_erro(request, exc)
+    if op.modo == 'simples' or op.pedido.get('voltar_replica'):
+        return redirect('replicacao:resultado_replica', plano_id=plano.pk, cadastro_id=op.pk)
     return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={op.pk}")
 
 
@@ -599,6 +673,8 @@ def verificar_cadastro(request, plano_id, empresa_id):
         informar_erro(request, exc)
     except Exception:
         messages.error(request, "Worker indisponível; tente verificar novamente.")
+    if linha.cadastro.modo == 'simples':
+        return redirect('replicacao:resultado_replica', plano_id=plano.pk, cadastro_id=linha.cadastro_id)
     return redirect(reverse("replicacao:detalhe", args=[plano.pk]) + f"?cadastro={linha.cadastro_id}")
 
 

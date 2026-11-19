@@ -3,6 +3,9 @@ from . import views
 
 app_name = "replicacao"
 urlpatterns = [
+    path("<int:plano_id>/replica/<str:acao>/", views.replica, name="replica"),
+    path("<int:plano_id>/tipos-categoria/", views.tipos_categoria, name="tipos_categoria"),
+    path("<int:plano_id>/replicas/<int:cadastro_id>/", views.resultado_replica, name="resultado_replica"),
     path("<int:plano_id>/categorias/selecionar/", views.selecionar_categorias, name="selecionar_categorias"),
     path("<int:plano_id>/cadastros/<int:cadastro_id>/confirmar-selecao/", views.confirmar_categorias, name="confirmar_categorias"),
     path("<int:plano_id>/categorias/<int:categoria_id>/replicar/", views.replicar_existente, name="replicar_existente"),
